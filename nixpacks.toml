@@ -1,0 +1,5 @@
+[phases.build]
+cmds = ["npm ci --production"]
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
