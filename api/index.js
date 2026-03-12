@@ -1,12 +1,20 @@
-const RAILWAY_API_URL = 'https://ai-news-nav-production-e2e3.up.railway.app/api';
+// Vercel Serverless Function - 直接抓取RSS新闻
+// 不依赖Railway，直接在这里实现RSS抓取
 
-// 备用新闻数据（当Railway不可用时使用）
+import https from 'https';
+import http from 'http';
+
+// RSS源配置
+const RSS_URLS = [
+  { url: 'https://www.36kr.com/feed', source: '36Kr', category: 'AI新闻' },
+  { url: 'https://www.qbitai.com/feed', source: '量子位', category: 'AI报道' },
+];
+
+// 备用数据
 const fallbackNewsData = [
   { title: 'OpenAI发布GPT-4.5：推理能力大幅提升', description: '最新版本在数学、编程和创意写作方面展现突破性进展，响应速度提升50%', source: '36Kr', category: '语言模型', url: 'https://36kr.com/', publishedAt: new Date().toISOString() },
   { title: 'Claude 4正式推出：专注模式大幅增强', description: 'Anthropic发布新一代Claude模型，长任务处理能力提升3倍', source: '量子位', category: '语言模型', url: 'https://www.qbitai.com/', publishedAt: new Date(Date.now() - 3600000).toISOString() },
   { title: 'Sora新版本发布：视频生成质量超越真实', description: 'OpenAI视频生成工具实现重大突破，生成视频时长可达60秒', source: '机器之心', category: '视频AI', url: 'https://www.jiqizhixin.com/', publishedAt: new Date(Date.now() - 7200000).toISOString() },
-  { title: 'Midjourney v7发布：图像细节再创新高', description: '新一代图像生成模型在写实和艺术风格上都有显著提升', source: '爱范儿', category: '图像AI', url: 'https://www.ifanr.com/', publishedAt: new Date(Date.now() - 10800000).toISOString() },
-  { title: 'Kimi智能助手用户突破5000万', description: '月之暗面AI产品增速创国产AI应用纪录，月活用户数持续攀升', source: '36Kr', category: '行业动态', url: 'https://36kr.com/', publishedAt: new Date(Date.now() - 14400000).toISOString() },
 ];
 
 const fallbackTrendsData = [
@@ -37,33 +45,130 @@ const softwareRankingData = [
   { id: 14, name: 'Liblib', rank: 14, category: '图像生成', description: '国产AI图像生成平台', downloads: '800万+', rating: '4.4', url: 'https://www.liblib.art', logo: '/icon_APP/liblib.svg' },
 ];
 
-async function fetchFromRailway(type, limit, offset) {
-  try {
-    const url = new URL(RAILWAY_API_URL);
-    url.searchParams.append('type', type);
-    if (limit) url.searchParams.append('limit', limit);
-    if (offset) url.searchParams.append('offset', offset);
+// 全局缓存
+let cachedNews = [];
+let cachedTrends = [];
+let lastUpdate = null;
+let isInitialized = false;
+
+// 获取RSS内容
+function fetchRSS(url, timeout = 10000) {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http;
     
-    const response = await fetch(url.toString(), {
+    const req = protocol.get(url, {
+      timeout,
       headers: {
-        'Accept': 'application/json',
-      },
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => resolve(data));
     });
     
-    if (!response.ok) {
-      throw new Error(`Railway API error: ${response.status}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Failed to fetch from Railway:', error);
-    return null;
-  }
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+  });
 }
 
+// 解析RSS
+function parseRSS(xml) {
+  const items = [];
+  const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi;
+  let match;
+  
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const itemContent = match[1];
+    const titleMatch = itemContent.match(/<title[^>]*><!\[CDATA\[(.*?)\]\]><\/title>|<title[^>]*>(.*?)<\/title>/i);
+    const linkMatch = itemContent.match(/<link[^>]*>(.*?)<\/link>/i);
+    const descMatch = itemContent.match(/<description[^>]*><!\[CDATA\[(.*?)\]\]><\/description>|<description[^>]*>(.*?)<\/description>/i);
+    const pubDateMatch = itemContent.match(/<pubDate[^>]*>(.*?)<\/pubDate>/i);
+    
+    items.push({
+      title: titleMatch ? (titleMatch[1] || titleMatch[2] || '').trim() : '',
+      link: linkMatch ? linkMatch[1].trim() : '',
+      description: descMatch ? (descMatch[1] || descMatch[2] || '').trim() : '',
+      pubDate: pubDateMatch ? pubDateMatch[1].trim() : ''
+    });
+  }
+  
+  return items;
+}
+
+// 判断是否是AI新闻
+function isAINews(title) {
+  const keywords = ['AI', '人工智能', '大模型', 'GPT', 'Sora', 'Claude', 'Kimi', 'Gemini', 'Midjourney', 'Suno', '视频生成', '图像生成', 'LLM', '模型', 'OpenAI', 'Anthropic', '月之暗面', '通义', '文心', '字节', '腾讯', '华为', '芯片', 'GPU', 'Agent', '算力', '深度学习', '神经网络'];
+  const lowerTitle = title.toLowerCase();
+  return keywords.some(keyword => lowerTitle.includes(keyword.toLowerCase()));
+}
+
+// 同步新闻
+async function syncNews() {
+  console.log('Syncing news from RSS...');
+  const allNews = [];
+  
+  for (const rssConfig of RSS_URLS) {
+    try {
+      console.log(`Fetching ${rssConfig.source}...`);
+      const xml = await fetchRSS(rssConfig.url, 8000);
+      const items = parseRSS(xml);
+      
+      items.slice(0, 10).forEach((item) => {
+        if (isAINews(item.title)) {
+          allNews.push({
+            title: item.title,
+            description: item.description.replace(/<[^>]+>/g, '').substring(0, 200),
+            source: rssConfig.source,
+            category: rssConfig.category,
+            url: item.link.replace(/<!\[CDATA\[(.*?)\]\]>/, '$1'),
+            publishedAt: item.pubDate || new Date().toISOString()
+          });
+        }
+      });
+    } catch (error) {
+      console.log(`${rssConfig.source} failed: ${error.message}`);
+    }
+  }
+  
+  if (allNews.length > 0) {
+    cachedNews = allNews.map((item, idx) => ({
+      ...item,
+      id: idx + 1
+    }));
+    cachedTrends = fallbackTrendsData.map((item, idx) => ({ ...item, id: idx + 1 }));
+    lastUpdate = new Date().toISOString();
+    console.log(`Synced ${cachedNews.length} news items`);
+  } else {
+    console.log('Using fallback data');
+    cachedNews = fallbackNewsData.map((item, idx) => ({ ...item, id: idx + 1 }));
+    cachedTrends = fallbackTrendsData.map((item, idx) => ({ ...item, id: idx + 1 }));
+    lastUpdate = new Date().toISOString();
+  }
+  
+  isInitialized = true;
+  return { newsCount: cachedNews.length, trendsCount: cachedTrends.length };
+}
+
+// 打乱数组
+function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+// Vercel Handler
 export default async function handler(req, res) {
   const { method } = req;
 
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -72,32 +177,28 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // 初始化数据（如果还没初始化）
+  if (!isInitialized) {
+    await syncNews();
+  }
+
   if (method === 'GET') {
     const { type, limit = 20, offset = 0 } = req.query;
     
     if (type === 'news') {
-      const data = await fetchFromRailway('news', limit, offset);
-      if (data && data.success) {
-        return res.status(200).json(data);
-      }
-      // Railway 失败，使用备用数据
+      const shuffled = shuffleArray(cachedNews);
       return res.status(200).json({
         success: true,
-        data: fallbackNewsData.map((item, idx) => ({ ...item, id: idx + 1 })),
-        lastUpdate: new Date().toISOString()
+        data: shuffled.slice(parseInt(offset), parseInt(offset) + parseInt(limit)),
+        lastUpdate
       });
     }
     
     if (type === 'trends') {
-      const data = await fetchFromRailway('trends');
-      if (data && data.success) {
-        return res.status(200).json(data);
-      }
-      // Railway 失败，使用备用数据
       return res.status(200).json({
         success: true,
-        data: fallbackTrendsData.map((item, idx) => ({ ...item, id: idx + 1 })),
-        lastUpdate: new Date().toISOString()
+        data: cachedTrends,
+        lastUpdate
       });
     }
     
@@ -105,59 +206,50 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         data: softwareRankingData,
-        lastUpdate: new Date().toISOString()
+        lastUpdate
       });
     }
     
     if (type === 'health') {
-      const data = await fetchFromRailway('health');
-      if (data && data.status === 'ok') {
-        return res.status(200).json({
-          ...data,
-          softwareCount: softwareRankingData.length
-        });
-      }
       return res.status(200).json({
         status: 'ok',
-        newsCount: 0,
-        trendsCount: 0,
+        newsCount: cachedNews.length,
+        trendsCount: cachedTrends.length,
         softwareCount: softwareRankingData.length,
-        lastUpdate: new Date().toISOString()
+        lastUpdate
       });
     }
     
     if (type === 'sync') {
-      const data = await fetchFromRailway('sync');
-      if (data && data.success) {
-        return res.status(200).json(data);
-      }
-      return res.status(500).json({ success: false, error: 'Failed to sync with Railway' });
-    }
-    
-    const data = await fetchFromRailway();
-    if (data && data.success) {
+      const result = await syncNews();
       return res.status(200).json({
-        ...data,
-        softwareRanking: softwareRankingData
+        success: true,
+        ...result,
+        lastUpdate
       });
     }
     
-    return res.status(500).json({ success: false, error: 'Failed to fetch data from Railway' });
+    // 默认返回所有数据
+    return res.status(200).json({
+      success: true,
+      news: shuffleArray(cachedNews).slice(0, 10),
+      trends: cachedTrends,
+      softwareRanking: softwareRankingData,
+      lastUpdate
+    });
   }
   
   if (method === 'POST') {
     const { action } = req.body || {};
     
     if (action === 'refresh') {
-      const data = await fetchFromRailway('sync');
-      if (data && data.success) {
-        return res.status(200).json({
-          success: true,
-          message: 'Data refreshed from Railway',
-          lastUpdate: data.lastUpdate
-        });
-      }
-      return res.status(500).json({ success: false, error: 'Failed to refresh from Railway' });
+      const result = await syncNews();
+      return res.status(200).json({
+        success: true,
+        message: 'News refreshed',
+        ...result,
+        lastUpdate
+      });
     }
     
     return res.status(400).json({
