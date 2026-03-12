@@ -157,11 +157,11 @@ export default function NewsWidget() {
 
       <div className="relative z-10 flex justify-between items-start">
         {activeTab === 'news' ? (
-          <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">
+          <span className="text-[10px] text-white/50">
             🏆 今日最热
           </span>
         ) : (
-          <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">
+          <span className="text-[10px] text-white/50">
             📊 2026.02数据 | 来源: a16z Top 100
           </span>
         )}
