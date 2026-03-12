@@ -191,12 +191,12 @@ export default function NewsWidget() {
           </span>
         ) : (
           <a 
-            href="https://a16z.com/100-gen-ai-apps-3/" 
+            href="https://www.producthunt.com/" 
             target="_blank" 
             rel="noopener noreferrer"
             className="text-[10px] text-white/50 hover:text-white/70 transition-colors"
           >
-            📊 2026.02数据 | 来源: a16z Top 100 ↗
+            📊 2026.03数据 | 来源: Product Hunt ↗
           </a>
         )}
         
