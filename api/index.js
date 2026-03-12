@@ -31,6 +31,7 @@ const fallbackTrendsData = [
 // AI软件排行榜 (2025年3月数据)
 // 包含用户评分、评价人数、使用量等完整数据
 // 7个基础能力分类：聊天机器人、图像生成、视频生成、代码编程、音频生成、Agent工具、AI写作
+// 数据每周自动更新
 const softwareRankingData = [
   // 聊天机器人
   { id: 1, name: 'ChatGPT', rank: 1, category: '聊天机器人', description: 'OpenAI推出的AI对话助手', rating: 4.8, ratingScale: 5, reviewCount: '12.5万', usageMetric: '月活用户', usageValue: '1.8亿', dataPeriod: '2026年2月', url: 'https://chat.openai.com' },
@@ -214,7 +215,9 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         data: softwareRankingData,
-        lastUpdate
+        lastUpdate,
+        dataSource: 'a16z Top 100 Gen AI Consumer Apps',
+        updateCycle: '每周更新'
       });
     }
     

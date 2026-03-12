@@ -167,6 +167,9 @@ export default function NewsWidget() {
               <span>{healthInfo.lastSync ? new Date(healthInfo.lastSync).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '刚刚'}</span>
             </div>
           )}
+          {activeTab === 'ranking' && (
+            <span className="text-[9px] text-white/40">数据来源: a16z Top 100</span>
+          )}
           {activeTab === 'news' && (
             <button
               onClick={handleRefresh}
