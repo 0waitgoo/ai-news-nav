@@ -255,53 +255,79 @@ export default function NewsWidget() {
                 const bMultiplier = String(b.usageValue || b.weeklyViews || b.downloads || '').includes('亿') ? 10000 : 1;
                 return (bViews * bMultiplier) - (aViews * aMultiplier);
               });
-              return sorted.slice(0, 10).map((item, idx) => (
-                <div 
-                  key={item.id} 
-                  onClick={() => handleSoftwareClick(item.url || '#')}
-                  className="bg-white/5 rounded-xl p-2.5 border border-white/5 hover:bg-white/10 cursor-pointer transition-all group"
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${getRankColor(idx + 1)}`}>
-                      {idx + 1}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-sm font-bold text-white truncate">{item.name}</span>
-                        <span className="text-[10px] text-white/50 shrink-0">{item.category}</span>
-                      </div>
-                      
-                      {/* 评分行 */}
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="flex items-center gap-0.5">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <svg
-                              key={i}
-                              className={`w-3 h-3 ${i < Math.floor(item.rating || 0) ? 'text-yellow-400 fill-yellow-400' : 'text-white/20'}`}
-                              viewBox="0 0 24 24"
-                            >
-                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                            </svg>
-                          ))}
+              
+              // 分类标签颜色映射
+              const categoryColors: Record<string, { bg: string; text: string }> = {
+                '聊天机器人': { bg: 'rgba(59, 130, 246, 0.15)', text: '#60A5FA' },
+                '图像生成': { bg: 'rgba(167, 139, 250, 0.15)', text: '#A78BFA' },
+                '视频生成': { bg: 'rgba(52, 211, 153, 0.15)', text: '#34D399' },
+                '代码编程': { bg: 'rgba(251, 191, 36, 0.15)', text: '#FBBF24' },
+                '音频生成': { bg: 'rgba(251, 146, 60, 0.15)', text: '#FB923C' },
+                'Agent工具': { bg: 'rgba(248, 113, 113, 0.15)', text: '#F87171' },
+                'AI写作': { bg: 'rgba(156, 163, 175, 0.15)', text: '#9CA3AF' },
+                'AI搜索': { bg: 'rgba(96, 165, 250, 0.15)', text: '#60A5FA' },
+              };
+              
+              // 排名圆圈样式
+              const getRankCircleStyle = (rank: number) => {
+                if (rank === 1) return { background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#000' };
+                if (rank === 2) return { background: 'linear-gradient(135deg, #C0C0C0, #A0A0A0)', color: '#000' };
+                if (rank === 3) return { background: 'linear-gradient(135deg, #CD7F32, #B87333)', color: '#FFF' };
+                return { background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA' };
+              };
+              
+              return sorted.slice(0, 10).map((item, idx) => {
+                const rank = idx + 1;
+                const rankStyle = getRankCircleStyle(rank);
+                const catColors = categoryColors[item.category] || { bg: 'rgba(107, 114, 128, 0.15)', text: '#9CA3AF' };
+                
+                return (
+                  <div 
+                    key={item.id} 
+                    onClick={() => handleSoftwareClick(item.url || '#')}
+                    className="bg-white/[0.03] rounded-xl p-3.5 border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.12] hover:-translate-y-0.5 hover:shadow-lg cursor-pointer transition-all duration-200"
+                    style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+                  >
+                    {/* 第一行：排名圆圈 + 软件名称 + 分类标签 */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        {/* 排名圆圈 */}
+                        <div 
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
+                          style={{ background: rankStyle.background, color: rankStyle.color }}
+                        >
+                          {rank}
                         </div>
-                        <span className="text-[11px] font-medium text-yellow-400">{item.rating}</span>
-                        <span className="text-[9px] text-white/40">/ {item.ratingScale || 5}</span>
-                        <span className="text-[9px] text-white/30">·</span>
-                        <span className="text-[9px] text-white/50">{item.reviewCount}评价</span>
+                        {/* 软件名称 */}
+                        <span className="text-[15px] font-bold text-white truncate">{item.name}</span>
                       </div>
-                      
-                      {/* 使用量行 */}
-                      <div className="flex items-center gap-1.5 text-[10px]">
-                        <Flame size={10} className="text-orange-400/70" />
-                        <span className="text-white/60">{item.usageMetric}</span>
-                        <span className="text-orange-400/80 font-medium">{item.usageValue || item.weeklyViews || item.downloads}</span>
-                        <span className="text-white/30">·</span>
-                        <span className="text-white/40">{item.dataPeriod}数据</span>
+                      {/* 分类标签 - 右上角 */}
+                      <span 
+                        className="text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0"
+                        style={{ backgroundColor: catColors.bg, color: catColors.text }}
+                      >
+                        {item.category}
+                      </span>
+                    </div>
+                    
+                    {/* 第二行：评分 + 热度 */}
+                    <div className="flex items-center gap-4 pl-10">
+                      {/* 评分 */}
+                      <div className="flex items-center gap-1.5">
+                        <svg className="w-4 h-4 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24">
+                          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                        </svg>
+                        <span className="text-[13px] font-semibold text-yellow-400">{item.rating}</span>
+                      </div>
+                      {/* 热度 */}
+                      <div className="flex items-center gap-1.5">
+                        <Flame size={14} className="text-orange-400" />
+                        <span className="text-[13px] font-semibold text-orange-400">{item.usageValue}</span>
                       </div>
                     </div>
                   </div>
-                </div>
-              ));
+                );
+              });
             })()}
           </div>
         </div>
