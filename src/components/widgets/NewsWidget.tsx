@@ -156,7 +156,7 @@ export default function NewsWidget() {
       </div>
 
       <div className="relative z-10 flex justify-between items-start">
-        <span className="px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase bg-gradient-to-r from-pink-500/80 to-purple-500/80 backdrop-blur-md rounded-full text-white shadow-lg">
+        <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">
           {activeTab === 'news' ? '🏆 今日最热' : `📊 2026.02数据`}
         </span>
         
