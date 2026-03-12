@@ -157,7 +157,7 @@ export default function NewsWidget() {
 
       <div className="relative z-10 flex justify-between items-start">
         <span className="px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase bg-gradient-to-r from-pink-500/80 to-purple-500/80 backdrop-blur-md rounded-full text-white shadow-lg">
-          {activeTab === 'news' ? '🏆 今日最热' : '📱 软件榜'}
+          {activeTab === 'news' ? '🏆 今日最热' : `📊 2026.02数据`}
         </span>
         
         <div className="flex items-center gap-2">
@@ -256,9 +256,9 @@ export default function NewsWidget() {
                 return (bViews * bMultiplier) - (aViews * aMultiplier);
               });
               
-              // 分类标签颜色映射 - AI助手用浅绿色
+              // 分类标签颜色映射 - AI助手用深绿色
               const categoryColors: Record<string, { bg: string; text: string }> = {
-                '聊天机器人': { bg: 'rgba(74, 222, 128, 0.15)', text: '#4ADE80' },
+                '聊天机器人': { bg: 'rgba(34, 197, 94, 0.2)', text: '#22C55E' },
                 '图像生成': { bg: 'rgba(167, 139, 250, 0.15)', text: '#A78BFA' },
                 '视频生成': { bg: 'rgba(52, 211, 153, 0.15)', text: '#34D399' },
                 '代码编程': { bg: 'rgba(251, 191, 36, 0.15)', text: '#FBBF24' },
