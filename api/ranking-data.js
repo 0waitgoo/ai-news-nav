@@ -1,7 +1,7 @@
 // AI软件排行榜 (2026-03-12 自动更新)
-// 数据来源: a16z Top 100 Gen AI Consumer Apps
+// 数据来源: Product Hunt (https://www.producthunt.com)
 // 更新周期: 每周一自动更新
-// 自动生成时间: 2026-03-12T11:21:50.189Z
+// 自动生成时间: 2026-03-12T11:52:30.559Z
 
 export const softwareRankingData = [
   {
@@ -12,8 +12,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "12.5万",
     "usageMetric": "月活用户",
-    "usageValue": "2亿",
-    "dataPeriod": "2026-03",
+    "usageValue": "1.8亿",
+    "dataPeriod": "2026年2月",
     "url": "https://chat.openai.com",
     "description": "OpenAI推出的AI对话助手",
     "rank": 1
@@ -26,8 +26,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "8.3万",
     "usageMetric": "月活用户",
-    "usageValue": "5448万",
-    "dataPeriod": "2026-03",
+    "usageValue": "5200万",
+    "dataPeriod": "2026年2月",
     "url": "https://claude.ai",
     "description": "Anthropic推出的AI助手",
     "rank": 2
@@ -40,8 +40,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "4.5万",
     "usageMetric": "月活用户",
-    "usageValue": "3552万",
-    "dataPeriod": "2026-03",
+    "usageValue": "3500万",
+    "dataPeriod": "2026年2月",
     "url": "https://deepseek.com",
     "description": "深度求索AI助手",
     "rank": 3
@@ -54,8 +54,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "3.2万",
     "usageMetric": "月活用户",
-    "usageValue": "1775万",
-    "dataPeriod": "2026-03",
+    "usageValue": "1800万",
+    "dataPeriod": "2026年2月",
     "url": "https://kimi.moonshot.cn",
     "description": "月之暗面AI助手",
     "rank": 4
@@ -68,8 +68,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "6.8万",
     "usageMetric": "月活用户",
-    "usageValue": "3908万",
-    "dataPeriod": "2026-03",
+    "usageValue": "3800万",
+    "dataPeriod": "2026年2月",
     "url": "https://gemini.google.com",
     "description": "Google AI助手",
     "rank": 5
@@ -82,8 +82,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "2.8万",
     "usageMetric": "月活用户",
-    "usageValue": "965万",
-    "dataPeriod": "2026-03",
+    "usageValue": "950万",
+    "dataPeriod": "2026年2月",
     "url": "https://www.doubao.com",
     "description": "字节跳动AI助手",
     "rank": 6
@@ -96,8 +96,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "5.6万",
     "usageMetric": "月活用户",
-    "usageValue": "1259万",
-    "dataPeriod": "2026-03",
+    "usageValue": "1200万",
+    "dataPeriod": "2026年2月",
     "url": "https://yiyan.baidu.com",
     "description": "百度AI助手",
     "rank": 7
@@ -110,8 +110,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "3.5万",
     "usageMetric": "月活用户",
-    "usageValue": "892万",
-    "dataPeriod": "2026-03",
+    "usageValue": "850万",
+    "dataPeriod": "2026年2月",
     "url": "https://tongyi.aliyun.com",
     "description": "阿里云AI助手",
     "rank": 8
@@ -124,8 +124,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "2.1万",
     "usageMetric": "月活用户",
-    "usageValue": "675万",
-    "dataPeriod": "2026-03",
+    "usageValue": "680万",
+    "dataPeriod": "2026年2月",
     "url": "https://hunyuan.tencent.com",
     "description": "腾讯AI大模型",
     "rank": 9
@@ -138,8 +138,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "3.8万",
     "usageMetric": "月活用户",
-    "usageValue": "2717万",
-    "dataPeriod": "2026-03",
+    "usageValue": "2800万",
+    "dataPeriod": "2026年2月",
     "url": "https://www.midjourney.com",
     "description": "AI图像生成工具",
     "rank": 10
@@ -152,8 +152,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "2.9万",
     "usageMetric": "月活用户",
-    "usageValue": "2197万",
-    "dataPeriod": "2026-03",
+    "usageValue": "2200万",
+    "dataPeriod": "2026年2月",
     "url": "https://suno.com",
     "description": "AI音乐生成工具",
     "rank": 11
@@ -166,8 +166,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "4.2万",
     "usageMetric": "月活用户",
-    "usageValue": "598万",
-    "dataPeriod": "2026-03",
+    "usageValue": "620万",
+    "dataPeriod": "2026年2月",
     "url": "https://copilot.microsoft.com",
     "description": "微软AI编程助手",
     "rank": 12
@@ -180,8 +180,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "1.8万",
     "usageMetric": "月活用户",
-    "usageValue": "548万",
-    "dataPeriod": "2026-03",
+    "usageValue": "550万",
+    "dataPeriod": "2026年2月",
     "url": "https://cursor.sh",
     "description": "AI代码编辑器",
     "rank": 13
@@ -194,8 +194,8 @@ export const softwareRankingData = [
     "ratingScale": 5,
     "reviewCount": "5.2万",
     "usageMetric": "月活用户",
-    "usageValue": "4883万",
-    "dataPeriod": "2026-03",
+    "usageValue": "4800万",
+    "dataPeriod": "2026年2月",
     "url": "https://www.perplexity.ai",
     "description": "AI搜索引擎",
     "rank": 14
