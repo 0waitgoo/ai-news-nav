@@ -156,9 +156,15 @@ export default function NewsWidget() {
       </div>
 
       <div className="relative z-10 flex justify-between items-start">
-        <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">
-          {activeTab === 'news' ? '🏆 今日最热' : `📊 2026.02数据`}
-        </span>
+        {activeTab === 'news' ? (
+          <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">
+            🏆 今日最热
+          </span>
+        ) : (
+          <span className="text-[11px] font-bold tracking-wider uppercase text-white/90">
+            📊 2026.02数据 | 来源: a16z Top 100
+          </span>
+        )}
         
         <div className="flex items-center gap-2">
           {activeTab === 'news' && healthInfo && (
@@ -166,9 +172,6 @@ export default function NewsWidget() {
               <Clock size={10} />
               <span>{healthInfo.lastSync ? new Date(healthInfo.lastSync).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '刚刚'}</span>
             </div>
-          )}
-          {activeTab === 'ranking' && (
-            <span className="text-[9px] text-white/40">数据来源: a16z Top 100</span>
           )}
           {activeTab === 'news' && (
             <button
