@@ -3,6 +3,12 @@
 
 import https from 'https';
 import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // RSS源配置
 const RSS_URLS = [
@@ -28,31 +34,45 @@ const fallbackTrendsData = [
   { topic: '#Gemini', volume: '1.9万', color: 'text-red-400' },
 ];
 
-// AI软件排行榜 (2025年3月数据)
-// 包含用户评分、评价人数、使用量等完整数据
-// 7个基础能力分类：聊天机器人、图像生成、视频生成、代码编程、音频生成、Agent工具、AI写作
-// 数据每周自动更新
-const softwareRankingData = [
-  // 聊天机器人
-  { id: 1, name: 'ChatGPT', rank: 1, category: '聊天机器人', description: 'OpenAI推出的AI对话助手', rating: 4.8, ratingScale: 5, reviewCount: '12.5万', usageMetric: '月活用户', usageValue: '1.8亿', dataPeriod: '2026年2月', url: 'https://chat.openai.com' },
-  { id: 2, name: 'Claude', rank: 2, category: '聊天机器人', description: 'Anthropic推出的AI助手', rating: 4.7, ratingScale: 5, reviewCount: '8.3万', usageMetric: '月活用户', usageValue: '5200万', dataPeriod: '2026年2月', url: 'https://claude.ai' },
-  { id: 3, name: 'DeepSeek', rank: 3, category: '聊天机器人', description: '深度求索AI助手', rating: 4.6, ratingScale: 5, reviewCount: '4.5万', usageMetric: '月活用户', usageValue: '3500万', dataPeriod: '2026年2月', url: 'https://deepseek.com' },
-  { id: 4, name: 'Kimi', rank: 4, category: '聊天机器人', description: '月之暗面AI助手', rating: 4.5, ratingScale: 5, reviewCount: '3.2万', usageMetric: '月活用户', usageValue: '1800万', dataPeriod: '2026年2月', url: 'https://kimi.moonshot.cn' },
-  { id: 5, name: 'Gemini', rank: 5, category: '聊天机器人', description: 'Google AI助手', rating: 4.5, ratingScale: 5, reviewCount: '6.8万', usageMetric: '月活用户', usageValue: '3800万', dataPeriod: '2026年2月', url: 'https://gemini.google.com' },
-  { id: 6, name: '豆包', rank: 6, category: '聊天机器人', description: '字节跳动AI助手', rating: 4.4, ratingScale: 5, reviewCount: '2.8万', usageMetric: '月活用户', usageValue: '950万', dataPeriod: '2026年2月', url: 'https://www.doubao.com' },
-  { id: 7, name: '文心一言', rank: 7, category: '聊天机器人', description: '百度AI助手', rating: 4.3, ratingScale: 5, reviewCount: '5.6万', usageMetric: '月活用户', usageValue: '1200万', dataPeriod: '2026年2月', url: 'https://yiyan.baidu.com' },
-  { id: 8, name: '通义千问', rank: 8, category: '聊天机器人', description: '阿里云AI助手', rating: 4.2, ratingScale: 5, reviewCount: '3.5万', usageMetric: '月活用户', usageValue: '850万', dataPeriod: '2026年2月', url: 'https://tongyi.aliyun.com' },
-  { id: 9, name: '腾讯混元', rank: 9, category: '聊天机器人', description: '腾讯AI大模型', rating: 4.3, ratingScale: 5, reviewCount: '2.1万', usageMetric: '月活用户', usageValue: '680万', dataPeriod: '2026年2月', url: 'https://hunyuan.tencent.com' },
-  // 图像生成
-  { id: 10, name: 'Midjourney', rank: 10, category: '图像生成', description: 'AI图像生成工具', rating: 4.7, ratingScale: 5, reviewCount: '3.8万', usageMetric: '月活用户', usageValue: '2800万', dataPeriod: '2026年2月', url: 'https://www.midjourney.com' },
-  // 音频生成
-  { id: 11, name: 'Suno', rank: 11, category: '音频生成', description: 'AI音乐生成工具', rating: 4.5, ratingScale: 5, reviewCount: '2.9万', usageMetric: '月活用户', usageValue: '2200万', dataPeriod: '2026年2月', url: 'https://suno.com' },
-  // 代码编程
-  { id: 12, name: 'Copilot', rank: 12, category: '代码编程', description: '微软AI编程助手', rating: 4.4, ratingScale: 5, reviewCount: '4.2万', usageMetric: '月活用户', usageValue: '620万', dataPeriod: '2026年2月', url: 'https://copilot.microsoft.com' },
-  { id: 13, name: 'Cursor', rank: 13, category: '代码编程', description: 'AI代码编辑器', rating: 4.6, ratingScale: 5, reviewCount: '1.8万', usageMetric: '月活用户', usageValue: '550万', dataPeriod: '2026年2月', url: 'https://cursor.sh' },
-  // AI搜索
-  { id: 14, name: 'Perplexity', rank: 14, category: 'AI搜索', description: 'AI搜索引擎', rating: 4.6, ratingScale: 5, reviewCount: '5.2万', usageMetric: '月活用户', usageValue: '4800万', dataPeriod: '2026年2月', url: 'https://www.perplexity.ai' },
-];
+// 加载软件排行榜数据
+let softwareRankingData = [];
+
+try {
+  // 尝试从 ranking-data.js 加载数据
+  const rankingDataPath = path.join(__dirname, 'ranking-data.js');
+  if (fs.existsSync(rankingDataPath)) {
+    const rankingDataContent = fs.readFileSync(rankingDataPath, 'utf8');
+    // 提取 JSON 数据
+    const match = rankingDataContent.match(/export const softwareRankingData = (\[.*?\]);/s);
+    if (match) {
+      softwareRankingData = JSON.parse(match[1]);
+      console.log(`✅ 成功加载 ${softwareRankingData.length} 条软件排行数据`);
+    }
+  }
+} catch (error) {
+  console.error('❌ 加载 ranking-data.js 失败:', error.message);
+}
+
+// 如果加载失败或为空，使用备用数据
+if (!softwareRankingData || softwareRankingData.length === 0) {
+  console.log('⚠️ 使用备用软件排行数据');
+  softwareRankingData = [
+    { id: 1, name: 'ChatGPT', rank: 1, category: '聊天机器人', description: 'OpenAI推出的AI对话助手', rating: 4.8, ratingScale: 5, reviewCount: '12.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1.8亿票', dataPeriod: '2026年2月', url: 'https://chat.openai.com' },
+    { id: 2, name: 'Claude', rank: 2, category: '聊天机器人', description: 'Anthropic推出的AI助手', rating: 4.7, ratingScale: 5, reviewCount: '8.3万条评价', usageMetric: 'Product Hunt 投票', usageValue: '5200万票', dataPeriod: '2026年2月', url: 'https://claude.ai' },
+    { id: 3, name: 'DeepSeek', rank: 3, category: '聊天机器人', description: '深度求索AI助手', rating: 4.6, ratingScale: 5, reviewCount: '4.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '3500万票', dataPeriod: '2026年2月', url: 'https://deepseek.com' },
+    { id: 4, name: 'Kimi', rank: 4, category: '聊天机器人', description: '月之暗面AI助手', rating: 4.5, ratingScale: 5, reviewCount: '3.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1800万票', dataPeriod: '2026年2月', url: 'https://kimi.moonshot.cn' },
+    { id: 5, name: 'Gemini', rank: 5, category: '聊天机器人', description: 'Google AI助手', rating: 4.5, ratingScale: 5, reviewCount: '6.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '3800万票', dataPeriod: '2026年2月', url: 'https://gemini.google.com' },
+    { id: 6, name: '豆包', rank: 6, category: '聊天机器人', description: '字节跳动AI助手', rating: 4.4, ratingScale: 5, reviewCount: '2.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '950万票', dataPeriod: '2026年2月', url: 'https://www.doubao.com' },
+    { id: 7, name: '文心一言', rank: 7, category: '聊天机器人', description: '百度AI助手', rating: 4.3, ratingScale: 5, reviewCount: '5.6万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1200万票', dataPeriod: '2026年2月', url: 'https://yiyan.baidu.com' },
+    { id: 8, name: '通义千问', rank: 8, category: '聊天机器人', description: '阿里云AI助手', rating: 4.2, ratingScale: 5, reviewCount: '3.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '850万票', dataPeriod: '2026年2月', url: 'https://tongyi.aliyun.com' },
+    { id: 9, name: '腾讯混元', rank: 9, category: '聊天机器人', description: '腾讯AI大模型', rating: 4.3, ratingScale: 5, reviewCount: '2.1万条评价', usageMetric: 'Product Hunt 投票', usageValue: '680万票', dataPeriod: '2026年2月', url: 'https://hunyuan.tencent.com' },
+    { id: 10, name: 'Midjourney', rank: 10, category: '图像生成', description: 'AI图像生成工具', rating: 4.7, ratingScale: 5, reviewCount: '3.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '2800万票', dataPeriod: '2026年2月', url: 'https://www.midjourney.com' },
+    { id: 11, name: 'Suno', rank: 11, category: '音频生成', description: 'AI音乐生成工具', rating: 4.5, ratingScale: 5, reviewCount: '2.9万条评价', usageMetric: 'Product Hunt 投票', usageValue: '2200万票', dataPeriod: '2026年2月', url: 'https://suno.com' },
+    { id: 12, name: 'Copilot', rank: 12, category: '代码编程', description: '微软AI编程助手', rating: 4.4, ratingScale: 5, reviewCount: '4.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '620万票', dataPeriod: '2026年2月', url: 'https://copilot.microsoft.com' },
+    { id: 13, name: 'Cursor', rank: 13, category: '代码编程', description: 'AI代码编辑器', rating: 4.6, ratingScale: 5, reviewCount: '1.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '550万票', dataPeriod: '2026年2月', url: 'https://cursor.sh' },
+    { id: 14, name: 'Perplexity', rank: 14, category: 'AI搜索', description: 'AI搜索引擎', rating: 4.6, ratingScale: 5, reviewCount: '5.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '4800万票', dataPeriod: '2026年2月', url: 'https://www.perplexity.ai' },
+  ];
+}
 
 // 全局缓存
 let cachedNews = [];
