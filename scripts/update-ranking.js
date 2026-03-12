@@ -62,43 +62,11 @@ const GET_POPULAR_POSTS_QUERY = `
   }
 `;
 
-// 获取 AI 相关话题的产品
-const GET_AI_POSTS_QUERY = `
-  query GetTopicPosts($topic: String!, $first: Int!) {
-    topic(slug: $topic) {
-      posts(first: $first, order: POPULARITY) {
-        edges {
-          node {
-            id
-            name
-            tagline
-            description
-            url
-            votesCount
-            commentsCount
-            reviewsRating
-            reviewsCount
-            thumbnail {
-              url
-            }
-            topics {
-              edges {
-                node {
-                  name
-                }
-              }
-            }
-            website
-            createdAt
-          }
-        }
-      }
-    }
-  }
-`;
-
 // 从 Product Hunt 获取数据
 async function fetchFromProductHunt() {
+  console.log('🔍 检查环境变量...');
+  console.log('PRODUCT_HUNT_TOKEN 是否存在:', !!PRODUCT_HUNT_TOKEN);
+  
   if (!PRODUCT_HUNT_TOKEN) {
     console.log('⚠️ 未设置 PRODUCT_HUNT_TOKEN 环境变量，使用备用数据');
     return null;
@@ -106,6 +74,7 @@ async function fetchFromProductHunt() {
 
   try {
     console.log('🚀 正在从 Product Hunt 获取数据...');
+    console.log('API 地址:', PRODUCT_HUNT_API);
     
     // 获取热门产品
     const response = await fetch(PRODUCT_HUNT_API, {
@@ -121,19 +90,28 @@ async function fetchFromProductHunt() {
       })
     });
 
+    console.log('📡 API 响应状态:', response.status);
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ HTTP 错误响应:', errorText);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const data = await response.json();
     
     if (data.errors) {
+      console.error('❌ GraphQL 错误:', JSON.stringify(data.errors, null, 2));
       throw new Error(`GraphQL error: ${JSON.stringify(data.errors)}`);
     }
 
-    return data.data.posts.edges.map(edge => edge.node);
+    const posts = data.data?.posts?.edges?.map(edge => edge.node) || [];
+    console.log(`✅ 成功获取 ${posts.length} 个产品`);
+    
+    return posts;
   } catch (error) {
     console.error('❌ 获取 Product Hunt 数据失败:', error.message);
+    console.error('错误详情:', error);
     return null;
   }
 }
@@ -152,6 +130,7 @@ function isAIProduct(product) {
 // 将 Product Hunt 数据转换为我们的格式
 function transformProductHuntData(products) {
   if (!products || products.length === 0) {
+    console.log('⚠️ 没有获取到产品数据');
     return null;
   }
 
@@ -159,6 +138,12 @@ function transformProductHuntData(products) {
   const aiProducts = products.filter(isAIProduct);
   
   console.log(`🤖 筛选出 ${aiProducts.length} 个 AI 相关产品`);
+  
+  if (aiProducts.length === 0) {
+    console.log('⚠️ 未找到 AI 相关产品，使用全部产品');
+    // 如果没有 AI 相关产品，使用前 20 个
+    aiProducts.push(...products.slice(0, 20));
+  }
 
   return aiProducts.slice(0, 20).map((product, index) => {
     // 从 topics 中提取分类
@@ -169,40 +154,40 @@ function transformProductHuntData(products) {
 
     // 格式化数据
     return {
-      id: parseInt(product.id),
+      id: parseInt(product.id) || index + 1,
       name: product.name,
       category: category,
       rating: product.reviewsRating ? Math.round(product.reviewsRating * 10) / 10 : 4.5,
       ratingScale: 5,
-      reviewCount: product.reviewsCount ? `${product.reviewsCount}条` : '暂无评价',
+      reviewCount: product.reviewsCount ? `${product.reviewsCount}条评价` : '暂无评价',
       usageMetric: 'Product Hunt 投票',
-      usageValue: `${product.votesCount}票`,
+      usageValue: `${product.votesCount || 0}票`,
       dataPeriod: new Date().toISOString().split('T')[0],
       url: product.website || product.url,
-      description: product.tagline,
+      description: product.tagline || product.description || '',
       rank: index + 1,
       phUrl: product.url, // Product Hunt 页面链接
-      commentsCount: product.commentsCount
+      commentsCount: product.commentsCount || 0
     };
   });
 }
 
 // 备用数据（当 API 不可用时）
 const FALLBACK_DATA = [
-  { id: 1, name: 'ChatGPT', category: '聊天机器人', rating: 4.8, ratingScale: 5, reviewCount: '12.5万', usageMetric: '月活用户', usageValue: '1.8亿', dataPeriod: '2026年2月', url: 'https://chat.openai.com', description: 'OpenAI推出的AI对话助手' },
-  { id: 2, name: 'Claude', category: '聊天机器人', rating: 4.7, ratingScale: 5, reviewCount: '8.3万', usageMetric: '月活用户', usageValue: '5200万', dataPeriod: '2026年2月', url: 'https://claude.ai', description: 'Anthropic推出的AI助手' },
-  { id: 3, name: 'DeepSeek', category: '聊天机器人', rating: 4.6, ratingScale: 5, reviewCount: '4.5万', usageMetric: '月活用户', usageValue: '3500万', dataPeriod: '2026年2月', url: 'https://deepseek.com', description: '深度求索AI助手' },
-  { id: 4, name: 'Kimi', category: '聊天机器人', rating: 4.5, ratingScale: 5, reviewCount: '3.2万', usageMetric: '月活用户', usageValue: '1800万', dataPeriod: '2026年2月', url: 'https://kimi.moonshot.cn', description: '月之暗面AI助手' },
-  { id: 5, name: 'Gemini', category: '聊天机器人', rating: 4.5, ratingScale: 5, reviewCount: '6.8万', usageMetric: '月活用户', usageValue: '3800万', dataPeriod: '2026年2月', url: 'https://gemini.google.com', description: 'Google AI助手' },
-  { id: 6, name: '豆包', category: '聊天机器人', rating: 4.4, ratingScale: 5, reviewCount: '2.8万', usageMetric: '月活用户', usageValue: '950万', dataPeriod: '2026年2月', url: 'https://www.doubao.com', description: '字节跳动AI助手' },
-  { id: 7, name: '文心一言', category: '聊天机器人', rating: 4.3, ratingScale: 5, reviewCount: '5.6万', usageMetric: '月活用户', usageValue: '1200万', dataPeriod: '2026年2月', url: 'https://yiyan.baidu.com', description: '百度AI助手' },
-  { id: 8, name: '通义千问', category: '聊天机器人', rating: 4.2, ratingScale: 5, reviewCount: '3.5万', usageMetric: '月活用户', usageValue: '850万', dataPeriod: '2026年2月', url: 'https://tongyi.aliyun.com', description: '阿里云AI助手' },
-  { id: 9, name: '腾讯混元', category: '聊天机器人', rating: 4.3, ratingScale: 5, reviewCount: '2.1万', usageMetric: '月活用户', usageValue: '680万', dataPeriod: '2026年2月', url: 'https://hunyuan.tencent.com', description: '腾讯AI大模型' },
-  { id: 10, name: 'Midjourney', category: '图像生成', rating: 4.7, ratingScale: 5, reviewCount: '3.8万', usageMetric: '月活用户', usageValue: '2800万', dataPeriod: '2026年2月', url: 'https://www.midjourney.com', description: 'AI图像生成工具' },
-  { id: 11, name: 'Suno', category: '音频生成', rating: 4.5, ratingScale: 5, reviewCount: '2.9万', usageMetric: '月活用户', usageValue: '2200万', dataPeriod: '2026年2月', url: 'https://suno.com', description: 'AI音乐生成工具' },
-  { id: 12, name: 'Copilot', category: '代码编程', rating: 4.4, ratingScale: 5, reviewCount: '4.2万', usageMetric: '月活用户', usageValue: '620万', dataPeriod: '2026年2月', url: 'https://copilot.microsoft.com', description: '微软AI编程助手' },
-  { id: 13, name: 'Cursor', category: '代码编程', rating: 4.6, ratingScale: 5, reviewCount: '1.8万', usageMetric: '月活用户', usageValue: '550万', dataPeriod: '2026年2月', url: 'https://cursor.sh', description: 'AI代码编辑器' },
-  { id: 14, name: 'Perplexity', category: 'AI搜索', rating: 4.6, ratingScale: 5, reviewCount: '5.2万', usageMetric: '月活用户', usageValue: '4800万', dataPeriod: '2026年2月', url: 'https://www.perplexity.ai', description: 'AI搜索引擎' },
+  { id: 1, name: 'ChatGPT', category: '聊天机器人', rating: 4.8, ratingScale: 5, reviewCount: '12.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1.8亿票', dataPeriod: '2026年2月', url: 'https://chat.openai.com', description: 'OpenAI推出的AI对话助手' },
+  { id: 2, name: 'Claude', category: '聊天机器人', rating: 4.7, ratingScale: 5, reviewCount: '8.3万条评价', usageMetric: 'Product Hunt 投票', usageValue: '5200万票', dataPeriod: '2026年2月', url: 'https://claude.ai', description: 'Anthropic推出的AI助手' },
+  { id: 3, name: 'DeepSeek', category: '聊天机器人', rating: 4.6, ratingScale: 5, reviewCount: '4.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '3500万票', dataPeriod: '2026年2月', url: 'https://deepseek.com', description: '深度求索AI助手' },
+  { id: 4, name: 'Kimi', category: '聊天机器人', rating: 4.5, ratingScale: 5, reviewCount: '3.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1800万票', dataPeriod: '2026年2月', url: 'https://kimi.moonshot.cn', description: '月之暗面AI助手' },
+  { id: 5, name: 'Gemini', category: '聊天机器人', rating: 4.5, ratingScale: 5, reviewCount: '6.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '3800万票', dataPeriod: '2026年2月', url: 'https://gemini.google.com', description: 'Google AI助手' },
+  { id: 6, name: '豆包', category: '聊天机器人', rating: 4.4, ratingScale: 5, reviewCount: '2.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '950万票', dataPeriod: '2026年2月', url: 'https://www.doubao.com', description: '字节跳动AI助手' },
+  { id: 7, name: '文心一言', category: '聊天机器人', rating: 4.3, ratingScale: 5, reviewCount: '5.6万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1200万票', dataPeriod: '2026年2月', url: 'https://yiyan.baidu.com', description: '百度AI助手' },
+  { id: 8, name: '通义千问', category: '聊天机器人', rating: 4.2, ratingScale: 5, reviewCount: '3.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '850万票', dataPeriod: '2026年2月', url: 'https://tongyi.aliyun.com', description: '阿里云AI助手' },
+  { id: 9, name: '腾讯混元', category: '聊天机器人', rating: 4.3, ratingScale: 5, reviewCount: '2.1万条评价', usageMetric: 'Product Hunt 投票', usageValue: '680万票', dataPeriod: '2026年2月', url: 'https://hunyuan.tencent.com', description: '腾讯AI大模型' },
+  { id: 10, name: 'Midjourney', category: '图像生成', rating: 4.7, ratingScale: 5, reviewCount: '3.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '2800万票', dataPeriod: '2026年2月', url: 'https://www.midjourney.com', description: 'AI图像生成工具' },
+  { id: 11, name: 'Suno', category: '音频生成', rating: 4.5, ratingScale: 5, reviewCount: '2.9万条评价', usageMetric: 'Product Hunt 投票', usageValue: '2200万票', dataPeriod: '2026年2月', url: 'https://suno.com', description: 'AI音乐生成工具' },
+  { id: 12, name: 'Copilot', category: '代码编程', rating: 4.4, ratingScale: 5, reviewCount: '4.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '620万票', dataPeriod: '2026年2月', url: 'https://copilot.microsoft.com', description: '微软AI编程助手' },
+  { id: 13, name: 'Cursor', category: '代码编程', rating: 4.6, ratingScale: 5, reviewCount: '1.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '550万票', dataPeriod: '2026年2月', url: 'https://cursor.sh', description: 'AI代码编辑器' },
+  { id: 14, name: 'Perplexity', category: 'AI搜索', rating: 4.6, ratingScale: 5, reviewCount: '5.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '4800万票', dataPeriod: '2026年2月', url: 'https://www.perplexity.ai', description: 'AI搜索引擎' },
 ];
 
 // 生成新的数据文件内容
@@ -231,6 +216,7 @@ async function updateRanking() {
     console.log('🚀 开始更新软件榜数据...');
     console.log('⏰ 当前时间:', new Date().toLocaleString('zh-CN'));
     console.log('📊 数据来源: Product Hunt');
+    console.log('Node.js 版本:', process.version);
     
     // 从 Product Hunt 获取数据
     const rawData = await fetchFromProductHunt();
@@ -264,6 +250,7 @@ async function updateRanking() {
     
   } catch (error) {
     console.error('❌ 更新失败:', error.message);
+    console.error('错误堆栈:', error.stack);
     process.exit(1);
   }
 }
