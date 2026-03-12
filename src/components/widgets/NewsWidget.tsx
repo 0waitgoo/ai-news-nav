@@ -256,9 +256,9 @@ export default function NewsWidget() {
                 return (bViews * bMultiplier) - (aViews * aMultiplier);
               });
               
-              // 分类标签颜色映射
+              // 分类标签颜色映射 - AI助手用浅绿色
               const categoryColors: Record<string, { bg: string; text: string }> = {
-                '聊天机器人': { bg: 'rgba(59, 130, 246, 0.15)', text: '#60A5FA' },
+                '聊天机器人': { bg: 'rgba(74, 222, 128, 0.15)', text: '#4ADE80' },
                 '图像生成': { bg: 'rgba(167, 139, 250, 0.15)', text: '#A78BFA' },
                 '视频生成': { bg: 'rgba(52, 211, 153, 0.15)', text: '#34D399' },
                 '代码编程': { bg: 'rgba(251, 191, 36, 0.15)', text: '#FBBF24' },
@@ -268,11 +268,11 @@ export default function NewsWidget() {
                 'AI搜索': { bg: 'rgba(96, 165, 250, 0.15)', text: '#60A5FA' },
               };
               
-              // 排名圆圈样式
+              // 排名圆圈样式 - 1、2、3名用白色
               const getRankCircleStyle = (rank: number) => {
-                if (rank === 1) return { background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#000' };
-                if (rank === 2) return { background: 'linear-gradient(135deg, #C0C0C0, #A0A0A0)', color: '#000' };
-                if (rank === 3) return { background: 'linear-gradient(135deg, #CD7F32, #B87333)', color: '#FFF' };
+                if (rank === 1) return { background: 'rgba(255, 255, 255, 0.9)', color: '#000' };
+                if (rank === 2) return { background: 'rgba(255, 255, 255, 0.75)', color: '#000' };
+                if (rank === 3) return { background: 'rgba(255, 255, 255, 0.6)', color: '#000' };
                 return { background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA' };
               };
               
