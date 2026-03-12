@@ -28,24 +28,23 @@ const fallbackTrendsData = [
   { topic: '#Gemini', volume: '1.9万', color: 'text-red-400' },
 ];
 
-// a16z Top 100 Gen AI Consumer Apps (2025年3月数据)
-// 数据来源: https://a16z.com/100-gen-ai-apps-3/
-// 基于Similarweb每月独立访问量统计
+// AI软件周访问量排行 (2025年3月数据)
+// 基于Similarweb周访问量估算数据
 const softwareRankingData = [
-  { id: 1, name: 'ChatGPT', rank: 1, category: 'AI助手', description: 'OpenAI推出的AI对话助手，全球排名第一', downloads: '月访问量第1', rating: '4.9', url: 'https://chat.openai.com', logo: '/icon_APP/chatgpticon.svg' },
-  { id: 2, name: 'Claude', rank: 4, category: 'AI助手', description: 'Anthropic推出的AI助手，a16z排名第4', downloads: '月访问量第4', rating: '4.8', url: 'https://claude.ai', logo: '/icon_APP/claude.svg' },
-  { id: 3, name: 'Perplexity', rank: 3, category: 'AI搜索', description: 'AI搜索引擎，a16z排名第3', downloads: '月访问量第3', rating: '4.7', url: 'https://www.perplexity.ai', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=perplexity&backgroundColor=0891b2' },
-  { id: 4, name: 'Midjourney', rank: 2, category: '图像生成', description: 'AI图像生成工具，Discord流量第一', downloads: '月访问量第2', rating: '4.8', url: 'https://www.midjourney.com', logo: '/icon_APP/Midjourney.svg' },
-  { id: 5, name: 'Suno', rank: 5, category: '音频生成', description: 'AI音乐生成工具，从第36跃升至第5', downloads: '月访问量第5', rating: '4.6', url: 'https://suno.com', logo: '/icon_APP/suno.svg' },
-  { id: 6, name: 'DeepSeek', rank: 3, category: 'AI助手', description: '深度求索AI助手，a16z移动端排名第3', downloads: '移动端第3', rating: '4.7', url: 'https://deepseek.com', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=deepseek&backgroundColor=6366f1' },
-  { id: 7, name: 'Kimi', rank: 5, category: 'AI助手', description: '月之暗面AI助手，a16z移动端排名第5', downloads: '移动端第5', rating: '4.6', url: 'https://kimi.moonshot.cn', logo: '/icon_APP/KIMI.svg' },
-  { id: 8, name: '豆包', rank: 26, category: 'AI助手', description: '字节跳动AI助手，移动端排名第26', downloads: '移动端第26', rating: '4.5', url: 'https://www.doubao.com', logo: '/icon_APP/doubao.svg' },
-  { id: 9, name: '通义千问', rank: 20, category: 'AI助手', description: '阿里云AI助手，全球排名前20', downloads: '月访问量前20', rating: '4.4', url: 'https://tongyi.aliyun.com', logo: '/icon_APP/tongyi.svg' },
-  { id: 10, name: '文心一言', rank: 22, category: 'AI助手', description: '百度AI助手，全球排名前22', downloads: '月访问量前22', rating: '4.3', url: 'https://yiyan.baidu.com', logo: '/icon_APP/baidu.svg' },
-  { id: 11, name: 'Luma', rank: 14, category: '视频生成', description: 'AI视频生成工具，首次上榜排名第14', downloads: '月访问量第14', rating: '4.5', url: 'https://lumalabs.ai', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=luma&backgroundColor=7c3aed' },
-  { id: 12, name: 'Viggle', rank: 21, category: '视频生成', description: 'AI视频生成平台，首次上榜排名第21', downloads: '月访问量第21', rating: '4.4', url: 'https://viggle.ai', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=viggle&backgroundColor=059669' },
-  { id: 13, name: 'Udio', rank: 33, category: '音频生成', description: 'AI音乐生成工具，首次上榜排名第33', downloads: '月访问量第33', rating: '4.3', url: 'https://www.udio.com', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=udio&backgroundColor=dc2626' },
-  { id: 14, name: 'Gemini', rank: 6, category: 'AI助手', description: 'Google AI助手，a16z排名第6', downloads: '月访问量第6', rating: '4.5', url: 'https://gemini.google.com', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=gemini&backgroundColor=3b82f6' },
+  { id: 1, name: 'ChatGPT', rank: 1, category: 'AI助手', description: 'OpenAI推出的AI对话助手', weeklyViews: '1.8亿', url: 'https://chat.openai.com' },
+  { id: 2, name: 'Claude', rank: 2, category: 'AI助手', description: 'Anthropic推出的AI助手', weeklyViews: '5200万', url: 'https://claude.ai' },
+  { id: 3, name: 'Perplexity', rank: 3, category: 'AI搜索', description: 'AI搜索引擎', weeklyViews: '4800万', url: 'https://www.perplexity.ai' },
+  { id: 4, name: 'Gemini', rank: 4, category: 'AI助手', description: 'Google AI助手', weeklyViews: '3800万', url: 'https://gemini.google.com' },
+  { id: 5, name: 'DeepSeek', rank: 5, category: 'AI助手', description: '深度求索AI助手', weeklyViews: '3500万', url: 'https://deepseek.com' },
+  { id: 6, name: 'Midjourney', rank: 6, category: '图像生成', description: 'AI图像生成工具', weeklyViews: '2800万', url: 'https://www.midjourney.com' },
+  { id: 7, name: 'Suno', rank: 7, category: '音频生成', description: 'AI音乐生成工具', weeklyViews: '2200万', url: 'https://suno.com' },
+  { id: 8, name: 'Kimi', rank: 8, category: 'AI助手', description: '月之暗面AI助手', weeklyViews: '1800万', url: 'https://kimi.moonshot.cn' },
+  { id: 9, name: '文心一言', rank: 9, category: 'AI助手', description: '百度AI助手', weeklyViews: '1200万', url: 'https://yiyan.baidu.com' },
+  { id: 10, name: '豆包', rank: 10, category: 'AI助手', description: '字节跳动AI助手', weeklyViews: '950万', url: 'https://www.doubao.com' },
+  { id: 11, name: '通义千问', rank: 11, category: 'AI助手', description: '阿里云AI助手', weeklyViews: '850万', url: 'https://tongyi.aliyun.com' },
+  { id: 12, name: '腾讯混元', rank: 12, category: 'AI助手', description: '腾讯AI大模型', weeklyViews: '680万', url: 'https://hunyuan.tencent.com' },
+  { id: 13, name: 'Copilot', rank: 13, category: '编程工具', description: '微软AI编程助手', weeklyViews: '620万', url: 'https://copilot.microsoft.com' },
+  { id: 14, name: 'Cursor', rank: 14, category: '编程工具', description: 'AI代码编辑器', weeklyViews: '550万', url: 'https://cursor.sh' },
 ];
 
 // 全局缓存

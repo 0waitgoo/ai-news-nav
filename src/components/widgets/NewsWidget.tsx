@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Eye, RefreshCw, ExternalLink, Clock, Flame } from 'lucide-react';
+import { TrendingUp, Eye, RefreshCw, Clock, Flame } from 'lucide-react';
 import { motion } from 'motion/react';
 import { fetchNews, fetchSoftwareRanking, syncNews, fetchHealth, type NewsItem, type SoftwareRankingItem, type HealthInfo } from '../../services/api';
 
@@ -247,28 +247,36 @@ export default function NewsWidget() {
       ) : (
         <div className="relative z-10 mt-2 flex-1 overflow-y-auto">
           <div className="space-y-1.5">
-            {softwareRanking.slice(0, 10).map((item) => (
-              <div 
-                key={item.id} 
-                onClick={() => handleSoftwareClick(item.url || '#')}
-                className="bg-white/5 rounded-xl p-2 flex items-center gap-2.5 border border-white/5 hover:bg-white/10 cursor-pointer transition-all group"
-              >
-                <div className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0 ${getRankColor(item.rank)}`}>
-                  {item.rank}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white truncate">{item.name}</span>
-                    <div className="flex items-center gap-1 shrink-0 text-orange-400/80">
-                      <Flame size={10} className="fill-orange-400/50" />
-                      <span className="text-[9px] font-medium">{item.downloads || item.rating}</span>
-                    </div>
+            {(() => {
+              const sorted = [...softwareRanking].sort((a, b) => {
+                const aViews = parseInt(String(a.weeklyViews || a.downloads || '0').replace(/[亿万]/g, ''));
+                const bViews = parseInt(String(b.weeklyViews || b.downloads || '0').replace(/[亿万]/g, ''));
+                const aMultiplier = String(a.weeklyViews || a.downloads || '').includes('亿') ? 10000 : 1;
+                const bMultiplier = String(b.weeklyViews || b.downloads || '').includes('亿') ? 10000 : 1;
+                return (bViews * bMultiplier) - (aViews * aMultiplier);
+              });
+              return sorted.slice(0, 10).map((item, idx) => (
+                <div 
+                  key={item.id} 
+                  onClick={() => handleSoftwareClick(item.url || '#')}
+                  className="bg-white/5 rounded-xl p-2 flex items-center gap-2.5 border border-white/5 hover:bg-white/10 cursor-pointer transition-all group"
+                >
+                  <div className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0 ${getRankColor(idx + 1)}`}>
+                    {idx + 1}
                   </div>
-                  <span className="text-[9px] text-white/40 truncate block">{item.description}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white truncate">{item.name}</span>
+                      <div className="flex items-center gap-1 shrink-0 text-orange-400/80">
+                        <Flame size={10} className="fill-orange-400/50" />
+                        <span className="text-[9px] font-medium">{item.weeklyViews || item.downloads || item.rating}</span>
+                      </div>
+                    </div>
+                    <span className="text-[9px] text-white/40 truncate block">{item.description}</span>
+                  </div>
                 </div>
-                <ExternalLink size={10} className="text-white/30 group-hover:text-white/60 shrink-0" />
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         </div>
       )}
