@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Eye, RefreshCw, Star, ExternalLink, Clock } from 'lucide-react';
+import { TrendingUp, Eye, RefreshCw, ExternalLink, Clock, Flame } from 'lucide-react';
 import { motion } from 'motion/react';
 import { fetchNews, fetchSoftwareRanking, syncNews, fetchHealth, type NewsItem, type SoftwareRankingItem, type HealthInfo } from '../../services/api';
 
@@ -246,39 +246,27 @@ export default function NewsWidget() {
         </>
       ) : (
         <div className="relative z-10 mt-2 flex-1 overflow-y-auto">
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {softwareRanking.slice(0, 10).map((item) => (
               <div 
                 key={item.id} 
                 onClick={() => handleSoftwareClick(item.url || '#')}
-                className="bg-white/5 rounded-xl p-2.5 flex items-center gap-3 border border-white/5 hover:bg-white/10 cursor-pointer transition-all group"
+                className="bg-white/5 rounded-xl p-2 flex items-center gap-2.5 border border-white/5 hover:bg-white/10 cursor-pointer transition-all group"
               >
-                <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${getRankColor(item.rank)}`}>
+                <div className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0 ${getRankColor(item.rank)}`}>
                   {item.rank}
                 </div>
-                <div className="w-7 h-7 rounded-lg overflow-hidden flex items-center justify-center bg-white shrink-0">
-                  <img 
-                    src={item.logo || `/icon_APP/${item.name}.svg`} 
-                    alt={item.name}
-                    className="w-5 h-5 object-contain"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                      target.parentElement!.innerHTML = item.name.slice(0, 1);
-                    }}
-                  />
-                </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-white truncate">{item.name}</span>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <Star size={9} className="text-yellow-400 fill-yellow-400" />
-                      <span className="text-[10px] text-white/60">{item.rating}</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white truncate">{item.name}</span>
+                    <div className="flex items-center gap-1 shrink-0 text-orange-400/80">
+                      <Flame size={10} className="fill-orange-400/50" />
+                      <span className="text-[9px] font-medium">{item.downloads || item.rating}</span>
                     </div>
                   </div>
-                  <span className="text-[9px] text-white/40 truncate block">{item.category}</span>
+                  <span className="text-[9px] text-white/40 truncate block">{item.description}</span>
                 </div>
-                <ExternalLink size={12} className="text-white/30 group-hover:text-white/60 shrink-0" />
+                <ExternalLink size={10} className="text-white/30 group-hover:text-white/60 shrink-0" />
               </div>
             ))}
           </div>
