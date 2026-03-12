@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Eye, RefreshCw, Clock, Flame } from 'lucide-react';
-import { motion } from 'motion/react';
+import { TrendingUp, Eye, RefreshCw, Clock, Flame, X, ExternalLink } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { fetchNews, fetchSoftwareRanking, syncNews, fetchHealth, type NewsItem, type SoftwareRankingItem, type HealthInfo } from '../../services/api';
 
 type TabType = 'news' | 'ranking';
@@ -13,6 +13,7 @@ export default function NewsWidget() {
   const [loading, setLoading] = useState(true);
   const [healthInfo, setHealthInfo] = useState<HealthInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedSoftware, setSelectedSoftware] = useState<SoftwareRankingItem | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -59,17 +60,25 @@ export default function NewsWidget() {
     }
   };
 
+  const handleSoftwareClick = (item: SoftwareRankingItem) => {
+    setSelectedSoftware(item);
+  };
+
+  const closeDetail = () => {
+    setSelectedSoftware(null);
+  };
+
+  const handleVisitWebsite = (url: string) => {
+    if (url && url !== '#') {
+      window.open(url, '_blank');
+    }
+  };
+
   const getRankColor = (rank: number) => {
     if (rank === 1) return 'bg-yellow-500/20 text-yellow-400';
     if (rank === 2) return 'bg-gray-400/20 text-gray-300';
     if (rank === 3) return 'bg-orange-600/20 text-orange-400';
     return 'bg-white/5 text-white/50';
-  };
-
-  const handleSoftwareClick = (url: string) => {
-    if (url && url !== '#') {
-      window.open(url, '_blank');
-    }
   };
 
   const loadingApp = {
@@ -104,6 +113,26 @@ export default function NewsWidget() {
       { name: 'Kimi', icon: '🌙', growth: '+72%', url: 'https://kimi.moonshot.cn' }
     );
   }
+
+  // 分类标签颜色映射
+  const categoryColors: Record<string, { bg: string; text: string }> = {
+    '聊天机器人': { bg: 'rgba(34, 197, 94, 0.2)', text: '#22C55E' },
+    '图像生成': { bg: 'rgba(167, 139, 250, 0.15)', text: '#A78BFA' },
+    '视频生成': { bg: 'rgba(52, 211, 153, 0.15)', text: '#34D399' },
+    '代码编程': { bg: 'rgba(251, 191, 36, 0.15)', text: '#FBBF24' },
+    '音频生成': { bg: 'rgba(251, 146, 60, 0.15)', text: '#FB923C' },
+    'Agent工具': { bg: 'rgba(248, 113, 113, 0.15)', text: '#F87171' },
+    'AI写作': { bg: 'rgba(156, 163, 175, 0.15)', text: '#9CA3AF' },
+    'AI搜索': { bg: 'rgba(96, 165, 250, 0.15)', text: '#60A5FA' },
+  };
+
+  // 排名圆圈样式
+  const getRankCircleStyle = (rank: number) => {
+    if (rank === 1) return { background: 'rgba(255, 255, 255, 0.9)', color: '#000' };
+    if (rank === 2) return { background: 'rgba(255, 255, 255, 0.75)', color: '#000' };
+    if (rank === 3) return { background: 'rgba(255, 255, 255, 0.6)', color: '#000' };
+    return { background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA' };
+  };
 
   if (loading) {
     return (
@@ -161,9 +190,14 @@ export default function NewsWidget() {
             🏆 今日最热
           </span>
         ) : (
-          <span className="text-[10px] text-white/50">
-            📊 2026.02数据 | 来源: a16z Top 100
-          </span>
+          <a 
+            href="https://a16z.com/100-gen-ai-apps-3/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-[10px] text-white/50 hover:text-white/70 transition-colors"
+          >
+            📊 2026.02数据 | 来源: a16z Top 100 ↗
+          </a>
         )}
         
         <div className="flex items-center gap-2">
@@ -185,7 +219,7 @@ export default function NewsWidget() {
           )}
           <div className="flex bg-white/5 rounded-lg p-0.5">
             <button
-              onClick={() => setActiveTab('news')}
+              onClick={() => { setActiveTab('news'); setSelectedSoftware(null); }}
               className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
                 activeTab === 'news'
                   ? 'bg-pink-500/20 text-pink-300'
@@ -195,7 +229,7 @@ export default function NewsWidget() {
               资讯
             </button>
             <button
-              onClick={() => setActiveTab('ranking')}
+              onClick={() => { setActiveTab('ranking'); setSelectedSoftware(null); }}
               className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
                 activeTab === 'ranking'
                   ? 'bg-pink-500/20 text-pink-300'
@@ -251,87 +285,179 @@ export default function NewsWidget() {
           </div>
         </>
       ) : (
-        <div className="relative z-10 mt-2 flex-1 overflow-y-auto">
-          <div className="space-y-2">
-            {(() => {
-              const sorted = [...softwareRanking].sort((a, b) => {
-                const aViews = parseInt(String(a.usageValue || a.weeklyViews || a.downloads || '0').replace(/[亿万]/g, ''));
-                const bViews = parseInt(String(b.usageValue || b.weeklyViews || b.downloads || '0').replace(/[亿万]/g, ''));
-                const aMultiplier = String(a.usageValue || a.weeklyViews || a.downloads || '').includes('亿') ? 10000 : 1;
-                const bMultiplier = String(b.usageValue || b.weeklyViews || b.downloads || '').includes('亿') ? 10000 : 1;
-                return (bViews * bMultiplier) - (aViews * aMultiplier);
-              });
-              
-              // 分类标签颜色映射 - AI助手用深绿色
-              const categoryColors: Record<string, { bg: string; text: string }> = {
-                '聊天机器人': { bg: 'rgba(34, 197, 94, 0.2)', text: '#22C55E' },
-                '图像生成': { bg: 'rgba(167, 139, 250, 0.15)', text: '#A78BFA' },
-                '视频生成': { bg: 'rgba(52, 211, 153, 0.15)', text: '#34D399' },
-                '代码编程': { bg: 'rgba(251, 191, 36, 0.15)', text: '#FBBF24' },
-                '音频生成': { bg: 'rgba(251, 146, 60, 0.15)', text: '#FB923C' },
-                'Agent工具': { bg: 'rgba(248, 113, 113, 0.15)', text: '#F87171' },
-                'AI写作': { bg: 'rgba(156, 163, 175, 0.15)', text: '#9CA3AF' },
-                'AI搜索': { bg: 'rgba(96, 165, 250, 0.15)', text: '#60A5FA' },
-              };
-              
-              // 排名圆圈样式 - 1、2、3名用白色
-              const getRankCircleStyle = (rank: number) => {
-                if (rank === 1) return { background: 'rgba(255, 255, 255, 0.9)', color: '#000' };
-                if (rank === 2) return { background: 'rgba(255, 255, 255, 0.75)', color: '#000' };
-                if (rank === 3) return { background: 'rgba(255, 255, 255, 0.6)', color: '#000' };
-                return { background: 'rgba(59, 130, 246, 0.2)', color: '#60A5FA' };
-              };
-              
-              return sorted.slice(0, 10).map((item, idx) => {
-                const rank = idx + 1;
-                const rankStyle = getRankCircleStyle(rank);
-                const catColors = categoryColors[item.category] || { bg: 'rgba(107, 114, 128, 0.15)', text: '#9CA3AF' };
-                
-                return (
-                  <div 
-                    key={item.id} 
-                    onClick={() => handleSoftwareClick(item.url || '#')}
-                    className="bg-white/[0.03] rounded-xl p-3.5 border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.12] hover:-translate-y-0.5 hover:shadow-lg cursor-pointer transition-all duration-200"
-                    style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+        <div className="relative z-10 mt-2 flex-1 overflow-hidden">
+          <AnimatePresence mode="wait">
+            {selectedSoftware ? (
+              <motion.div
+                key="detail"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                className="h-full flex flex-col"
+              >
+                {/* 详情头部 */}
+                <div className="flex items-center justify-between mb-4">
+                  <button
+                    onClick={closeDetail}
+                    className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white transition-colors"
                   >
-                    {/* 单行布局：排名 + 软件名称 + 评分 + 热度 + 分类标签 */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {/* 排名圆圈 */}
-                        <div 
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
-                          style={{ background: rankStyle.background, color: rankStyle.color }}
-                        >
-                          {rank}
-                        </div>
-                        {/* 软件名称 */}
-                        <span className="text-[15px] font-bold text-white truncate">{item.name}</span>
-                        {/* 评分 - 白色 */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <svg className="w-3.5 h-3.5 text-white/70 fill-white/70" viewBox="0 0 24 24">
-                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                          </svg>
-                          <span className="text-[12px] font-medium text-white/70">{item.rating}</span>
-                        </div>
-                        {/* 热度 - 白色 */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Flame size={12} className="text-white/70" />
-                          <span className="text-[12px] font-medium text-white/70">{item.usageValue}</span>
-                        </div>
-                      </div>
-                      {/* 分类标签 - 右侧 */}
+                    <span>←</span>
+                    <span>返回列表</span>
+                  </button>
+                  <button
+                    onClick={() => handleVisitWebsite(selectedSoftware.url || '#')}
+                    className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white transition-colors"
+                  >
+                    <span>访问官网</span>
+                    <ExternalLink size={10} />
+                  </button>
+                </div>
+
+                {/* 详情内容 */}
+                <div className="flex-1 overflow-y-auto">
+                  {/* 软件名称和排名 */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div 
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-[16px] font-bold"
+                      style={getRankCircleStyle(selectedSoftware.rank || 1)}
+                    >
+                      {selectedSoftware.rank || 1}
+                    </div>
+                    <div>
+                      <h3 className="text-[18px] font-bold text-white">{selectedSoftware.name}</h3>
                       <span 
-                        className="text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0 ml-2"
-                        style={{ backgroundColor: catColors.bg, color: catColors.text }}
+                        className="text-[11px] px-2 py-0.5 rounded-full"
+                        style={{ 
+                          backgroundColor: categoryColors[selectedSoftware.category]?.bg || 'rgba(107, 114, 128, 0.15)', 
+                          color: categoryColors[selectedSoftware.category]?.text || '#9CA3AF' 
+                        }}
                       >
-                        {item.category}
+                        {selectedSoftware.category}
                       </span>
                     </div>
                   </div>
-                );
-              });
-            })()}
-          </div>
+
+                  {/* 描述 */}
+                  <p className="text-[13px] text-white/70 mb-4 leading-relaxed">
+                    {selectedSoftware.description}
+                  </p>
+
+                  {/* 数据详情 */}
+                  <div className="space-y-3">
+                    {/* 评分 */}
+                    <div className="bg-white/[0.03] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] text-white/50">评分</span>
+                        <div className="flex items-center gap-1">
+                          <svg className="w-4 h-4 text-yellow-400 fill-yellow-400" viewBox="0 0 24 24">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                          </svg>
+                          <span className="text-[14px] font-bold text-white">{selectedSoftware.rating}</span>
+                          <span className="text-[11px] text-white/40">/ {selectedSoftware.ratingScale || 5}</span>
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-white/40">
+                        {selectedSoftware.reviewCount} 人评价
+                      </div>
+                    </div>
+
+                    {/* 月活用户 */}
+                    <div className="bg-white/[0.03] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] text-white/50">{selectedSoftware.usageMetric || '月活用户'}</span>
+                        <div className="flex items-center gap-1">
+                          <Flame size={14} className="text-orange-400" />
+                          <span className="text-[14px] font-bold text-orange-400">{selectedSoftware.usageValue}</span>
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-white/40">
+                        数据周期: {selectedSoftware.dataPeriod}
+                      </div>
+                    </div>
+
+                    {/* 排名 */}
+                    <div className="bg-white/[0.03] rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-white/50">当前排名</span>
+                        <span className="text-[14px] font-bold text-white">第 {selectedSoftware.rank || 1} 名</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="list"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-2 overflow-y-auto h-full"
+              >
+                {(() => {
+                  const sorted = [...softwareRanking].sort((a, b) => {
+                    const aViews = parseInt(String(a.usageValue || a.weeklyViews || a.downloads || '0').replace(/[亿万]/g, ''));
+                    const bViews = parseInt(String(b.usageValue || b.weeklyViews || b.downloads || '0').replace(/[亿万]/g, ''));
+                    const aMultiplier = String(a.usageValue || a.weeklyViews || a.downloads || '').includes('亿') ? 10000 : 1;
+                    const bMultiplier = String(b.usageValue || b.weeklyViews || b.downloads || '').includes('亿') ? 10000 : 1;
+                    return (bViews * bMultiplier) - (aViews * aMultiplier);
+                  });
+                  
+                  return sorted.slice(0, 10).map((item, idx) => {
+                    const rank = idx + 1;
+                    const rankStyle = getRankCircleStyle(rank);
+                    const catColors = categoryColors[item.category] || { bg: 'rgba(107, 114, 128, 0.15)', text: '#9CA3AF' };
+                    
+                    return (
+                      <motion.div 
+                        key={item.id} 
+                        onClick={() => handleSoftwareClick(item)}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        className="bg-white/[0.03] rounded-xl p-3.5 border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.12] hover:-translate-y-0.5 hover:shadow-lg cursor-pointer transition-all duration-200"
+                        style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+                      >
+                        {/* 单行布局：排名 + 软件名称 + 评分 + 热度 + 分类标签 */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            {/* 排名圆圈 */}
+                            <div 
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0"
+                              style={{ background: rankStyle.background, color: rankStyle.color }}
+                            >
+                              {rank}
+                            </div>
+                            {/* 软件名称 */}
+                            <span className="text-[15px] font-bold text-white truncate">{item.name}</span>
+                            {/* 评分 - 白色 */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <svg className="w-3.5 h-3.5 text-white/70 fill-white/70" viewBox="0 0 24 24">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                              </svg>
+                              <span className="text-[12px] font-medium text-white/70">{item.rating}</span>
+                            </div>
+                            {/* 热度 - 白色 */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Flame size={12} className="text-white/70" />
+                              <span className="text-[12px] font-medium text-white/70">{item.usageValue}</span>
+                            </div>
+                          </div>
+                          {/* 分类标签 - 右侧 */}
+                          <span 
+                            className="text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0 ml-2"
+                            style={{ backgroundColor: catColors.bg, color: catColors.text }}
+                          >
+                            {item.category}
+                          </span>
+                        </div>
+                      </motion.div>
+                    );
+                  });
+                })()}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </motion.div>
