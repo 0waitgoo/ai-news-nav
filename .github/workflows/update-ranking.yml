@@ -20,6 +20,8 @@ jobs:
         node-version: '18'
         
     - name: 运行更新脚本
+      env:
+        PRODUCT_HUNT_TOKEN: ${{ secrets.PRODUCT_HUNT_TOKEN }}
       run: node scripts/update-ranking.js
       
     - name: 提交更新
