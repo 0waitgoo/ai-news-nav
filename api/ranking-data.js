@@ -1,7 +1,7 @@
-// AI软件排行榜 (2026-10-05 自动更新)
+// AI软件排行榜 (2026-10-12 自动更新)
 // 数据来源: Product Hunt (https://www.producthunt.com)
 // 更新周期: 每周一自动更新
-// 自动生成时间: 2026-10-05T08:00:16.708Z
+// 自动生成时间: 2026-10-12T08:21:03.387Z
 
 export const softwareRankingData = [
   {
