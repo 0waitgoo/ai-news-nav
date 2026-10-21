@@ -396,6 +396,13 @@ export interface StoreData {
    * 空数组 = 用默认顺序；读取时经 resolveCardOrder 与当前卡片集合对齐。
    */
   cardOrder: string[];
+  /**
+   * 主页卡片栏锚点（第三十四轮，按栏排放）：key = 卡片稳定 key，value = 起始栏（0–3，桌面 4 栏制）。
+   * 栏内顺序由 cardOrder 在栏内过滤得到，不另存序号。放置规则见 components/v2/laneLayout.ts。
+   * 空表 = 尚未迁移，HomePage 首次渲染时按旧瀑布流位置生成锚点并静默落盘；
+   * 个别 key 缺失（新加的卡）由放置引擎回落到当前最矮的栏，HomePage 随即补写。
+   */
+  cardCols: Record<string, number>;
   /** 背景设置（预设或本地图片标记）；老数据无此字段时回落默认预设 */
   background: BackgroundSetting;
   /**
@@ -490,6 +497,7 @@ function seedData(): StoreData {
     widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
     groupLayouts: {},
     cardOrder: [],
+    cardCols: {},
     background: { ...DEFAULT_BACKGROUND },
     updatedAt: Date.now(),
     tasks: [],
@@ -532,6 +540,17 @@ function normalizeLayout(raw: unknown, fallback: WidgetLayout): WidgetLayout {
     if (l.heightUnits === 1 || l.heightUnits === 2) layout.heightUnits = l.heightUnits;
   }
   return layout;
+}
+
+/** 归一化卡片栏锚点（第三十四轮）：只采纳有限数值，夹到 0–3 并取整；老数据无此字段时为空表（待迁移） */
+function normalizeCardCols(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.max(0, Math.min(3, Math.floor(v)));
+    }
+  }
+  return out;
 }
 
 /** 归一化 groupLayouts：老数据无此字段时为空表（各组回落 DEFAULT_GROUP_LAYOUT）；逐组采纳合法值 */
@@ -586,6 +605,7 @@ export function validateStoreData(raw: unknown): StoreData | null {
   const rawOrder = (data as { cardOrder?: unknown }).cardOrder;
   const cardOrder = Array.isArray(rawOrder) ? (rawOrder.filter((k) => typeof k === 'string') as string[]) : [];
   const background = normalizeBackground((data as { background?: unknown }).background);
+  const cardCols = normalizeCardCols((data as { cardCols?: unknown }).cardCols);
   const groups = migrateSiteTags(ensureSiteIds(data.groups as NavGroup[]));
   return {
     version: 1,
@@ -594,6 +614,7 @@ export function validateStoreData(raw: unknown): StoreData | null {
     widgetLayouts,
     groupLayouts,
     cardOrder,
+    cardCols,
     background,
     updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
     tasks: normalizeTasks((data as { tasks?: unknown }).tasks),
@@ -812,6 +833,10 @@ export function useLocalStore() {
           const otherId = combo.groupIds.find((id) => id !== groupId);
           d.combos = d.combos.filter((c) => c.id !== combo.id);
           delete d.groupLayouts[comboCardKey(combo.id)];
+          // 栏锚点（第三十四轮）：另一组继承组合所在的栏，删组合锚点
+          const comboCol = d.cardCols[comboCardKey(combo.id)];
+          if (comboCol !== undefined && otherId) d.cardCols[groupCardKey(otherId)] = comboCol;
+          delete d.cardCols[comboCardKey(combo.id)];
           const idx = d.cardOrder.indexOf(comboCardKey(combo.id));
           if (idx >= 0 && otherId) d.cardOrder.splice(idx, 1, groupCardKey(otherId));
         }
@@ -840,6 +865,9 @@ export function useLocalStore() {
         const id = genId('c');
         d.combos.push({ id, groupIds: [draggedId, targetId], activeGroupId: draggedId });
         d.groupLayouts[comboCardKey(id)] = { ...stackLayoutOf(d.groupLayouts, targetId) };
+        // 栏锚点（第三十四轮）：组合落在 target 所在的栏；成员锚点先保留，拆分时以组合锚点为准重写
+        const targetCol = d.cardCols[groupCardKey(targetId)] ?? d.cardCols[groupCardKey(draggedId)];
+        if (targetCol !== undefined) d.cardCols[comboCardKey(id)] = targetCol;
         const order = currentOrder.filter((k) => k !== groupCardKey(draggedId));
         const ti = order.indexOf(groupCardKey(targetId));
         if (ti >= 0) order[ti] = comboCardKey(id);
@@ -859,6 +887,12 @@ export function useLocalStore() {
         if (!combo) return d;
         d.combos = d.combos.filter((c) => c.id !== comboId);
         delete d.groupLayouts[comboCardKey(comboId)];
+        // 栏锚点（第三十四轮）：两个组都回到组合所在的栏（顺序由 cardOrder 决定上下），删组合锚点
+        const comboCol = d.cardCols[comboCardKey(comboId)];
+        if (comboCol !== undefined) {
+          for (const gid of combo.groupIds) d.cardCols[groupCardKey(gid)] = comboCol;
+        }
+        delete d.cardCols[comboCardKey(comboId)];
         const order = [...currentOrder];
         const idx = order.indexOf(comboCardKey(comboId));
         const keys = combo.groupIds.map((gid) => groupCardKey(gid));
@@ -880,6 +914,13 @@ export function useLocalStore() {
         const otherId = combo.groupIds.find((id) => id !== groupId);
         d.combos = d.combos.filter((c) => c.id !== comboId);
         delete d.groupLayouts[comboCardKey(comboId)];
+        // 栏锚点（第三十四轮）：留下的一组与脱离的一组都先落在组合原来的栏（顺序紧邻），删组合锚点
+        const comboCol = d.cardCols[comboCardKey(comboId)];
+        if (comboCol !== undefined) {
+          if (otherId) d.cardCols[groupCardKey(otherId)] = comboCol;
+          d.cardCols[groupCardKey(groupId)] = comboCol;
+        }
+        delete d.cardCols[comboCardKey(comboId)];
         const order = [...currentOrder];
         const idx = order.indexOf(comboCardKey(comboId));
         const keys = otherId ? [groupCardKey(otherId), groupCardKey(groupId)] : [groupCardKey(groupId)];
@@ -896,14 +937,24 @@ export function useLocalStore() {
    * tab 拖出落定（第二十一轮修订新增的解组方式）：把某组从组合中拖出成独立卡，
    * 组合随之解散、另一组留作普通 C 卡；落点顺序以拖拽预览的最终顺序为准
    * （预览里组合条目已拆成两个组条目，这里只做兜底校正）。
+   * 栏锚点（第三十四轮）：colsPatch 为拖拽预览给出的两组最终栏位（被拖组 = 落点栏，
+   * 另一组 = 组合原来的栏）；缺省时两组都回落到组合原来的栏。
    */
   const extractComboGroup = useCallback(
-    (comboId: string, groupId: string, finalOrder: string[]) => {
+    (comboId: string, groupId: string, finalOrder: string[], colsPatch: Record<string, number> = {}) => {
       update((d) => {
         const combo = d.combos.find((c) => c.id === comboId);
         if (!combo || !combo.groupIds.includes(groupId)) return d;
         d.combos = d.combos.filter((c) => c.id !== comboId);
         delete d.groupLayouts[comboCardKey(comboId)];
+        const comboCol = d.cardCols[comboCardKey(comboId)];
+        if (comboCol !== undefined) {
+          for (const gid of combo.groupIds) d.cardCols[groupCardKey(gid)] = comboCol;
+        }
+        delete d.cardCols[comboCardKey(comboId)];
+        for (const [k, v] of Object.entries(colsPatch)) {
+          if (Number.isFinite(v)) d.cardCols[k] = Math.max(0, Math.min(3, Math.floor(v)));
+        }
         const order = finalOrder.filter((k) => k !== comboCardKey(comboId));
         for (const gid of combo.groupIds) {
           const k = groupCardKey(gid);
@@ -964,6 +1015,61 @@ export function useLocalStore() {
     },
     [update],
   );
+
+  /**
+   * 拖拽落盘（第三十四轮）：一次写入最终顺序 + 被拖卡的栏锚点补丁（colsPatch 只含本次变化的 key）。
+   * 走 update()：这是用户编辑，刷新 updatedAt 供同步裁决。
+   */
+  const setCardPlacement = useCallback(
+    (order: string[], colsPatch: Record<string, number>) => {
+      update((d) => {
+        d.cardOrder = [...order];
+        for (const [k, v] of Object.entries(colsPatch)) {
+          if (Number.isFinite(v)) d.cardCols[k] = Math.max(0, Math.min(3, Math.floor(v)));
+        }
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /**
+   * 静默补写栏锚点（第三十四轮）：放置引擎回落/夹取出的锚点与已存值不一致时由 HomePage 调用。
+   * 直写 setData 且不刷新 updatedAt——回落不是用户编辑，不应触发同步冲突裁决；
+   * 补丁与现状完全一致时返回原对象（不触发重渲染）。
+   */
+  const ensureCardCols = useCallback((patch: Record<string, number>) => {
+    setData((prev) => {
+      let changed = false;
+      const next = { ...prev.cardCols };
+      for (const [k, v] of Object.entries(patch)) {
+        if (!Number.isFinite(v)) continue;
+        const c = Math.max(0, Math.min(3, Math.floor(v)));
+        if (next[k] !== c) {
+          next[k] = c;
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return { ...prev, cardCols: next };
+    });
+  }, []);
+
+  /**
+   * 存量迁移落盘（第三十四轮）：cardCols 为空时，HomePage 按旧瀑布流位置生成
+   * （顺序, 锚点）并经此一次性写入；已有锚点时不覆盖。静默写入，不刷新 updatedAt。
+   */
+  const applyCardMigration = useCallback((order: string[], cols: Record<string, number>) => {
+    setData((prev) => {
+      if (Object.keys(prev.cardCols).length > 0) return prev;
+      const clean: Record<string, number> = {};
+      for (const [k, v] of Object.entries(cols)) {
+        if (Number.isFinite(v)) clean[k] = Math.max(0, Math.min(3, Math.floor(v)));
+      }
+      if (Object.keys(clean).length === 0) return prev;
+      return { ...prev, cardOrder: [...order], cardCols: clean };
+    });
+  }, []);
 
   const setWidgetVisible = useCallback(
     (widgetId: WidgetId, visible: boolean) => {
@@ -1247,6 +1353,9 @@ export function useLocalStore() {
     setWidgetLayout,
     setGroupLayout,
     setCardOrder,
+    setCardPlacement,
+    ensureCardCols,
+    applyCardMigration,
     setBackground,
     addTask,
     addTaskGroup,
