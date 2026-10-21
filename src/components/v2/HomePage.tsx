@@ -8,13 +8,14 @@ import {
   groupCardKey,
   groupLayoutOf,
   resolveCardOrder,
-  useLocalStore,
   widgetCardKey,
+  type LocalStore,
   type WidgetId,
   type WidgetLayout,
 } from '../../store/localStore';
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
+import BackgroundMenu from './BackgroundMenu';
 import { TopNav } from '../Sidebar';
 import NewsCard from './NewsCard';
 import RankingCard from './RankingCard';
@@ -44,8 +45,7 @@ function findScrollAncestor(el: HTMLElement): HTMLElement | null {
   }
   return null;
 }
-export default function HomePage({ onNavigate }: { onNavigate: (page: string) => void }) {
-  const store = useLocalStore();
+export default function HomePage({ onNavigate, store }: { onNavigate: (page: string) => void; store: LocalStore }) {
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [panelGroupId, setPanelGroupId] = useState<string | null>(null);
@@ -457,7 +457,8 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
       <div className="sticky top-0 z-50 -mt-1 pt-1 pb-2">
         <div className="absolute inset-0 bg-[#0a0a10]/75 backdrop-blur-xl rounded-b-3xl border-b border-white/[0.06]" />
         <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
-          <div className="col-span-1 lg:col-span-2 flex items-center justify-start min-w-0">
+          <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
+            <BackgroundMenu store={store} />
             <TopNav onPageChange={onNavigate} currentPage="home" />
           </div>
           <div className="col-span-1 lg:col-span-2 flex items-center gap-2 min-w-0">
