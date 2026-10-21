@@ -1,4 +1,4 @@
-import { navGroups, type NavGroup, type SiteEntry } from '../data/groups';
+import type { NavGroup, SiteEntry } from '../data/groups';
 import { getPinyinInitials, isLatinQuery } from './pinyin';
 
 export interface SiteSearchHit {
@@ -20,7 +20,8 @@ function matchesText(target: string, query: string, lowerQuery: string, latin: b
   return false;
 }
 
-export function searchAll(rawQuery: string): SearchResults {
+/** 在给定的编组数据里搜索（数据来自本地存储，用户增删改即时生效） */
+export function searchAll(rawQuery: string, groups: NavGroup[]): SearchResults {
   const query = rawQuery.trim();
   if (!query) return { sites: [], groups: [] };
   const lowerQuery = query.toLowerCase();
@@ -29,7 +30,7 @@ export function searchAll(rawQuery: string): SearchResults {
   const siteHits: SiteSearchHit[] = [];
   const groupHits: NavGroup[] = [];
 
-  for (const group of navGroups) {
+  for (const group of groups) {
     const groupMatched =
       matchesText(group.name, query, lowerQuery, latin) ||
       (group.aliases ?? []).some((a) => matchesText(a, query, lowerQuery, latin));
@@ -64,7 +65,7 @@ export function searchAll(rawQuery: string): SearchResults {
   return { sites: siteHits.slice(0, 8), groups: groupHits.slice(0, 4) };
 }
 
-/** 在单个编组内搜索（D 面板组内搜索用） */
+/** 在单个编组内搜索 */
 export function searchInGroup(group: NavGroup, rawQuery: string): SiteEntry[] {
   const query = rawQuery.trim();
   if (!query) return group.sites;
