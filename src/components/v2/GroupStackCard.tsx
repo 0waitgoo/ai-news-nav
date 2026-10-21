@@ -10,6 +10,7 @@ import { groupIcon, siteLogoFallback, sortSites, type NavGroup, type SiteEntry }
  * - 不再渲染副标题行（subtitle 字段仅保留在数据模型兼容老数据）
  * - 底部图标排是主角：前 5 站大图标瓷砖（置顶优先 + 频率序）可点击直达、悬停放大，超出以「+N」收尾（点击开弹窗）
  * - 卡面其余区域点击打开组弹窗（GroupPanel）
+ * - 第十三轮：卡身底色改全透明，页面背景（预设渐变/本地图片）直接透出；轮廓靠描边 + 口线 + 外阴影维持可辨
  */
 export default function GroupStackCard({
   group,
@@ -41,18 +42,20 @@ export default function GroupStackCard({
       role="button"
       aria-label={`${group.name} 编组`}
     >
-      {/* 小角（标签凸起）：从卡身后探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边） */}
+      {/* 小角（标签凸起）：从卡身后探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边）。
+          clipPath 裁掉下 7px：卡身透明后，原先被卡身压住的小角下截会透出来，故只保留上沿以上的可见轮廓（与透明化前的外观一致） */}
       <div
         data-tab-bump
         className="absolute top-0 left-[18px] h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
         style={{
           backgroundColor: tabColor || '#26262e',
           borderColor: tabColor || 'rgba(255,255,255,0.1)',
+          clipPath: 'inset(0 0 7px 0)',
         }}
       />
 
-      {/* 卡身：四角完整的圆角矩形，压住小角下半截，只留凸起在上沿左端 */}
-      <div className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] bg-[#1e1e24] border border-white/10 shadow-xl shadow-black/30 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden">
+      {/* 卡身：四角完整的圆角矩形，底色全透明（透出页面背景），轮廓靠描边 + 口线 + 外阴影；悬停只提亮描边，不回填底色 */}
+      <div className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 shadow-xl shadow-black/30 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden">
         {/* 标题行：组图标瓷砖 + 组名；右侧小字「N 个站点」 */}
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-[30px] h-[30px] rounded-[9px] bg-white flex items-center justify-center overflow-hidden shrink-0">
