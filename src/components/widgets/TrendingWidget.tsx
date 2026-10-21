@@ -2,8 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { TrendingUp, RefreshCw } from 'lucide-react';
 import { fetchTrends, type TrendItem } from '../../services/api';
+import type { WidgetTint } from '../../store/localStore';
+import WidgetTintLayer from '../v2/WidgetTint';
 
-export default function TrendingWidget() {
+export default function TrendingWidget({
+  tint,
+}: {
+  /** 专属底色（第二十三轮，由 HomePage 按 widgetTints 分配传入；旧 BentoGrid 用法不传则无底色） */
+  tint?: WidgetTint;
+} = {}) {
   const [trends, setTrends] = useState<TrendItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -32,54 +39,60 @@ export default function TrendingWidget() {
 
   const displayTrends = trends.length > 0 ? trends : defaultTrends;
 
+  const tintLayer = tint ? (
+    <WidgetTintLayer tint={tint} icon={<TrendingUp size={176} strokeWidth={1} />} />
+  ) : null;
+  const header = (
+    <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-full bg-indigo-500/20 flex items-center justify-center">
+          <TrendingUp size={14} className="text-indigo-400" />
+        </div>
+        <h3 className="font-semibold text-base sm:text-lg tracking-tight">热门话题</h3>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="glass-panel rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
+        className="glass-panel relative rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-indigo-500/20 flex items-center justify-center">
-              <TrendingUp size={14} className="text-indigo-400" />
-            </div>
-            <h3 className="font-semibold text-base sm:text-lg tracking-tight">热门话题</h3>
+        {tintLayer}
+        <div className="relative flex flex-col flex-1 min-h-0">
+          {header}
+          <div className="flex-1 flex items-center justify-center">
+            <RefreshCw size={20} className="text-white/30 animate-spin" />
           </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <RefreshCw size={20} className="text-white/30 animate-spin" />
         </div>
       </motion.div>
     );
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5 }}
-      className="glass-panel rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
+      className="glass-panel relative rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-indigo-500/20 flex items-center justify-center">
-            <TrendingUp size={14} className="text-indigo-400" />
-          </div>
-          <h3 className="font-semibold text-base sm:text-lg tracking-tight">热门话题</h3>
-        </div>
-      </div>
+      {tintLayer}
+      <div className="relative flex flex-col flex-1 min-h-0">
+        {header}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 flex-1 min-h-0">
-        {displayTrends.slice(0, 8).map((trend, idx) => (
-          <div key={idx} className="bg-white/5 rounded-2xl p-2.5 sm:p-3 flex flex-col justify-center border border-white/5">
-            <span className={`text-sm font-bold ${trend.color || 'text-white'} mb-1 truncate`}>{trend.topic}</span>
-            <span className="text-xs font-medium text-white/50 truncate">{trend.volume} 帖子</span>
-          </div>
-        ))}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 flex-1 min-h-0">
+          {displayTrends.slice(0, 8).map((trend, idx) => (
+            <div key={idx} className="bg-white/5 rounded-2xl p-2.5 sm:p-3 flex flex-col justify-center border border-white/5">
+              <span className={`text-sm font-bold ${trend.color || 'text-white'} mb-1 truncate`}>{trend.topic}</span>
+              <span className="text-xs font-medium text-white/50 truncate">{trend.volume} 帖子</span>
+            </div>
+          ))}
+        </div>
       </div>
     </motion.div>
   );
