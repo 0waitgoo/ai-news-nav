@@ -22,13 +22,27 @@ export interface SiteEntry {
 /** 编组卡片形态：list = B 详细列表卡（原地展开）；stack = C 文件夹堆叠卡（点击弹窗） */
 export type GroupDisplay = 'list' | 'stack';
 
+/** 文件夹小角预设色（鲜明但不刺眼）：GroupPanel 里点选，卡面小角按色填充；空字符串 = 默认同色灰 */
+export const GROUP_TAB_COLORS: { name: string; value: string }[] = [
+  { name: '珊瑚红', value: '#e0655a' },
+  { name: '橙', value: '#e8933a' },
+  { name: '金黄', value: '#dfb83c' },
+  { name: '翠绿', value: '#3fae6a' },
+  { name: '青', value: '#2fa8a0' },
+  { name: '天蓝', value: '#4a90d9' },
+  { name: '紫罗兰', value: '#8b6fd8' },
+  { name: '玫粉', value: '#d86a9e' },
+];
+
 export interface NavGroup {
   id: string;
   name: string;
   /** 卡片形态：list = B 详细列表卡；stack = C 文件夹堆叠卡 */
   display: GroupDisplay;
-  /** 自定义副标题（C 卡卡面第二行）；为空时回落显示「N 个站点」 */
+  /** 自定义副标题（历史字段：模型保留兼容老数据，第十二轮起无 UI 入口、不再渲染） */
   subtitle?: string;
+  /** 文件夹小角（标签凸起）颜色：CSS 颜色值；为空/未设置 = 默认同色灰，用户靠颜色一眼认组 */
+  tabColor?: string;
   /** 编组自身的搜索别名 */
   aliases?: string[];
   sites: SiteEntry[];
