@@ -1,10 +1,10 @@
 /**
- * AI 整理 · 拆分引擎（第十八轮，第一版本地规则实现，不联网）
+ * AI 整理 · 拆分引擎（第十八轮，第一版本地规则实现，不联网；第十九轮计划改为次数型）
  *
  * 把用户随手写的一段杂事拆成「短期待办」与「长期计划」两类：
  * - 先按换行与句末标点（。；！？）切句，再按逗号（，）细分小句
- * - 含长期类关键词的小句归「长期计划」：整句作计划标题；句中若有顿号（、），
- *   顿号前的部分作标题、其余部分作步骤
+ * - 含长期类关键词的小句归「长期计划」（次数型）：句中能解析出「N次/N节/N个…」就用它作目标数与单位，
+ *   并把该计数短语从标题里剥掉；解析不出则默认目标 10 次
  * - 其余小句归「待办」
  * - 句首的衔接词（顺便/还有/还想/想要…）顺手剥掉；「下周/明天/周X」等日期词不解析，原样留在标题里
  *
@@ -13,7 +13,10 @@
 
 export interface SplitPlanDraft {
   title: string;
-  steps: string[];
+  /** 次数型目标：句中解析的数字，解析不到时 10 */
+  targetCount: number;
+  /** 单位：句中解析的量词，解析不到时「次」 */
+  unit: string;
 }
 
 export interface SplitResult {
@@ -45,12 +48,28 @@ function cleanClause(raw: string): string {
   return s;
 }
 
+/** 次数型计数短语：「20个」「30 次」「8节」——数字 + 常见单位量词 */
+const COUNT_PHRASE_RE = /(\d+)\s*(次|节|课|天|页|章|本|遍|个|组|回|公里|分钟|小时)/;
+
+/** 从长期句中解析目标数与单位：命中则顺手把计数短语从标题里剥掉；未命中用默认 10 次 */
+function parsePlanTarget(clause: string): SplitPlanDraft {
+  const m = clause.match(COUNT_PHRASE_RE);
+  if (!m || m.index === undefined) return { title: clause, targetCount: 10, unit: '次' };
+  const targetCount = Math.max(1, parseInt(m[1], 10) || 10);
+  const title = (clause.slice(0, m.index) + clause.slice(m.index + m[0].length))
+    .replace(/[、，,]+/g, ' ')
+    .replace(/([一-龥])\s+(?=[一-龥])/g, '$1')
+    .trim()
+    .replace(/^[、，,·\s]+|[、，,·\s]+$/g, '');
+  return { title: title || clause, targetCount, unit: m[2] };
+}
+
 export const splitTasksLocal: TaskSplitter = (text) => {
   const todos: string[] = [];
   const plans: SplitPlanDraft[] = [];
   const seen = new Set<string>();
 
-  // 切句：换行 → 句末标点 → 逗号（顿号留给计划步骤拆分）
+  // 切句：换行 → 句末标点 → 逗号
   const clauses = text
     .split(/[\n\r]+/)
     .flatMap((line) => line.split(/[。；;！!？?]+/))
@@ -61,12 +80,11 @@ export const splitTasksLocal: TaskSplitter = (text) => {
   for (const clause of clauses) {
     const isLongTerm = LONG_TERM_KEYWORDS.some((k) => clause.includes(k));
     if (isLongTerm) {
-      // 顿号拆分：第一段作标题，其余作步骤（无顿号则整句作标题、步骤为空）
-      const parts = clause.split('、').map((p) => p.trim()).filter(Boolean);
-      const title = parts[0] ?? clause;
-      if (!title || seen.has(`p:${title}`)) continue;
-      seen.add(`p:${title}`);
-      plans.push({ title, steps: parts.slice(1) });
+      // 长期计划 = 次数型：解析「N+单位」作目标，整句（剥计数短语后）作标题
+      const draft = parsePlanTarget(clause);
+      if (!draft.title || seen.has(`p:${draft.title}`)) continue;
+      seen.add(`p:${draft.title}`);
+      plans.push(draft);
     } else {
       if (seen.has(`t:${clause}`)) continue;
       seen.add(`t:${clause}`);
