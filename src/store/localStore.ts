@@ -34,6 +34,71 @@ export const DEFAULT_WIDGET_LAYOUTS: Record<WidgetId, WidgetLayout> = {
 /** B 型编组卡收起态的默认占位：2 栏 × 2x（与组件共用 WidgetLayout 形状，右键菜单可改） */
 export const DEFAULT_GROUP_LAYOUT: WidgetLayout = { colSpan: 2, heightUnits: 2 };
 
+/**
+ * 背景设置：来源只有两种——内置预设（纯 CSS）或用户本地图片。
+ * 本地图片的 Blob 本体存 IndexedDB（见 bgImageDb.ts），绝不上服务器；
+ * 这里只记 kind 与选中的预设（kind='local' 时 presetId 是移除本地图后的回落背景）。
+ */
+export interface BackgroundSetting {
+  kind: 'preset' | 'local';
+  presetId: string;
+  /** 本地图片最近一次更换的时间戳：让 App 在 kind 不变（换图）时也能感知并重读 IndexedDB */
+  localStamp?: number;
+}
+
+export interface BackgroundPreset {
+  id: string;
+  name: string;
+  /** 完整的 CSS background 值（渐变/纯色），不引用任何图片资源 */
+  css: string;
+}
+
+/** 内置背景预设：全部纯 CSS 实现 */
+export const BACKGROUND_PRESETS: BackgroundPreset[] = [
+  {
+    id: 'violet',
+    name: '星云紫',
+    css: 'radial-gradient(1200px 800px at 85% -10%, rgba(139, 92, 246, 0.5), transparent 60%), radial-gradient(1000px 760px at 8% 108%, rgba(76, 29, 149, 0.6), transparent 55%), linear-gradient(155deg, #221344 0%, #150a2e 48%, #0a0a12 100%)',
+  },
+  {
+    id: 'space',
+    name: '深空灰',
+    css: 'linear-gradient(180deg, #17171c 0%, #101014 55%, #0b0b0e 100%)',
+  },
+  {
+    id: 'ocean',
+    name: '深海蓝',
+    css: 'radial-gradient(1100px 750px at 80% -10%, rgba(37, 99, 235, 0.38), transparent 60%), linear-gradient(160deg, #0d2140 0%, #081426 52%, #05070d 100%)',
+  },
+  {
+    id: 'forest',
+    name: '墨绿',
+    css: 'radial-gradient(1100px 750px at 15% -10%, rgba(16, 185, 129, 0.28), transparent 55%), linear-gradient(160deg, #0c2b21 0%, #071a13 55%, #040805 100%)',
+  },
+];
+
+export const DEFAULT_BACKGROUND: BackgroundSetting = { kind: 'preset', presetId: 'violet' };
+
+/** 按 id 取预设：未知 id 回落默认预设（老数据/导入数据兼容） */
+export function backgroundPresetOf(presetId: string): BackgroundPreset {
+  return BACKGROUND_PRESETS.find((p) => p.id === presetId) ?? BACKGROUND_PRESETS[0];
+}
+
+/** 归一化背景设置：老数据无此字段时回落默认预设；presetId 必须是已知预设 */
+function normalizeBackground(raw: unknown): BackgroundSetting {
+  if (raw && typeof raw === 'object') {
+    const b = raw as { kind?: unknown; presetId?: unknown; localStamp?: unknown };
+    const presetId =
+      typeof b.presetId === 'string' && BACKGROUND_PRESETS.some((p) => p.id === b.presetId) ? b.presetId : 'violet';
+    return {
+      kind: b.kind === 'local' ? 'local' : 'preset',
+      presetId,
+      localStamp: typeof b.localStamp === 'number' ? b.localStamp : undefined,
+    };
+  }
+  return { ...DEFAULT_BACKGROUND };
+}
+
 /** 读某编组的布局：未存过时回落默认（老数据兼容） */
 export function groupLayoutOf(layouts: Record<string, WidgetLayout>, groupId: string): WidgetLayout {
   return layouts[groupId] ?? DEFAULT_GROUP_LAYOUT;
@@ -54,6 +119,8 @@ export interface StoreData {
    * 空数组 = 用默认顺序；读取时经 resolveCardOrder 与当前卡片集合对齐。
    */
   cardOrder: string[];
+  /** 背景设置（预设或本地图片标记）；老数据无此字段时回落默认预设 */
+  background: BackgroundSetting;
 }
 
 /** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
@@ -113,6 +180,7 @@ function seedData(): StoreData {
     widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
     groupLayouts: {},
     cardOrder: [],
+    background: { ...DEFAULT_BACKGROUND },
   };
 }
 
@@ -200,7 +268,16 @@ export function validateStoreData(raw: unknown): StoreData | null {
   // 卡片顺序：老数据无此字段时为空（回落默认顺序）；只采纳字符串元素
   const rawOrder = (data as { cardOrder?: unknown }).cardOrder;
   const cardOrder = Array.isArray(rawOrder) ? (rawOrder.filter((k) => typeof k === 'string') as string[]) : [];
-  return { version: 1, groups: ensureSiteIds(data.groups as NavGroup[]), widgets, widgetLayouts, groupLayouts, cardOrder };
+  const background = normalizeBackground((data as { background?: unknown }).background);
+  return {
+    version: 1,
+    groups: ensureSiteIds(data.groups as NavGroup[]),
+    widgets,
+    widgetLayouts,
+    groupLayouts,
+    cardOrder,
+    background,
+  };
 }
 
 function loadInitial(): StoreData {
@@ -384,6 +461,17 @@ export function useLocalStore() {
     [update],
   );
 
+  /** 切换背景：选预设或标记使用本地图片（图片本体在 IndexedDB，由调用方先存好） */
+  const setBackground = useCallback(
+    (next: BackgroundSetting) => {
+      update((d) => {
+        d.background = normalizeBackground(next);
+        return d;
+      });
+    },
+    [update],
+  );
+
   /** 拖拽排序后保存主页卡片顺序（传入的是已与当前卡片集合对齐的完整顺序） */
   const setCardOrder = useCallback(
     (order: string[]) => {
@@ -434,6 +522,7 @@ export function useLocalStore() {
     setWidgetLayout,
     setGroupLayout,
     setCardOrder,
+    setBackground,
     importData,
     resetData,
   };
