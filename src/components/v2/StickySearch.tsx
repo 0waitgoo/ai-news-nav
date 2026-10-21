@@ -103,15 +103,15 @@ export default function StickySearch({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
               transition={{ duration: 0.15 }}
-              className="absolute left-0 right-0 top-full mt-2 glass-panel rounded-3xl bg-[#17171d]/95 p-2 shadow-2xl shadow-black/50 max-h-[60vh] overflow-y-auto"
+              className="absolute left-0 right-0 top-full mt-2 rounded-3xl bg-[#17171d] border border-white/15 p-2 shadow-2xl shadow-black/70 max-h-[60vh] overflow-y-auto z-50"
             >
               {!hasResults && (
-                <div className="px-4 py-6 text-center text-sm text-white/40">没有找到相关站点或编组</div>
+                <div className="px-4 py-6 text-center text-sm text-white/55">没有找到相关站点或编组</div>
               )}
 
               {results.groups.length > 0 && (
                 <div className="mb-1">
-                  <p className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-wider text-white/35 uppercase">编组</p>
+                  <p className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-wider text-white/50 uppercase">编组</p>
                   {results.groups.map((group) => (
                     <button
                       key={group.id}
@@ -126,7 +126,7 @@ export default function StickySearch({
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium truncate">{group.name}</span>
-                        <span className="block text-[11px] text-white/40">{group.sites.length} 个站点 · 点击展开编组</span>
+                        <span className="block text-[11px] text-white/55">{group.sites.length} 个站点 · 点击展开编组</span>
                       </span>
                     </button>
                   ))}
@@ -135,7 +135,7 @@ export default function StickySearch({
 
               {results.sites.length > 0 && (
                 <div>
-                  <p className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-wider text-white/35 uppercase">站点 · 回车直达第一个</p>
+                  <p className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-wider text-white/50 uppercase">站点 · 回车直达第一个</p>
                   {results.sites.map(({ site, group, matchedAlias }) => (
                     <button
                       key={`${group.id}-${site.name}`}
@@ -155,9 +155,9 @@ export default function StickySearch({
                             <span className="text-[9px] font-medium text-red-300 bg-red-500/15 px-1.5 py-0.5 rounded shrink-0">失效</span>
                           )}
                         </span>
-                        <span className="block text-[11px] text-white/40 truncate">{site.description}</span>
+                        <span className="block text-[11px] text-white/55 truncate">{site.description}</span>
                       </span>
-                      <span className="text-[11px] text-white/35 shrink-0 hidden sm:flex items-center gap-1">
+                      <span className="text-[11px] text-white/45 shrink-0 hidden sm:flex items-center gap-1">
                         {group.name}
                         <CornerDownLeft size={11} className="opacity-0 group-hover/item:opacity-60" />
                       </span>

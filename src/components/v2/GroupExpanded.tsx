@@ -141,8 +141,8 @@ function EditableSiteRow({
 }
 
 /**
- * 编组展开态主体（B / C 共用）：卡内可滚动的 2 列行式列表 + 添加网站 + 组操作。
- * 展开后不会弹窗、不会变成纯图标，就在卡内往下看。
+ * B 型列表卡的展开态主体：卡内可滚动的 2 列行式列表 + 添加网站 + 组操作（改名/删组/切形态）。
+ * 只有 B 卡在主页原地展开；C 卡走 GroupPanel 弹窗，不用这里。
  */
 export default function GroupExpandedBody({ group, store }: { group: NavGroup; store: LocalStore }) {
   const [adding, setAdding] = useState(false);
@@ -212,6 +212,27 @@ export default function GroupExpandedBody({ group, store }: { group: NavGroup; s
                 <Trash2 size={11} /> 删组
               </button>
             )}
+            {/* 形态切换：详细列表（B） ↔ 文件夹式（C） */}
+            <span className="flex items-center rounded-lg bg-white/5 border border-white/10 overflow-hidden">
+              <button
+                onClick={() => store.setGroupDisplay(group.id, 'list')}
+                title="详细列表卡：在主页原地展开成行式列表"
+                className={`text-[11px] px-2.5 py-1 transition-colors ${
+                  group.display === 'list' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
+                }`}
+              >
+                详细列表
+              </button>
+              <button
+                onClick={() => store.setGroupDisplay(group.id, 'stack')}
+                title="文件夹式卡：紧凑堆叠卡，点开弹窗看图标"
+                className={`text-[11px] px-2.5 py-1 transition-colors ${
+                  group.display === 'stack' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
+                }`}
+              >
+                文件夹式
+              </button>
+            </span>
           </>
         )}
         {dead > 0 && (

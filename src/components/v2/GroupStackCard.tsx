@@ -1,26 +1,19 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { ChevronUp } from 'lucide-react';
 import { groupIcon, pinnedCount, sortSites, type NavGroup } from '../../data/groups';
-import type { LocalStore } from '../../store/localStore';
-import GroupExpandedBody from './GroupExpanded';
 
 /**
  * C 型 · 编组堆叠卡（默认 1 栏 × 1X）
- * 收起：组图标、组名、站点数、卡面标注「置顶 N」、常用站首字母块；卡背露层。不显示「最近使用」。
- * 点击原地展开（占 2 栏宽）：组内站点行式列表 + 卡内滚动，可增删改——不弹窗、不变纯图标。
+ * 卡面：组图标、组名、站点数、卡面标注「置顶 N」、常用站首字母块；卡背露层。不显示「最近使用」。
+ * 点击弹出居中弹窗（GroupPanel）看组内 ICON 瓷砖——不在主页原地展开（那是 B 型列表卡的方式）。
  */
 export default function GroupStackCard({
   group,
-  expanded,
-  onToggleExpand,
-  store,
+  onOpen,
   delay = 0,
 }: {
   group: NavGroup;
-  expanded: boolean;
-  onToggleExpand: (group: NavGroup) => void;
-  store: LocalStore;
+  onOpen: (group: NavGroup) => void;
   delay?: number;
 }) {
   const sorted = sortSites(group.sites);
@@ -28,37 +21,12 @@ export default function GroupStackCard({
   const extra = group.sites.length - topSites.length;
   const pinned = pinnedCount(group);
 
-  if (expanded) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, delay }}
-        className="glass-panel glass-panel-hover rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
-      >
-        <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
-          <h3 className="font-semibold text-base sm:text-lg tracking-tight">{group.name}</h3>
-          <span className="text-[11px] text-white/40 shrink-0">
-            编组 · {group.sites.length} 个站点{pinned > 0 ? ` · 置顶 ${pinned}` : ''}
-          </span>
-        </div>
-        <GroupExpandedBody group={group} store={store} />
-        <button
-          onClick={() => onToggleExpand(group)}
-          className="mt-2 pt-3 border-t border-white/10 w-full flex items-center justify-center gap-1 text-xs font-medium text-white/50 hover:text-white/80 transition-colors shrink-0"
-        >
-          收起 <ChevronUp size={13} />
-        </button>
-      </motion.div>
-    );
-  }
-
   return (
     <motion.button
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}
-      onClick={() => onToggleExpand(group)}
+      onClick={() => onOpen(group)}
       className="relative w-full h-full text-left group/card"
       whileHover={{ y: -3 }}
     >
