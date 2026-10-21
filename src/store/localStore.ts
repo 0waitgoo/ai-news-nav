@@ -247,6 +247,61 @@ export function cardFaceStyleOf(styles: Record<string, CardFaceStyle>, cardKey: 
   return styles[cardKey] === 'focus' ? 'focus' : 'list';
 }
 
+/* ---------- A 型小组件专属底色（第二十三轮） ---------- */
+
+/**
+ * 小组件底色色板：每张 A 型小组件卡在首次出现时随机抽一色、落盘后不再变。
+ * 渲染为低透明度线性渐变（深色玻璃底之上、内容之下）+ 同色大号水印图标。
+ * from/to 为渐变两端色（渲染侧以 8%–16% 透明度叠加，文字可读性不受影响）。
+ */
+export interface WidgetTint {
+  id: string;
+  name: string;
+  from: string;
+  to: string;
+}
+
+export const WIDGET_TINTS: WidgetTint[] = [
+  { id: 'violet', name: '紫', from: '#8b5cf6', to: '#6d28d9' },
+  { id: 'blue', name: '蓝', from: '#3b82f6', to: '#1d4ed8' },
+  { id: 'cyan', name: '青', from: '#06b6d4', to: '#0e7490' },
+  { id: 'emerald', name: '绿', from: '#10b981', to: '#047857' },
+  { id: 'lime', name: '黄绿', from: '#a3e635', to: '#65a30d' },
+  { id: 'amber', name: '琥珀', from: '#f59e0b', to: '#b45309' },
+  { id: 'orange', name: '橙', from: '#fb923c', to: '#ea580c' },
+  { id: 'rose', name: '玫红', from: '#f43f5e', to: '#be123c' },
+  { id: 'pink', name: '粉', from: '#ec4899', to: '#be185d' },
+];
+
+/** 按卡片 key 读底色：未分配（老数据/尚未补抽）或索引非法时返回 undefined（渲染侧不叠底色） */
+export function widgetTintOf(tints: Record<string, number>, cardKey: string): WidgetTint | undefined {
+  const i = tints[cardKey];
+  return typeof i === 'number' && WIDGET_TINTS[i] ? WIDGET_TINTS[i] : undefined;
+}
+
+/**
+ * 随机抽一个底色索引：优先避开 exclude 里已占用的色（同屏组件尽量各不相同），
+ * 全部占用时退化为全色板随机（色板 9 色、组件至多 4 个，正常不会走到）。
+ */
+export function pickWidgetTintIndex(exclude: Iterable<number>): number {
+  const used = new Set(exclude);
+  const all = WIDGET_TINTS.map((_, i) => i);
+  const free = all.filter((i) => !used.has(i));
+  const pool = free.length > 0 ? free : all;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** 归一化 widgetTints：只采纳合法色板索引（老数据无此字段时为空表，渲染前由 HomePage 补抽） */
+function normalizeWidgetTints(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < WIDGET_TINTS.length) out[k] = v;
+    }
+  }
+  return out;
+}
+
 /** 归一化 tasks：老数据无此字段 / 元素残缺时逐项清洗，非法整体回落空数组（首次即空状态，不塞假数据）。
  *  children 是数组的元素按「组」保留（子任务逐项清洗），非数组一律不当组。 */
 function normalizeTasks(raw: unknown): TaskItem[] {
@@ -419,6 +474,11 @@ export interface StoreData {
   cardFaceStyles: Record<string, CardFaceStyle>;
   /** C 卡组合（第二十一轮）：老数据无此字段时归一化为空数组 */
   combos: ComboItem[];
+  /**
+   * A 型小组件专属底色（第二十三轮）：key = 卡片稳定 key（widget:<id>），value = WIDGET_TINTS 色板索引。
+   * 组件首次出现时随机抽一次并落盘，之后刷新/同步都不变；老数据无此字段时为空表（渲染前补抽）。
+   */
+  widgetTints: Record<string, number>;
 }
 
 /** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
@@ -504,6 +564,7 @@ function seedData(): StoreData {
     plans: [],
     cardFaceStyles: {},
     combos: [],
+    widgetTints: {},
   };
 }
 
@@ -621,6 +682,7 @@ export function validateStoreData(raw: unknown): StoreData | null {
     plans: normalizePlans((data as { plans?: unknown }).plans),
     cardFaceStyles: normalizeCardFaceStyles((data as { cardFaceStyles?: unknown }).cardFaceStyles),
     combos: normalizeCombos((data as { combos?: unknown }).combos, groups),
+    widgetTints: normalizeWidgetTints((data as { widgetTints?: unknown }).widgetTints),
   };
 }
 
@@ -1071,6 +1133,39 @@ export function useLocalStore() {
     });
   }, []);
 
+  /**
+   * 静默补写小组件底色（第二十三轮）：HomePage 渲染前为缺底色的已显示组件抽好色后调用。
+   * 直写 setData 且不刷新 updatedAt——补抽不是用户编辑，不应触发同步冲突裁决
+   * （底色随 store.data 整体在下一次同步/导出时自然带走）；与现状一致时返回原对象防循环。
+   */
+  const ensureWidgetTints = useCallback((patch: Record<string, number>) => {
+    setData((prev) => {
+      let changed = false;
+      const next = { ...prev.widgetTints };
+      for (const [k, v] of Object.entries(patch)) {
+        if (!Number.isInteger(v) || v < 0 || v >= WIDGET_TINTS.length) continue;
+        if (next[k] === undefined) {
+          next[k] = v;
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return { ...prev, widgetTints: next };
+    });
+  }, []);
+
+  /** 「换个底色」（第二十三轮，右键菜单）：用户主动重抽，走 update() 正常落盘（索引非法不写） */
+  const setWidgetTint = useCallback(
+    (cardKey: string, index: number) => {
+      if (!Number.isInteger(index) || index < 0 || index >= WIDGET_TINTS.length) return;
+      update((d) => {
+        d.widgetTints[cardKey] = index;
+        return d;
+      });
+    },
+    [update],
+  );
+
   const setWidgetVisible = useCallback(
     (widgetId: WidgetId, visible: boolean) => {
       update((d) => {
@@ -1356,6 +1451,8 @@ export function useLocalStore() {
     setCardPlacement,
     ensureCardCols,
     applyCardMigration,
+    ensureWidgetTints,
+    setWidgetTint,
     setBackground,
     addTask,
     addTaskGroup,
