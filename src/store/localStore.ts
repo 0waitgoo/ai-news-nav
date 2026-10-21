@@ -253,6 +253,8 @@ export function validateStoreData(raw: unknown): StoreData | null {
     delete legacy.type;
     // 自定义副标题向后兼容：老数据无此字段时默认为空字符串（卡面回落显示站点数）
     if (typeof group.subtitle !== 'string') group.subtitle = '';
+    // 小角颜色向后兼容：只接受 #rrggbb，其余（老数据无此字段）一律回落空 = 默认灰
+    if (typeof group.tabColor !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(group.tabColor)) group.tabColor = '';
     for (const site of group.sites as SiteEntry[]) {
       if (!site || typeof site.name !== 'string' || typeof site.url !== 'string') return null;
       if (typeof site.description !== 'string') site.description = '';
@@ -384,7 +386,7 @@ export function useLocalStore() {
   const addGroup = useCallback((name: string, display: GroupDisplay): string => {
     const id = genId('g');
     update((d) => {
-      d.groups.push({ id, name, display, subtitle: '', sites: [] });
+      d.groups.push({ id, name, display, subtitle: '', tabColor: '', sites: [] });
       return d;
     });
     return id;
@@ -445,6 +447,19 @@ export function useLocalStore() {
       update((d) => {
         const group = d.groups.find((g) => g.id === groupId);
         if (group) group.subtitle = subtitle;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 设置编组文件夹小角颜色（空字符串 = 默认同色灰）；非法值不落盘 */
+  const setGroupTabColor = useCallback(
+    (groupId: string, color: string) => {
+      const safe = color === '' || /^#[0-9a-fA-F]{6}$/.test(color) ? color : '';
+      update((d) => {
+        const group = d.groups.find((g) => g.id === groupId);
+        if (group) group.tabColor = safe;
         return d;
       });
     },
@@ -516,6 +531,7 @@ export function useLocalStore() {
     addGroup,
     renameGroup,
     setGroupSubtitle,
+    setGroupTabColor,
     setGroupDisplay,
     deleteGroup,
     setWidgetVisible,
