@@ -23,6 +23,13 @@ export default defineConfig(({mode}) => {
         '/api': {
           target: 'http://localhost:3001',
           changeOrigin: true,
+          // 只代理接口请求（/api?type=...）；/api/ 目录下的静态模块文件
+          // （如 ranking-data.js）放行给 Vite 本地处理，否则 dev 下会白屏。
+          bypass(req) {
+            if (req.url && /\/api\/[^?]+\.(js|ts|json)/.test(req.url)) {
+              return req.url;
+            }
+          },
         },
       },
     },
