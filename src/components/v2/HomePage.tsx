@@ -8,6 +8,7 @@ import {
   groupCardKey,
   groupLayoutOf,
   resolveCardOrder,
+  stackLayoutOf,
   widgetCardKey,
   type LocalStore,
   type WidgetId,
@@ -30,7 +31,7 @@ import TrendingWidget from '../widgets/TrendingWidget';
  * - 无顶部标题栏：页面直接从吸顶栏开始——同一行内左半（2 栏）放页面导航图标组、右半（2 栏）放搜索框 + 低调的「数据」入口（导出/导入），整条栏吸顶
  * - 4 栏基准网格瀑布流（桌面 4 栏 / 手机 2 栏）
  * - B 型编组（display=list）：主页原地向下拉开 + 卡内滚动；C 型编组（display=stack）：点击弹窗看 ICON 瓷砖
- * - A 型原生组件与 B 型编组可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地
+ * - A 型原生组件与编组（B/C 型）可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地；C 型缺省 1 栏 × 1x
  * - 全部卡片（编组 + 原生组件）可按住拖拽排序：超过阈值才判定拖拽，普通点击不受影响；顺序存本地
  * - 全部编组与布局来自本地存储（方案三：本地优先），用户可增删改
  */
@@ -96,11 +97,15 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     });
   };
 
-  /** 菜单当前目标的布局与改尺寸入口（组件走 widgetLayouts，编组走 groupLayouts） */
+  /** 菜单当前目标的布局与改尺寸入口（组件走 widgetLayouts，编组走 groupLayouts；
+   *  编组按 display 取缺省：list 回落 2 栏 × 2x，stack 回落 1 栏 × 1x） */
   const sizeMenuLayout: WidgetLayout | null = sizeMenu
     ? sizeMenu.kind === 'widget'
       ? widgetLayouts[sizeMenu.id]
-      : groupLayoutOf(groupLayouts, sizeMenu.id)
+      : (() => {
+          const g = groups.find((gr) => gr.id === sizeMenu.id);
+          return g?.display === 'stack' ? stackLayoutOf(groupLayouts, sizeMenu.id) : groupLayoutOf(groupLayouts, sizeMenu.id);
+        })()
     : null;
   const sizeMenuTitle = sizeMenu
     ? sizeMenu.kind === 'widget'
@@ -148,7 +153,13 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   };
 
   const groupWrapperCls = (group: NavGroup) => {
-    if (group.display !== 'list') return 'col-span-1 row-span-1';
+    if (group.display !== 'list') {
+      // C 型编组同样按右键布局占格（缺省 1 栏 × 1x，老数据不破版）
+      const layout = stackLayoutOf(groupLayouts, group.id);
+      const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
+      const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
+      return `${col} ${row}`;
+    }
     // 展开态沿用既有高度逻辑（2 栏 × 4 行），不被右键布局设置影响
     if (expandedId === group.id) return 'col-span-2 row-span-4';
     // 收起态按右键布局占格（宽度夹到 ≤2 栏；老数据回落默认 2 栏 × 2x）
@@ -166,10 +177,17 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         onToggleExpand={toggleExpand}
         store={store}
         colSpan={groupLayoutOf(groupLayouts, group.id).colSpan}
+        heightUnits={groupLayoutOf(groupLayouts, group.id).heightUnits}
         delay={delay}
       />
     ) : (
-      <GroupStackCard group={group} onOpen={(g) => setPanelGroupId(g.id)} delay={delay} />
+      <GroupStackCard
+        group={group}
+        onOpen={(g) => setPanelGroupId(g.id)}
+        delay={delay}
+        colSpan={stackLayoutOf(groupLayouts, group.id).colSpan}
+        heightUnits={stackLayoutOf(groupLayouts, group.id).heightUnits}
+      />
     );
 
   /* ---------- 主页卡片顺序（拖拽排序后存本地） ---------- */
@@ -491,7 +509,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
               style={{ touchAction: 'pan-y' }}
               onPointerDown={(e) => handleCardPointerDown(e, key)}
               onContextMenu={
-                item.group?.display === 'list'
+                item.group
                   ? (e) => openSizeMenu(e, { kind: 'group', id: item.group!.id })
                   : wid
                     ? (e) => openSizeMenu(e, { kind: 'widget', id: wid })

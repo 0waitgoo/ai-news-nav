@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Pin, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { Pin, Pencil, Trash2, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { deadCount, sortSites, type NavGroup } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
@@ -9,11 +9,14 @@ import GroupExpandedBody from './GroupExpanded';
 /**
  * B 型 · 编组列表卡（收起态占格由右键布局决定：默认 2 栏 × 2x）
  * 站点行式排布（图标 + 名称 + 一句介绍 + 标签，同旧站 AI 导航）。
- * 收起只显示站点：2 栏时 2 列 × 4 行 = 8 个，1 栏时单列 4 个；卡面无展开按钮行，
- * 点卡面任意位置（站点与组内控件除外，均已阻止冒泡）原地展开 / 收起——不弹窗、不变纯图标。
+ * 收起只显示站点：可见数按布局算（栏数 × 每列行数，2x 每列 4 行、1x 每列 2 行）。
+ * 展开 / 收起只由明确按钮控制（第十六轮修正，整卡点击太容易误触）：
+ * 收起态溢出时底部渐隐提示条本身就是展开按钮，未溢出时卡底有同款「展开」小按钮；
+ * 展开态在卡片底部固定一条「收起」按钮。点卡面空白处不展开也不收起，点站点行仍是打开网站。
  * 展开后站点在卡内滚动区域里继续以行式呈现，末尾有虚线「增加网站」格子。
  * 第十二轮头部调整：标题行 = 组名 +「· N 个站点」小字（原右上角「编组 · N 个站点」已删除）；
  * 展开态的组操作（改组名 / 删组 / 详细列表↔文件夹式切换）上移到标题行右侧，与组名同一行。
+ * 第十六轮：收起态可见数按布局（栏数 × 高度行数）计算，溢出时卡底渐隐 +「还有 N 个站点」提示。
  */
 export default function GroupListCard({
   group,
@@ -21,6 +24,7 @@ export default function GroupListCard({
   onToggleExpand,
   store,
   colSpan = 2,
+  heightUnits = 2,
   delay = 0,
 }: {
   group: NavGroup;
@@ -29,11 +33,17 @@ export default function GroupListCard({
   store: LocalStore;
   /** 收起态宽度（右键布局）：1 栏时站点改单列、显示 4 个；2 栏时 2 列、显示 8 个 */
   colSpan?: 1 | 2;
+  /** 收起态高度（右键布局）：2x 每列 4 行；1x 每列 2 行——实际可见数按此计算，溢出提示的 N 才准确 */
+  heightUnits?: 1 | 2;
   delay?: number;
 }) {
   const sorted = sortSites(group.sites);
-  const visibleCount = colSpan === 1 ? 4 : 8;
+  const cols = colSpan === 1 ? 1 : 2;
+  const rowsPerCol = heightUnits === 2 ? 4 : 2;
+  const visibleCount = cols * rowsPerCol;
   const rows = sorted.slice(0, visibleCount);
+  /** 收起态未展示的站点数：> 0 时卡底出现渐隐 + 「还有 N 个站点」提示（第十六轮） */
+  const hiddenCount = expanded ? 0 : sorted.length - rows.length;
   const dead = deadCount(group);
 
   // 展开态组操作（原在展开体顶部一行，第十二轮上提到标题行）
@@ -48,8 +58,7 @@ export default function GroupListCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}
-      onClick={() => onToggleExpand(group)}
-      className="glass-panel glass-panel-hover rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors cursor-pointer"
+      className="glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
     >
       {/* 标题行：组名 +「· N 个站点」；展开时右侧同行放组操作（标题行内点击不触发卡片展开/收起） */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mb-2 shrink-0" onClick={expanded ? stop : undefined}>
@@ -148,10 +157,11 @@ export default function GroupListCard({
       </div>
 
       {expanded ? (
-        <GroupExpandedBody group={group} store={store} />
+        <GroupExpandedBody group={group} store={store} colSpan={colSpan} />
       ) : (
-        /* 收起态：只显示站点（无底部横线、无「展开全部」字样，整卡点击展开） */
-        <div className="flex-1 min-h-0 overflow-hidden">
+        /* 收起态：只显示站点（无底部横线、无「展开全部」字样）；展开靠底部按钮，不靠整卡点击 */
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-hidden">
           <div className={`grid gap-x-2 content-start ${colSpan === 1 ? 'grid-cols-1' : 'grid-cols-1 min-[480px]:grid-cols-2'}`}>
             {rows.map((site) => (
               <button
@@ -179,7 +189,63 @@ export default function GroupListCard({
               </button>
             ))}
           </div>
+          </div>
+          {/* 未溢出时卡底的「展开」小按钮：保证任何 B 卡都有明确的展开入口（溢出时用底部渐隐条按钮） */}
+          {hiddenCount === 0 && (
+            <div className="shrink-0 flex justify-center pt-1.5">
+              <button
+                type="button"
+                data-expand-btn
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleExpand(group);
+                }}
+                className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-full px-3 py-1 transition-colors cursor-pointer"
+              >
+                展开 <ChevronDown size={13} />
+              </button>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* 展开态：卡片底部固定的「收起」按钮（第十六轮修正：收起只点这里，不靠整卡点击） */}
+      {expanded && (
+        <div className="shrink-0 flex justify-center pt-2">
+          <button
+            type="button"
+            data-collapse-btn
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(group);
+            }}
+            className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-full px-3 py-1 transition-colors cursor-pointer"
+          >
+            收起 <ChevronUp size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* 收起态溢出提示 = 展开按钮（第十六轮）：底部渐隐（fade 到卡底深色）整条可点，
+          带 ⌄ 图标与 hover 提亮；点它才展开，点卡面其他空白处不展开。全部展示完不出现（改用卡底小「展开」按钮） */}
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          data-overflow-hint
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand(group);
+          }}
+          className="group/hint absolute inset-x-0 bottom-0 h-14 z-10 flex items-end justify-center pb-2.5 cursor-pointer"
+          style={{
+            background:
+              'linear-gradient(to top, rgba(17,17,23,0.94) 0%, rgba(17,17,23,0.72) 52%, rgba(17,17,23,0) 100%)',
+          }}
+        >
+          <span className="flex items-center gap-1 text-[11px] text-white/60 group-hover/hint:text-white transition-colors">
+            还有 {hiddenCount} 个站点 <ChevronDown size={13} />
+          </span>
+        </button>
       )}
     </motion.div>
   );

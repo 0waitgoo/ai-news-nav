@@ -5,12 +5,13 @@ import { GROUP_TAB_COLORS, deadCount, sortSites, type NavGroup, type SiteEntry }
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import { SiteForm } from './GroupExpanded';
+import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteContextMenu';
 
 /**
  * C 型 · 编组展开弹窗（第三轮恢复）
  * 点击堆叠卡弹出居中弹窗：组内站点为 ICON 瓷砖（图标 + 名字，置顶优先 + 频率排序），
- * 带「+ 添加网站」瓷砖、瓷砖悬停可编辑/删除；头部可改组名、切换形态、删组；
- * 底部失效提示条：失效链接只标记不删除。面板为实色背景，不用半透明/毛玻璃。
+ * 带「+ 添加网站」瓷砖；瓷砖的操作（打开/编辑/删除）走右键菜单（第十六轮追加，悬停不再冒图标）；
+ * 头部可改组名、切换形态、删组；底部失效提示条：失效链接只标记不删除。面板为实色背景，不用半透明/毛玻璃。
  * （B 型列表卡不走这里——它在主页原地向下拉开。）
  */
 export default function GroupPanel({
@@ -76,6 +77,7 @@ function PanelBody({
   const [barDismissed, setBarDismissed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingSite, setEditingSite] = useState<SiteEntry | null>(null);
+  const [siteMenu, setSiteMenu] = useState<SiteMenuState | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [groupName, setGroupName] = useState(group.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -259,28 +261,16 @@ function PanelBody({
             {sorted.map((site) => (
               <div
                 key={site.id ?? site.name}
-                className="group/tile relative flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.05] hover:bg-white/10 border border-white/5 transition-colors"
+                data-panel-site={site.name}
+                onContextMenu={(e) => {
+                  // 站点右键菜单：屏蔽浏览器默认菜单（弹窗不在卡片包装层内，不涉及尺寸菜单）
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSiteMenu({ ...siteMenuPosition(e), site });
+                }}
+                className="relative flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.05] hover:bg-white/10 border border-white/5 transition-colors"
               >
                 {site.pinned && <Pin size={10} className="absolute top-1.5 left-1.5 text-amber-400 fill-amber-400 z-10" />}
-                <span className="absolute top-1 right-1 z-10 flex gap-0.5 opacity-0 group-hover/tile:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => {
-                      setEditingSite(site);
-                      setAdding(false);
-                    }}
-                    title="编辑网站"
-                    className="p-1 rounded-md bg-[#26262e] border border-white/10 text-white/60 hover:text-white"
-                  >
-                    <Pencil size={11} />
-                  </button>
-                  <button
-                    onClick={() => site.id && store.deleteSite(group.id, site.id)}
-                    title="删除网站"
-                    className="p-1 rounded-md bg-[#26262e] border border-white/10 text-white/60 hover:text-red-300"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </span>
                 <button onClick={() => window.open(site.url, '_blank')} title={site.description} className="flex flex-col items-center gap-1.5 w-full">
                   <SiteLogo logo={site.logo} name={site.name} size={40} imgSize={28} grayscale={site.dead} />
                   <span className={`text-[11px] font-medium w-full text-center truncate ${site.dead ? 'text-white/45' : 'text-white/85'}`}>
@@ -321,6 +311,22 @@ function PanelBody({
             知道了
           </button>
         </div>
+      )}
+
+      {/* 站点右键菜单（打开/编辑/删除）：fixed 定位，渲染在弹窗内容之外不被滚动区裁剪 */}
+      {siteMenu && (
+        <SiteContextMenu
+          state={siteMenu}
+          onClose={() => setSiteMenu(null)}
+          onOpen={(site) => window.open(site.url, '_blank')}
+          onEdit={(site) => {
+            setEditingSite(site);
+            setAdding(false);
+          }}
+          onDelete={(site) => {
+            if (site.id) store.deleteSite(group.id, site.id);
+          }}
+        />
       )}
     </>
   );
