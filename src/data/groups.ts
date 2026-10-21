@@ -27,6 +27,8 @@ export interface NavGroup {
   name: string;
   /** 卡片形态：list = B 详细列表卡；stack = C 文件夹堆叠卡 */
   display: GroupDisplay;
+  /** 自定义副标题（C 卡卡面第二行）；为空时回落显示「N 个站点」 */
+  subtitle?: string;
   /** 编组自身的搜索别名 */
   aliases?: string[];
   sites: SiteEntry[];
