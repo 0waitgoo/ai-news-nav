@@ -14,6 +14,7 @@ import { groupIcon, siteLogoFallback, sortSites, type NavGroup, type SiteEntry }
  * - 第十六轮：与 B 卡一样可右键改尺寸（groupLayouts 按组存，缺省 1 栏 × 1x）；
  *   图标排去掉「+N」尾巴——1 栏每排 7 个（瓷砖 flex 自适应缩小以整排放下），2 栏每排按 48px 瓷砖放宽到 11 个；
  *   排数 = 高度（1x 一排、2x 两排）；未展示完时图标区右端加渐隐罩作提示，不再写数字（总数在标题行已有）
+ * - 第十七轮：去掉卡身外投影（原 shadow-xl shadow-black/30），卡面走扁平；图标瓷砖经常态/悬停态核查本就无阴影类，未动
  */
 export default function GroupStackCard({
   group,
@@ -72,7 +73,7 @@ export default function GroupStackCard({
       <div
         data-stack-body
         style={{ background: 'rgba(30, 30, 35, 0.4)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
-        className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 shadow-xl shadow-black/30 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
+        className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
       >
         {/* 标题行：组图标瓷砖 + 组名；右侧小字「N 个站点」 */}
         <div className="flex items-center gap-2.5 min-w-0">
