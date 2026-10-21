@@ -104,6 +104,14 @@ export function groupLayoutOf(layouts: Record<string, WidgetLayout>, groupId: st
   return layouts[groupId] ?? DEFAULT_GROUP_LAYOUT;
 }
 
+/** C 型编组（文件夹式）的默认占位：1 栏 × 1x（与 B 型共用 groupLayouts 存储，仅缺省值不同） */
+export const DEFAULT_STACK_LAYOUT: WidgetLayout = { colSpan: 1, heightUnits: 1 };
+
+/** 读某 C 型编组的布局：未存过时回落 1 栏 × 1x */
+export function stackLayoutOf(layouts: Record<string, WidgetLayout>, groupId: string): WidgetLayout {
+  return layouts[groupId] ?? DEFAULT_STACK_LAYOUT;
+}
+
 export interface StoreData {
   version: 1;
   groups: NavGroup[];
@@ -121,6 +129,12 @@ export interface StoreData {
   cardOrder: string[];
   /** 背景设置（预设或本地图片标记）；老数据无此字段时回落默认预设 */
   background: BackgroundSetting;
+  /**
+   * 数据最后变更时间戳（毫秒）：每次经 update() 的用户变更都会刷新；
+   * importData 不刷新（保留来源的时间戳），供 GitHub 同步按新旧裁决冲突。
+   * 老数据无此字段时为 0（任何带真实时间戳的一端都比它新）。
+   */
+  updatedAt: number;
 }
 
 /** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
@@ -181,6 +195,7 @@ function seedData(): StoreData {
     groupLayouts: {},
     cardOrder: [],
     background: { ...DEFAULT_BACKGROUND },
+    updatedAt: Date.now(),
   };
 }
 
@@ -279,6 +294,7 @@ export function validateStoreData(raw: unknown): StoreData | null {
     groupLayouts,
     cardOrder,
     background,
+    updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
   };
 }
 
@@ -328,7 +344,12 @@ export function useLocalStore() {
   }, [data]);
 
   const update = useCallback((fn: (d: StoreData) => StoreData) => {
-    setData((prev) => fn(structuredClone(prev)));
+    setData((prev) => {
+      const next = fn(structuredClone(prev));
+      // 每次用户变更都刷新时间戳：GitHub 同步靠它判断本地/云端谁更新
+      next.updatedAt = Date.now();
+      return next;
+    });
   }, []);
 
   const addSite = useCallback(
@@ -416,11 +437,14 @@ export function useLocalStore() {
     [update],
   );
 
-  /** B 型编组右键改尺寸：按 groupId 存收起态占位（宽度夹到 ≤2 栏） */
+  /** 编组右键改尺寸：按 groupId 存占位（宽度夹到 ≤2 栏）；
+   *  合并基底按 display 取缺省——stack 组是 1 栏 × 1x，只改高度时不能把宽度带成 B 卡默认的 2 栏 */
   const setGroupLayout = useCallback(
     (groupId: string, patch: Partial<WidgetLayout>) => {
       update((d) => {
-        const cur = d.groupLayouts[groupId] ?? DEFAULT_GROUP_LAYOUT;
+        const group = d.groups.find((g) => g.id === groupId);
+        const fallback = group?.display === 'stack' ? DEFAULT_STACK_LAYOUT : DEFAULT_GROUP_LAYOUT;
+        const cur = d.groupLayouts[groupId] ?? fallback;
         const next = { ...cur, ...patch };
         next.colSpan = clampColSpan(next.colSpan);
         d.groupLayouts[groupId] = next;
