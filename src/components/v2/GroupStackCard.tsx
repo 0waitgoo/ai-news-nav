@@ -1,11 +1,15 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { groupIcon, pinnedCount, sortSites, type NavGroup } from '../../data/groups';
+import { groupIcon, siteLogoFallback, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { SiteLogo } from './Card';
 
 /**
- * C 型 · 编组堆叠卡（默认 1 栏 × 1X）
- * 卡面：组图标、组名、站点数、卡面标注「置顶 N」、常用站首字母块；卡背露层。不显示「最近使用」。
- * 点击弹出居中弹窗（GroupPanel）看组内 ICON 瓷砖——不在主页原地展开（那是 B 型列表卡的方式）。
+ * C 型 · 编组堆叠卡（默认 1 栏 × 1X）—— 文件夹卡面（第六轮，用户拍板原方案二造型 + 5 条修订）
+ * - 文件夹造型：左上标签页（组图标 + 组名），身子是四角完整的圆角矩形，衔接无缺口/断角
+ * - 右上露出两张纸：印排序最靠前两站的真实 LOGO（置顶优先 + 频率），可点击直达，悬停 LOGO 放大
+ * - 第二行显示自定义副标题（group.subtitle），未设置时回落「N 个站点」；不显示置顶小字行
+ * - 底部一排前 5 站真实 ICON（可点击直达），超出以「+N」尾块收尾（点击开弹窗）
+ * - 卡面其余区域点击打开组弹窗（GroupPanel）
  */
 export default function GroupStackCard({
   group,
@@ -17,67 +21,100 @@ export default function GroupStackCard({
   delay?: number;
 }) {
   const sorted = sortSites(group.sites);
-  const topSites = sorted.slice(0, 4);
-  const extra = group.sites.length - topSites.length;
-  const pinned = pinnedCount(group);
+  const paperSites = sorted.slice(0, 2);
+  const faceSites = sorted.slice(0, 5);
+  const extra = group.sites.length - faceSites.length;
+  const subtitle = group.subtitle?.trim() ? group.subtitle.trim() : `${group.sites.length} 个站点`;
+
+  const openSite = (e: React.MouseEvent, site: SiteEntry) => {
+    e.stopPropagation();
+    window.open(site.url, '_blank');
+  };
 
   return (
-    <motion.button
+    <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}
       onClick={() => onOpen(group)}
-      className="relative w-full h-full text-left group/card"
       whileHover={{ y: -3 }}
+      className="relative w-full h-full text-left group/card cursor-pointer"
+      role="button"
+      aria-label={`${group.name} 编组`}
     >
-      {/* 卡背露层：第 2、3 常用站 */}
-      <div className="absolute inset-0 translate-x-[7px] -translate-y-[5px] rotate-[1.6deg] rounded-[26px] bg-white/[0.045] border border-white/[0.07] transition-transform group-hover/card:translate-x-[10px] group-hover/card:-translate-y-[7px]" />
-      <div className="absolute inset-0 translate-x-[3.5px] -translate-y-[2.5px] rotate-[0.8deg] rounded-[26px] bg-white/[0.07] border border-white/[0.08] transition-transform group-hover/card:translate-x-[5px] group-hover/card:-translate-y-[3.5px]" />
+      {/* 右上露出的两张纸：靠前两站的真实 LOGO，可点击直达、悬停放大 */}
+      {paperSites.map((site, i) => (
+        <button
+          key={site.id ?? site.name}
+          type="button"
+          title={site.name}
+          data-paper-site={site.name}
+          onClick={(e) => openSite(e, site)}
+          className={`group/paper absolute top-[3px] w-[52px] h-[76px] rounded-[7px] bg-[#f4f4f6] border border-black/10 shadow-lg shadow-black/40 pt-[7px] flex justify-center transition-transform duration-200 hover:z-30 hover:scale-[1.07] ${
+            i === 0
+              ? 'right-[54px] -rotate-[5deg] z-[1] group-hover/card:-translate-y-[3px]'
+              : 'right-[15px] rotate-[4deg] z-[2] group-hover/card:-translate-y-[4px]'
+          }`}
+        >
+          <img
+            src={site.logo}
+            alt={site.name}
+            loading="lazy"
+            className={`w-[29px] h-[29px] object-contain transition-transform duration-200 group-hover/paper:scale-125 ${site.dead ? 'grayscale opacity-60' : ''}`}
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              if (!target.src.includes('dicebear')) target.src = siteLogoFallback(site.name);
+            }}
+          />
+        </button>
+      ))}
 
-      {/* 卡面 */}
-      <div className="relative glass-panel glass-panel-hover rounded-[26px] h-full p-3.5 sm:p-4 flex flex-col overflow-hidden transition-colors">
-        <div className="flex items-start gap-2.5 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0">
-            {group.sites.length > 0 ? (
-              <img
-                src={groupIcon(group)}
-                alt={group.name}
-                loading="lazy"
-                className="w-7 h-7 object-contain"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
-              />
-            ) : (
-              <span className="text-slate-400 text-sm font-bold">{group.name.charAt(0)}</span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="font-semibold text-[15px] sm:text-base tracking-tight truncate">{group.name}</h3>
-            <p className="text-[11px] text-white/45 mt-0.5 truncate">
-              {group.sites.length} 个站点{pinned > 0 ? ` · 置顶 ${pinned}` : ''}
-            </p>
-          </div>
-        </div>
+      {/* 文件夹身子：四角完整的圆角矩形（实色，不透出背后的纸） */}
+      <div className="absolute inset-x-0 bottom-0 top-[42px] z-10 rounded-[22px] bg-[#1e1e24] border border-white/10 shadow-xl shadow-black/30 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3 pb-3.5 flex flex-col overflow-hidden">
+        {/* 第二行：自定义副标题（未设置回落「N 个站点」） */}
+        <p className="text-[15px] font-semibold tracking-tight text-white/90 truncate pr-1">{subtitle}</p>
 
-        {/* 常用站首字母块 */}
-        <div className="mt-auto pt-2.5 flex items-center gap-1.5">
-          {topSites.map((site) => (
-            <span
+        {/* 底部一排：前 5 站真 ICON，可点击直达；超出以 +N 收尾 */}
+        <div className="mt-auto pt-2 flex items-center gap-1.5">
+          {faceSites.map((site) => (
+            <button
               key={site.id ?? site.name}
+              type="button"
               title={site.name}
-              className={`w-[34px] h-[34px] rounded-[10px] flex items-center justify-center text-[13px] font-bold shrink-0 ${
-                site.dead ? 'bg-red-500/10 text-red-300/70 border border-red-400/20' : 'bg-white/8 text-white/80 border border-white/5'
-              }`}
+              data-face-site={site.name}
+              onClick={(e) => openSite(e, site)}
+              className="group/face shrink-0 rounded-xl hover:z-20"
             >
-              {site.name.charAt(0).toUpperCase()}
-            </span>
+              <span className="block transition-transform duration-150 group-hover/face:scale-110">
+                <SiteLogo logo={site.logo} name={site.name} size={34} imgSize={24} grayscale={site.dead} />
+              </span>
+            </button>
           ))}
           {extra > 0 && <span className="text-xs font-semibold text-white/45 ml-0.5">+{extra}</span>}
           {group.sites.length === 0 && <span className="text-[11px] text-white/35">点开添加第一个网站</span>}
         </div>
       </div>
-    </motion.button>
+
+      {/* 左上标签页：组图标 + 组名，与身子重叠衔接（身子左上角圆角在其下方完整露出） */}
+      <div className="absolute top-[8px] left-[12px] z-20 h-[38px] max-w-[58%] flex items-center gap-2 pl-2.5 pr-3.5 rounded-t-[14px] rounded-br-[16px] rounded-bl-[4px] bg-[#26262e] border border-white/10 border-b-0 shadow-md shadow-black/20">
+        <div className="w-[22px] h-[22px] rounded-md bg-white flex items-center justify-center overflow-hidden shrink-0">
+          {group.sites.length > 0 ? (
+            <img
+              src={groupIcon(group)}
+              alt={group.name}
+              loading="lazy"
+              className="w-[15px] h-[15px] object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+              }}
+            />
+          ) : (
+            <span className="text-slate-400 text-[11px] font-bold">{group.name.charAt(0)}</span>
+          )}
+        </div>
+        <h3 className="font-semibold text-[13px] tracking-tight truncate">{group.name}</h3>
+      </div>
+    </motion.div>
   );
 }

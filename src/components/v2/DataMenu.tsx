@@ -62,7 +62,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
           setConfirmReset(false);
         }}
         title="数据：导出 / 导入 / 恢复默认"
-        className="h-12 sm:h-13 px-3 rounded-2xl bg-[#141419]/60 backdrop-blur-xl border border-white/[0.07] text-white/45 hover:text-white/85 hover:border-white/15 flex items-center gap-1.5 text-xs transition-colors"
+        className="h-12 sm:h-13 px-2.5 sm:px-3 rounded-2xl bg-[#141419]/60 backdrop-blur-xl border border-white/[0.07] text-white/45 hover:text-white/85 hover:border-white/15 flex items-center gap-1.5 text-xs transition-colors"
       >
         <Database size={15} />
         <span className="hidden sm:inline">数据</span>

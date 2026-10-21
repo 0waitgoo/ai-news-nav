@@ -66,7 +66,7 @@ export default function StickySearch({
   return (
     <div ref={containerRef} className="relative flex-1 min-w-0">
       <div className="relative">
-        <div className="flex items-center gap-3 h-12 sm:h-13 px-4 rounded-2xl bg-[#141419]/85 backdrop-blur-xl border border-white/10 shadow-lg shadow-black/30 focus-within:border-indigo-400/40 transition-colors">
+        <div className="flex items-center gap-2 sm:gap-3 h-12 sm:h-13 px-3 sm:px-4 rounded-2xl bg-[#141419]/85 backdrop-blur-xl border border-white/10 shadow-lg shadow-black/30 focus-within:border-indigo-400/40 transition-colors">
           <Search size={18} className="text-white/40 shrink-0" />
           <input
             ref={inputRef}

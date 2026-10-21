@@ -78,6 +78,7 @@ function PanelBody({
   const [editingSite, setEditingSite] = useState<SiteEntry | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [groupName, setGroupName] = useState(group.name);
+  const [subtitleDraft, setSubtitleDraft] = useState(group.subtitle ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const sorted = useMemo(() => sortSites(group.sites), [group]);
@@ -191,6 +192,44 @@ function PanelBody({
                 className="flex items-center gap-1 text-[11px] text-white/50 hover:text-red-300 transition-colors ml-auto"
               >
                 <Trash2 size={11} /> 删组
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 自定义标题：C 卡卡面第二行文案，留空回落「N 个站点」 */}
+        {!renaming && (
+          <div className="flex items-center gap-2 mt-2.5">
+            <span className="text-[11px] text-white/50 shrink-0">自定义标题</span>
+            <input
+              value={subtitleDraft}
+              onChange={(e) => setSubtitleDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') store.setGroupSubtitle(group.id, subtitleDraft.trim());
+              }}
+              onBlur={() => {
+                if (subtitleDraft.trim() !== (group.subtitle ?? '')) store.setGroupSubtitle(group.id, subtitleDraft.trim());
+              }}
+              placeholder="卡面副标题，留空显示站点数"
+              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400/60 placeholder:text-white/25"
+            />
+            {subtitleDraft.trim() !== (group.subtitle ?? '') && (
+              <button
+                onClick={() => store.setGroupSubtitle(group.id, subtitleDraft.trim())}
+                className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-indigo-500/80 text-white shrink-0"
+              >
+                <Check size={12} /> 保存
+              </button>
+            )}
+            {(group.subtitle ?? '') !== '' && subtitleDraft.trim() === (group.subtitle ?? '') && (
+              <button
+                onClick={() => {
+                  setSubtitleDraft('');
+                  store.setGroupSubtitle(group.id, '');
+                }}
+                className="text-[11px] px-2.5 py-1.5 rounded-lg bg-white/10 text-white/70 shrink-0"
+              >
+                清空
               </button>
             )}
           </div>

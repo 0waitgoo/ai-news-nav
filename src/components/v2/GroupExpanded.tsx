@@ -153,7 +153,8 @@ export default function GroupExpandedBody({ group, store }: { group: NavGroup; s
   const dead = deadCount(group);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    /* 展开体内点击只做组内操作（改名/加站/开站点等），不冒泡到卡片触发收起 */
+    <div className="flex-1 min-h-0 flex flex-col" onClick={(e) => e.stopPropagation()}>
       {/* 组操作行：改名 / 删组 */}
       <div className="flex items-center gap-2 pb-2 shrink-0">
         {renaming ? (
@@ -245,7 +246,7 @@ export default function GroupExpandedBody({ group, store }: { group: NavGroup; s
       {/* 站点列表：卡内滚动（data-nodrag：此区域内按下拖动不触发整卡拖拽排序） */}
       <div data-nodrag className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
         {sorted.length === 0 && !adding && (
-          <p className="text-xs text-white/35 py-6 text-center">这个编组还没有网站，点下方「添加网站」加上第一个吧</p>
+          <p className="text-xs text-white/35 py-6 text-center">这个编组还没有网站，点「增加网站」加上第一个吧</p>
         )}
         <div className="grid grid-cols-1 min-[480px]:grid-cols-2 gap-x-2 content-start">
           {sorted.map((site) => (
@@ -253,6 +254,15 @@ export default function GroupExpandedBody({ group, store }: { group: NavGroup; s
               <EditableSiteRow site={site} groupId={group.id} store={store} />
             </React.Fragment>
           ))}
+          {/* 加站格子：紧跟最后一个站点，与站点行同尺寸的虚线框（唯一的加站入口） */}
+          {!adding && (
+            <button
+              onClick={() => setAdding(true)}
+              className="flex items-center justify-center gap-1 px-2 py-[7px] min-h-[48px] rounded-2xl border border-dashed border-white/15 text-[11px] text-white/50 hover:text-white/85 hover:border-white/30 transition-colors"
+            >
+              <Plus size={13} /> 增加网站
+            </button>
+          )}
         </div>
         {adding && (
           <div className="mt-2">
@@ -266,16 +276,6 @@ export default function GroupExpandedBody({ group, store }: { group: NavGroup; s
           </div>
         )}
       </div>
-
-      {/* 添加网站 */}
-      {!adding && (
-        <button
-          onClick={() => setAdding(true)}
-          className="mt-2 w-full py-2 rounded-xl border border-dashed border-white/15 text-[11px] text-white/50 hover:text-white/85 hover:border-white/30 transition-colors flex items-center justify-center gap-1 shrink-0"
-        >
-          <Plus size={13} /> 添加网站
-        </button>
-      )}
     </div>
   );
 }

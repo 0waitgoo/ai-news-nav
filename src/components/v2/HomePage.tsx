@@ -6,13 +6,16 @@ import {
   ALL_WIDGETS,
   clampColSpan,
   groupCardKey,
+  groupLayoutOf,
   resolveCardOrder,
   useLocalStore,
   widgetCardKey,
   type WidgetId,
+  type WidgetLayout,
 } from '../../store/localStore';
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
+import { TopNav } from '../Sidebar';
 import NewsCard from './NewsCard';
 import RankingCard from './RankingCard';
 import TaskPlaceholderCard from './TaskPlaceholderCard';
@@ -22,11 +25,11 @@ import GroupPanel from './GroupPanel';
 import TrendingWidget from '../widgets/TrendingWidget';
 
 /**
- * V2 新主页（第三轮修订 + 第五轮拖拽排序）
- * - 无顶部标题栏：页面直接从吸顶搜索区开始，搜索区旁有低调的「数据」入口（导出/导入）
+ * V2 新主页（第三轮修订 + 第五轮拖拽排序 + 第八轮顶栏一行对齐）
+ * - 无顶部标题栏：页面直接从吸顶栏开始——同一行内左半（2 栏）放页面导航图标组、右半（2 栏）放搜索框 + 低调的「数据」入口（导出/导入），整条栏吸顶
  * - 4 栏基准网格瀑布流（桌面 4 栏 / 手机 2 栏）
  * - B 型编组（display=list）：主页原地向下拉开 + 卡内滚动；C 型编组（display=stack）：点击弹窗看 ICON 瓷砖
- * - A 型原生组件可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地
+ * - A 型原生组件与 B 型编组可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地
  * - 全部卡片（编组 + 原生组件）可按住拖拽排序：超过阈值才判定拖拽，普通点击不受影响；顺序存本地
  * - 全部编组与布局来自本地存储（方案三：本地优先），用户可增删改
  */
@@ -43,15 +46,17 @@ function findScrollAncestor(el: HTMLElement): HTMLElement | null {
 }
 export default function HomePage({ onNavigate }: { onNavigate: (page: string) => void }) {
   const store = useLocalStore();
-  const { groups, widgets, widgetLayouts } = store.data;
+  const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [panelGroupId, setPanelGroupId] = useState<string | null>(null);
   const [showWidgetPanel, setShowWidgetPanel] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDisplay, setNewGroupDisplay] = useState<GroupDisplay>('stack');
-  const [widgetMenu, setWidgetMenu] = useState<{ id: WidgetId; x: number; y: number } | null>(null);
-  const widgetMenuRef = useRef<HTMLDivElement>(null);
+  /** 右键尺寸菜单的目标：原生组件或 B 型编组（共用同一套菜单） */
+  type SizeMenuTarget = { kind: 'widget'; id: WidgetId } | { kind: 'group'; id: string };
+  const [sizeMenu, setSizeMenu] = useState<(SizeMenuTarget & { x: number; y: number }) | null>(null);
+  const sizeMenuRef = useRef<HTMLDivElement>(null);
 
   const listGroups = useMemo(() => groups.filter((g) => g.display === 'list'), [groups]);
   const stackGroups = useMemo(() => groups.filter((g) => g.display === 'stack'), [groups]);
@@ -59,16 +64,16 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
   const hasWidget = (id: WidgetId) => widgets.includes(id);
   const panelGroup = panelGroupId ? (groups.find((g) => g.id === panelGroupId) ?? null) : null;
 
-  /* ---------- A 型组件右键尺寸菜单 ---------- */
+  /* ---------- 右键尺寸菜单（原生组件与 B 型编组共用） ---------- */
   useEffect(() => {
-    if (!widgetMenu) return;
+    if (!sizeMenu) return;
     const onPointerDown = (e: MouseEvent) => {
-      if (widgetMenuRef.current && !widgetMenuRef.current.contains(e.target as Node)) setWidgetMenu(null);
+      if (sizeMenuRef.current && !sizeMenuRef.current.contains(e.target as Node)) setSizeMenu(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setWidgetMenu(null);
+      if (e.key === 'Escape') setSizeMenu(null);
     };
-    const onScroll = () => setWidgetMenu(null);
+    const onScroll = () => setSizeMenu(null);
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKey);
     document.addEventListener('scroll', onScroll, true);
@@ -77,18 +82,35 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('scroll', onScroll, true);
     };
-  }, [widgetMenu]);
+  }, [sizeMenu]);
 
-  const openWidgetMenu = (e: React.MouseEvent, id: WidgetId) => {
+  const openSizeMenu = (e: React.MouseEvent, target: SizeMenuTarget) => {
     e.preventDefault();
     e.stopPropagation();
     const MENU_W = 208;
     const MENU_H = 196;
-    setWidgetMenu({
-      id,
+    setSizeMenu({
+      ...target,
       x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
       y: Math.max(8, Math.min(e.clientY, window.innerHeight - MENU_H - 8)),
     });
+  };
+
+  /** 菜单当前目标的布局与改尺寸入口（组件走 widgetLayouts，编组走 groupLayouts） */
+  const sizeMenuLayout: WidgetLayout | null = sizeMenu
+    ? sizeMenu.kind === 'widget'
+      ? widgetLayouts[sizeMenu.id]
+      : groupLayoutOf(groupLayouts, sizeMenu.id)
+    : null;
+  const sizeMenuTitle = sizeMenu
+    ? sizeMenu.kind === 'widget'
+      ? `${ALL_WIDGETS.find((w) => w.id === sizeMenu.id)?.name ?? ''} · 组件尺寸`
+      : `${groups.find((g) => g.id === sizeMenu.id)?.name ?? ''} · 编组尺寸`
+    : '';
+  const applySizeMenuLayout = (patch: Partial<WidgetLayout>) => {
+    if (!sizeMenu) return;
+    if (sizeMenu.kind === 'widget') store.setWidgetLayout(sizeMenu.id, patch);
+    else store.setGroupLayout(sizeMenu.id, patch);
   };
 
   const widgetCls = (id: WidgetId) => {
@@ -125,12 +147,16 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
     scrollToGroup(group.id);
   };
 
-  const groupWrapperCls = (group: NavGroup) =>
-    group.display === 'list'
-      ? expandedId === group.id
-        ? 'col-span-2 row-span-4'
-        : 'col-span-2 row-span-2'
-      : 'col-span-1 row-span-1';
+  const groupWrapperCls = (group: NavGroup) => {
+    if (group.display !== 'list') return 'col-span-1 row-span-1';
+    // 展开态沿用既有高度逻辑（2 栏 × 4 行），不被右键布局设置影响
+    if (expandedId === group.id) return 'col-span-2 row-span-4';
+    // 收起态按右键布局占格（宽度夹到 ≤2 栏；老数据回落默认 2 栏 × 2x）
+    const layout = groupLayoutOf(groupLayouts, group.id);
+    const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
+    const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
+    return `${col} ${row}`;
+  };
 
   const renderGroup = (group: NavGroup, delay: number) =>
     group.display === 'list' ? (
@@ -139,6 +165,7 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
         expanded={expandedId === group.id}
         onToggleExpand={toggleExpand}
         store={store}
+        colSpan={groupLayoutOf(groupLayouts, group.id).colSpan}
         delay={delay}
       />
     ) : (
@@ -424,12 +451,19 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
 
   return (
     <div className="flex flex-col">
-      {/* 吸顶搜索区：搜索 + 数据入口，滚动时停留在视口顶部 */}
+      {/* 吸顶栏（一行对齐）：与下方卡片网格同款 4 栏 grid——左半 2 栏放页面导航图标组（靠左），
+          右半 2 栏放搜索框 +「数据」入口（算在右半内）；整条栏吸顶，滚动时停留在视口顶部。
+          移动端为 2 栏 grid，左右各半，仍保持一行不换行。 */}
       <div className="sticky top-0 z-50 -mt-1 pt-1 pb-2">
         <div className="absolute inset-0 bg-[#0a0a10]/75 backdrop-blur-xl rounded-b-3xl border-b border-white/[0.06]" />
-        <div className="relative flex items-start gap-2">
-          <StickySearch groups={groups} onOpenGroup={openGroupFromSearch} />
-          <DataMenu store={store} />
+        <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
+          <div className="col-span-1 lg:col-span-2 flex items-center justify-start min-w-0">
+            <TopNav onPageChange={onNavigate} currentPage="home" />
+          </div>
+          <div className="col-span-1 lg:col-span-2 flex items-center gap-2 min-w-0">
+            <StickySearch groups={groups} onOpenGroup={openGroupFromSearch} />
+            <DataMenu store={store} />
+          </div>
         </div>
       </div>
 
@@ -455,7 +489,13 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
               className={`${cardSpanCls(key)} scroll-mt-20 relative`}
               style={{ touchAction: 'pan-y' }}
               onPointerDown={(e) => handleCardPointerDown(e, key)}
-              onContextMenu={wid ? (e) => openWidgetMenu(e, wid) : undefined}
+              onContextMenu={
+                item.group?.display === 'list'
+                  ? (e) => openSizeMenu(e, { kind: 'group', id: item.group!.id })
+                  : wid
+                    ? (e) => openSizeMenu(e, { kind: 'widget', id: wid })
+                    : undefined
+              }
             >
               <div className={dragKey === key ? 'h-full invisible' : 'h-full'}>{renderCardItem(key, i)}</div>
               {dragKey === key && (
@@ -482,7 +522,7 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
         </div>
       </div>
 
-      <p className="text-center text-[11px] text-white/25 pt-8 pb-2">继续向下滚动 · 编组与组件都存在本机，增删改刷新不丢 · 卡片可按住拖动排序 · 原生组件可右键改尺寸</p>
+      <p className="text-center text-[11px] text-white/25 pt-8 pb-2">继续向下滚动 · 编组与组件都存在本机，增删改刷新不丢 · 卡片可按住拖动排序 · 组件与编组可右键改尺寸</p>
 
       {/* 拖拽中的浮动卡片快照：跟随指针，带抬升阴影 */}
       {dragSnap && (
@@ -501,29 +541,27 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
       {/* C 型编组弹窗（ICON 瓷砖） */}
       <GroupPanel group={panelGroup} store={store} onClose={() => setPanelGroupId(null)} onBecomeList={handleBecomeList} />
 
-      {/* A 型组件右键尺寸菜单（实色） */}
+      {/* 右键尺寸菜单（实色）：A 型组件与 B 型编组共用 */}
       <AnimatePresence>
-        {widgetMenu && (
+        {sizeMenu && sizeMenuLayout && (
           <motion.div
-            ref={widgetMenuRef}
+            ref={sizeMenuRef}
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.12 }}
             className="fixed z-[80] w-[200px] rounded-2xl bg-[#1e1e26] border border-white/15 shadow-2xl shadow-black/70 p-2.5"
-            style={{ left: widgetMenu.x, top: widgetMenu.y }}
+            style={{ left: sizeMenu.x, top: sizeMenu.y }}
           >
-            <p className="px-1 pb-2 text-[11px] font-medium text-white/60">
-              {ALL_WIDGETS.find((w) => w.id === widgetMenu.id)?.name} · 组件尺寸
-            </p>
+            <p className="px-1 pb-2 text-[11px] font-medium text-white/60">{sizeMenuTitle}</p>
             <p className="px-1 pb-1 text-[10px] tracking-wider text-white/40 uppercase">宽度</p>
             <div className="flex gap-1 pb-2.5">
               {([1, 2] as const).map((n) => {
-                const selected = widgetLayouts[widgetMenu.id].colSpan === n;
+                const selected = sizeMenuLayout.colSpan === n;
                 return (
                   <button
                     key={n}
-                    onClick={() => store.setWidgetLayout(widgetMenu.id, { colSpan: n })}
+                    onClick={() => applySizeMenuLayout({ colSpan: n })}
                     className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs transition-colors ${
                       selected ? 'bg-indigo-500/80 text-white font-semibold' : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                     }`}
@@ -537,11 +575,11 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
             <p className="px-1 pb-1 text-[10px] tracking-wider text-white/40 uppercase">高度</p>
             <div className="flex gap-1">
               {([1, 2] as const).map((n) => {
-                const selected = widgetLayouts[widgetMenu.id].heightUnits === n;
+                const selected = sizeMenuLayout.heightUnits === n;
                 return (
                   <button
                     key={n}
-                    onClick={() => store.setWidgetLayout(widgetMenu.id, { heightUnits: n })}
+                    onClick={() => applySizeMenuLayout({ heightUnits: n })}
                     className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs transition-colors ${
                       selected ? 'bg-indigo-500/80 text-white font-semibold' : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                     }`}
