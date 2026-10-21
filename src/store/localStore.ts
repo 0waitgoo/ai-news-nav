@@ -31,6 +31,14 @@ export const DEFAULT_WIDGET_LAYOUTS: Record<WidgetId, WidgetLayout> = {
   trending: { colSpan: 2, heightUnits: 1 },
 };
 
+/** B 型编组卡收起态的默认占位：2 栏 × 2x（与组件共用 WidgetLayout 形状，右键菜单可改） */
+export const DEFAULT_GROUP_LAYOUT: WidgetLayout = { colSpan: 2, heightUnits: 2 };
+
+/** 读某编组的布局：未存过时回落默认（老数据兼容） */
+export function groupLayoutOf(layouts: Record<string, WidgetLayout>, groupId: string): WidgetLayout {
+  return layouts[groupId] ?? DEFAULT_GROUP_LAYOUT;
+}
+
 export interface StoreData {
   version: 1;
   groups: NavGroup[];
@@ -38,6 +46,8 @@ export interface StoreData {
   widgets: WidgetId[];
   /** 每个 A 型组件的网格占位（右键菜单可改），缺省走 DEFAULT_WIDGET_LAYOUTS */
   widgetLayouts: Record<WidgetId, WidgetLayout>;
+  /** 每个 B 型编组的收起态网格占位（右键菜单可改），按 groupId 存，缺省走 DEFAULT_GROUP_LAYOUT */
+  groupLayouts: Record<string, WidgetLayout>;
   /**
    * 主页卡片顺序（用户拖拽排序后落盘）：元素为卡片稳定 key，
    * 编组 = group:<groupId>，原生组件 = widget:<widgetId>。
@@ -101,6 +111,7 @@ function seedData(): StoreData {
     groups: ensureSiteIds(structuredClone(navGroups)),
     widgets: [...DEFAULT_WIDGETS],
     widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
+    groupLayouts: {},
     cardOrder: [],
   };
 }
@@ -128,6 +139,29 @@ export function clampColSpan(span: number | undefined): 1 | 2 {
   return span !== undefined && span >= 2 ? 2 : 1;
 }
 
+/** 归一化一个布局值：非法字段逐项回落到 fallback（宽度同样夹到 ≤2 栏） */
+function normalizeLayout(raw: unknown, fallback: WidgetLayout): WidgetLayout {
+  const layout: WidgetLayout = { ...fallback };
+  if (raw && typeof raw === 'object') {
+    const l = raw as { colSpan?: unknown; heightUnits?: unknown };
+    if (l.colSpan === 1) layout.colSpan = 1;
+    else if (typeof l.colSpan === 'number' && l.colSpan >= 2) layout.colSpan = 2;
+    if (l.heightUnits === 1 || l.heightUnits === 2) layout.heightUnits = l.heightUnits;
+  }
+  return layout;
+}
+
+/** 归一化 groupLayouts：老数据无此字段时为空表（各组回落 DEFAULT_GROUP_LAYOUT）；逐组采纳合法值 */
+function normalizeGroupLayouts(raw: unknown): Record<string, WidgetLayout> {
+  const out: Record<string, WidgetLayout> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [gid, l] of Object.entries(raw as Record<string, unknown>)) {
+      if (l && typeof l === 'object') out[gid] = normalizeLayout(l, DEFAULT_GROUP_LAYOUT);
+    }
+  }
+  return out;
+}
+
 /** 校验任意来源（localStorage / 导入文件）的数据结构，合法则归一化返回，否则 null */
 export function validateStoreData(raw: unknown): StoreData | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -149,6 +183,8 @@ export function validateStoreData(raw: unknown): StoreData | null {
             : 'stack';
     }
     delete legacy.type;
+    // 自定义副标题向后兼容：老数据无此字段时默认为空字符串（卡面回落显示站点数）
+    if (typeof group.subtitle !== 'string') group.subtitle = '';
     for (const site of group.sites as SiteEntry[]) {
       if (!site || typeof site.name !== 'string' || typeof site.url !== 'string') return null;
       if (typeof site.description !== 'string') site.description = '';
@@ -160,10 +196,11 @@ export function validateStoreData(raw: unknown): StoreData | null {
     ? (data.widgets.filter((w) => ALL_WIDGETS.some((aw) => aw.id === w)) as WidgetId[])
     : [...DEFAULT_WIDGETS];
   const widgetLayouts = normalizeWidgetLayouts((data as { widgetLayouts?: unknown }).widgetLayouts);
+  const groupLayouts = normalizeGroupLayouts((data as { groupLayouts?: unknown }).groupLayouts);
   // 卡片顺序：老数据无此字段时为空（回落默认顺序）；只采纳字符串元素
   const rawOrder = (data as { cardOrder?: unknown }).cardOrder;
   const cardOrder = Array.isArray(rawOrder) ? (rawOrder.filter((k) => typeof k === 'string') as string[]) : [];
-  return { version: 1, groups: ensureSiteIds(data.groups as NavGroup[]), widgets, widgetLayouts, cardOrder };
+  return { version: 1, groups: ensureSiteIds(data.groups as NavGroup[]), widgets, widgetLayouts, groupLayouts, cardOrder };
 }
 
 function loadInitial(): StoreData {
@@ -270,7 +307,7 @@ export function useLocalStore() {
   const addGroup = useCallback((name: string, display: GroupDisplay): string => {
     const id = genId('g');
     update((d) => {
-      d.groups.push({ id, name, display, sites: [] });
+      d.groups.push({ id, name, display, subtitle: '', sites: [] });
       return d;
     });
     return id;
@@ -300,11 +337,37 @@ export function useLocalStore() {
     [update],
   );
 
+  /** B 型编组右键改尺寸：按 groupId 存收起态占位（宽度夹到 ≤2 栏） */
+  const setGroupLayout = useCallback(
+    (groupId: string, patch: Partial<WidgetLayout>) => {
+      update((d) => {
+        const cur = d.groupLayouts[groupId] ?? DEFAULT_GROUP_LAYOUT;
+        const next = { ...cur, ...patch };
+        next.colSpan = clampColSpan(next.colSpan);
+        d.groupLayouts[groupId] = next;
+        return d;
+      });
+    },
+    [update],
+  );
+
   const renameGroup = useCallback(
     (groupId: string, name: string) => {
       update((d) => {
         const group = d.groups.find((g) => g.id === groupId);
         if (group) group.name = name;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 设置编组自定义副标题（C 卡卡面第二行）；空字符串 = 回落显示「N 个站点」 */
+  const setGroupSubtitle = useCallback(
+    (groupId: string, subtitle: string) => {
+      update((d) => {
+        const group = d.groups.find((g) => g.id === groupId);
+        if (group) group.subtitle = subtitle;
         return d;
       });
     },
@@ -364,10 +427,12 @@ export function useLocalStore() {
     deleteSite,
     addGroup,
     renameGroup,
+    setGroupSubtitle,
     setGroupDisplay,
     deleteGroup,
     setWidgetVisible,
     setWidgetLayout,
+    setGroupLayout,
     setCardOrder,
     importData,
     resetData,
