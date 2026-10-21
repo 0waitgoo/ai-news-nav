@@ -38,6 +38,39 @@ export interface StoreData {
   widgets: WidgetId[];
   /** 每个 A 型组件的网格占位（右键菜单可改），缺省走 DEFAULT_WIDGET_LAYOUTS */
   widgetLayouts: Record<WidgetId, WidgetLayout>;
+  /**
+   * 主页卡片顺序（用户拖拽排序后落盘）：元素为卡片稳定 key，
+   * 编组 = group:<groupId>，原生组件 = widget:<widgetId>。
+   * 空数组 = 用默认顺序；读取时经 resolveCardOrder 与当前卡片集合对齐。
+   */
+  cardOrder: string[];
+}
+
+/** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
+export const groupCardKey = (groupId: string) => `group:${groupId}`;
+export const widgetCardKey = (widgetId: WidgetId) => `widget:${widgetId}`;
+
+/**
+ * 把已存顺序与当前应有的卡片集合（defaultOrder）对齐：
+ * 已存且仍存在的在前（过滤掉已删除/已隐藏的），新出现的卡片按默认顺序追加到末尾。
+ */
+export function resolveCardOrder(stored: string[], defaultOrder: string[]): string[] {
+  const existing = new Set(defaultOrder);
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+  for (const key of stored) {
+    if (existing.has(key) && !seen.has(key)) {
+      resolved.push(key);
+      seen.add(key);
+    }
+  }
+  for (const key of defaultOrder) {
+    if (!seen.has(key)) {
+      resolved.push(key);
+      seen.add(key);
+    }
+  }
+  return resolved;
 }
 
 export const ALL_WIDGETS: { id: WidgetId; name: string; desc: string }[] = [
@@ -68,6 +101,7 @@ function seedData(): StoreData {
     groups: ensureSiteIds(structuredClone(navGroups)),
     widgets: [...DEFAULT_WIDGETS],
     widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
+    cardOrder: [],
   };
 }
 
@@ -126,7 +160,10 @@ export function validateStoreData(raw: unknown): StoreData | null {
     ? (data.widgets.filter((w) => ALL_WIDGETS.some((aw) => aw.id === w)) as WidgetId[])
     : [...DEFAULT_WIDGETS];
   const widgetLayouts = normalizeWidgetLayouts((data as { widgetLayouts?: unknown }).widgetLayouts);
-  return { version: 1, groups: ensureSiteIds(data.groups as NavGroup[]), widgets, widgetLayouts };
+  // 卡片顺序：老数据无此字段时为空（回落默认顺序）；只采纳字符串元素
+  const rawOrder = (data as { cardOrder?: unknown }).cardOrder;
+  const cardOrder = Array.isArray(rawOrder) ? (rawOrder.filter((k) => typeof k === 'string') as string[]) : [];
+  return { version: 1, groups: ensureSiteIds(data.groups as NavGroup[]), widgets, widgetLayouts, cardOrder };
 }
 
 function loadInitial(): StoreData {
@@ -284,6 +321,17 @@ export function useLocalStore() {
     [update],
   );
 
+  /** 拖拽排序后保存主页卡片顺序（传入的是已与当前卡片集合对齐的完整顺序） */
+  const setCardOrder = useCallback(
+    (order: string[]) => {
+      update((d) => {
+        d.cardOrder = [...order];
+        return d;
+      });
+    },
+    [update],
+  );
+
   const setWidgetVisible = useCallback(
     (widgetId: WidgetId, visible: boolean) => {
       update((d) => {
@@ -320,6 +368,7 @@ export function useLocalStore() {
     deleteGroup,
     setWidgetVisible,
     setWidgetLayout,
+    setCardOrder,
     importData,
     resetData,
   };
