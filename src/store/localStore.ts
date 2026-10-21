@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  cleanSiteTag,
   findMappedLogo,
   navGroups,
   siteLogoFallback,
@@ -330,6 +331,45 @@ function normalizePlans(raw: unknown): PlanItem[] {
   return out;
 }
 
+/**
+ * C 卡组合（第二十一轮）：两个文件夹式（stack）编组拖拽合并成一张卡，一组最多 2 个组。
+ * 组合只记成员与当前 tab，两个组本体数据（名字/站点/tabColor/类型）完全不动；
+ * 卡片顺序里组合占一个条目（key = combo:<id>），尺寸存 groupLayouts 的同一 key。
+ */
+export interface ComboItem {
+  id: string;
+  /** 恰好 2 个成员组 id：[0] 为左 tab、[1] 为右 tab */
+  groupIds: [string, string];
+  /** 当前选中的 tab（必须是成员之一） */
+  activeGroupId: string;
+}
+
+/** 归一化组合：成员必须真实存在且仍为 stack 型、两两不重复、一个组至多属于一个组合；
+ *  任一条件不满足（成员被删/改型等）即解散该组合，剩余组按普通卡渲染（渲染侧另有兜底） */
+function normalizeCombos(raw: unknown, groups: NavGroup[]): ComboItem[] {
+  if (!Array.isArray(raw)) return [];
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  const used = new Set<string>();
+  const out: ComboItem[] = [];
+  for (const c of raw as Partial<ComboItem>[]) {
+    if (!c || typeof c.id !== 'string' || !c.id || !Array.isArray(c.groupIds)) continue;
+    const [a, b] = c.groupIds as unknown[];
+    if (typeof a !== 'string' || typeof b !== 'string' || a === b) continue;
+    const ga = byId.get(a);
+    const gb = byId.get(b);
+    if (!ga || !gb || ga.display !== 'stack' || gb.display !== 'stack') continue;
+    if (used.has(a) || used.has(b)) continue;
+    used.add(a);
+    used.add(b);
+    out.push({
+      id: c.id,
+      groupIds: [a, b],
+      activeGroupId: c.activeGroupId === b ? b : a,
+    });
+  }
+  return out;
+}
+
 /** 归一化卡面样式表：只采纳合法值 */
 function normalizeCardFaceStyles(raw: unknown): Record<string, CardFaceStyle> {
   const out: Record<string, CardFaceStyle> = {};
@@ -370,11 +410,15 @@ export interface StoreData {
   plans: PlanItem[];
   /** 卡面样式（按卡片稳定 key 存，如 widget:task）；老数据无此字段时为空表（各卡回落缺省样式） */
   cardFaceStyles: Record<string, CardFaceStyle>;
+  /** C 卡组合（第二十一轮）：老数据无此字段时归一化为空数组 */
+  combos: ComboItem[];
 }
 
 /** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
 export const groupCardKey = (groupId: string) => `group:${groupId}`;
 export const widgetCardKey = (widgetId: WidgetId) => `widget:${widgetId}`;
+/** 组合卡的稳定 key（顺序与尺寸布局都按这个 key 存） */
+export const comboCardKey = (comboId: string) => `combo:${comboId}`;
 
 /**
  * 把已存顺序与当前应有的卡片集合（defaultOrder）对齐：
@@ -421,10 +465,27 @@ function ensureSiteIds(groups: NavGroup[]): NavGroup[] {
   return groups;
 }
 
+/**
+ * 站点标签迁移（第二十六轮，种子与校验共用，就地修改）：
+ * 已存 tag 先清洗（仅英文字母/大写/≤4）；无合法 tag 但带旧 needVpn 标记的迁移为 tag='VPN'，
+ * 此后徽标只认 tag；两者皆无则删字段（无标签不显示徽标）。
+ */
+function migrateSiteTags(groups: NavGroup[]): NavGroup[] {
+  for (const group of groups) {
+    for (const site of group.sites) {
+      const cleaned = cleanSiteTag(site.tag);
+      if (cleaned) site.tag = cleaned;
+      else if (site.needVpn) site.tag = 'VPN';
+      else delete site.tag;
+    }
+  }
+  return groups;
+}
+
 function seedData(): StoreData {
   return {
     version: 1,
-    groups: ensureSiteIds(structuredClone(navGroups)),
+    groups: migrateSiteTags(ensureSiteIds(structuredClone(navGroups))),
     widgets: [...DEFAULT_WIDGETS],
     widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
     groupLayouts: {},
@@ -434,6 +495,7 @@ function seedData(): StoreData {
     tasks: [],
     plans: [],
     cardFaceStyles: {},
+    combos: [],
   };
 }
 
@@ -524,9 +586,10 @@ export function validateStoreData(raw: unknown): StoreData | null {
   const rawOrder = (data as { cardOrder?: unknown }).cardOrder;
   const cardOrder = Array.isArray(rawOrder) ? (rawOrder.filter((k) => typeof k === 'string') as string[]) : [];
   const background = normalizeBackground((data as { background?: unknown }).background);
+  const groups = migrateSiteTags(ensureSiteIds(data.groups as NavGroup[]));
   return {
     version: 1,
-    groups: ensureSiteIds(data.groups as NavGroup[]),
+    groups,
     widgets,
     widgetLayouts,
     groupLayouts,
@@ -536,6 +599,7 @@ export function validateStoreData(raw: unknown): StoreData | null {
     tasks: normalizeTasks((data as { tasks?: unknown }).tasks),
     plans: normalizePlans((data as { plans?: unknown }).plans),
     cardFaceStyles: normalizeCardFaceStyles((data as { cardFaceStyles?: unknown }).cardFaceStyles),
+    combos: normalizeCombos((data as { combos?: unknown }).combos, groups),
   };
 }
 
@@ -569,8 +633,11 @@ export interface SiteDraft {
   name: string;
   url: string;
   description: string;
+  /** 别名：表单已无编辑入口（第二十六轮），编辑时由表单原样回传既有别名，不清除 */
   aliases: string[];
   pinned: boolean;
+  /** 站点标签（第二十六轮）：空字符串 = 无标签，落盘前经 cleanSiteTag 清洗 */
+  tag: string;
 }
 
 export function useLocalStore() {
@@ -599,6 +666,7 @@ export function useLocalStore() {
         const group = d.groups.find((g) => g.id === groupId);
         if (group) {
           const minFreq = group.sites.reduce((min, s) => Math.min(min, s.frequency), 0);
+          const tag = cleanSiteTag(draft.tag);
           group.sites.push({
             id: genId('s'),
             name: draft.name,
@@ -608,6 +676,7 @@ export function useLocalStore() {
             aliases: draft.aliases,
             pinned: draft.pinned,
             frequency: Math.min(0, minFreq) - 1,
+            ...(tag ? { tag } : {}),
           });
         }
         return d;
@@ -627,6 +696,10 @@ export function useLocalStore() {
           site.aliases = draft.aliases;
           site.pinned = draft.pinned;
           site.logo = logoForSite(draft.name, draft.url);
+          // 标签：清洗后落盘，清空输入即移除标签（徽标随之消失）
+          const tag = cleanSiteTag(draft.tag);
+          if (tag) site.tag = tag;
+          else delete site.tag;
         }
         return d;
       });
@@ -734,7 +807,136 @@ export function useLocalStore() {
   const deleteGroup = useCallback(
     (groupId: string) => {
       update((d) => {
+        // 删掉组合的成员组时组合随之解散（第二十一轮联动）：另一组以普通卡留在组合原来的位置
+        for (const combo of d.combos.filter((c) => c.groupIds.includes(groupId))) {
+          const otherId = combo.groupIds.find((id) => id !== groupId);
+          d.combos = d.combos.filter((c) => c.id !== combo.id);
+          delete d.groupLayouts[comboCardKey(combo.id)];
+          const idx = d.cardOrder.indexOf(comboCardKey(combo.id));
+          if (idx >= 0 && otherId) d.cardOrder.splice(idx, 1, groupCardKey(otherId));
+        }
         d.groups = d.groups.filter((g) => g.id !== groupId);
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /* ---------- C 卡组合（第二十一轮） ---------- */
+
+  /**
+   * 合并两个文件夹式编组：拖拽 dragged 压住 target 满 2.5 秒松手时调用。
+   * 组合落在 target 的位置；groupIds = [dragged, target]——被拖来的组放左 tab 且默认选中（与用户示意图一致）；
+   * 组合尺寸继承 target 当前尺寸（存 groupLayouts 的 combo key；成员各自的布局条目不动，拆分时自然恢复）。
+   */
+  const mergeCombo = useCallback(
+    (draggedId: string, targetId: string, currentOrder: string[]) => {
+      if (draggedId === targetId) return;
+      update((d) => {
+        const dg = d.groups.find((g) => g.id === draggedId);
+        const tg = d.groups.find((g) => g.id === targetId);
+        if (!dg || !tg || dg.display !== 'stack' || tg.display !== 'stack') return d;
+        if (d.combos.some((c) => c.groupIds.includes(draggedId) || c.groupIds.includes(targetId))) return d;
+        const id = genId('c');
+        d.combos.push({ id, groupIds: [draggedId, targetId], activeGroupId: draggedId });
+        d.groupLayouts[comboCardKey(id)] = { ...stackLayoutOf(d.groupLayouts, targetId) };
+        const order = currentOrder.filter((k) => k !== groupCardKey(draggedId));
+        const ti = order.indexOf(groupCardKey(targetId));
+        if (ti >= 0) order[ti] = comboCardKey(id);
+        else order.push(comboCardKey(id));
+        d.cardOrder = order;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 拆分组合：组合条目原位替换回两个组条目（原左右顺序），删组合记录与其尺寸条目 */
+  const splitCombo = useCallback(
+    (comboId: string, currentOrder: string[]) => {
+      update((d) => {
+        const combo = d.combos.find((c) => c.id === comboId);
+        if (!combo) return d;
+        d.combos = d.combos.filter((c) => c.id !== comboId);
+        delete d.groupLayouts[comboCardKey(comboId)];
+        const order = [...currentOrder];
+        const idx = order.indexOf(comboCardKey(comboId));
+        const keys = combo.groupIds.map((gid) => groupCardKey(gid));
+        if (idx >= 0) order.splice(idx, 1, ...keys);
+        else order.push(...keys);
+        d.cardOrder = order;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 组合内某组切成详细列表时脱离组合：另一组变回普通 C 卡留在组合位，该组（已是 B 卡）排在其后，删组合记录 */
+  const detachComboMemberAsList = useCallback(
+    (comboId: string, groupId: string, currentOrder: string[]) => {
+      update((d) => {
+        const combo = d.combos.find((c) => c.id === comboId);
+        if (!combo || !combo.groupIds.includes(groupId)) return d;
+        const otherId = combo.groupIds.find((id) => id !== groupId);
+        d.combos = d.combos.filter((c) => c.id !== comboId);
+        delete d.groupLayouts[comboCardKey(comboId)];
+        const order = [...currentOrder];
+        const idx = order.indexOf(comboCardKey(comboId));
+        const keys = otherId ? [groupCardKey(otherId), groupCardKey(groupId)] : [groupCardKey(groupId)];
+        if (idx >= 0) order.splice(idx, 1, ...keys);
+        else order.push(...keys);
+        d.cardOrder = order;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /**
+   * tab 拖出落定（第二十一轮修订新增的解组方式）：把某组从组合中拖出成独立卡，
+   * 组合随之解散、另一组留作普通 C 卡；落点顺序以拖拽预览的最终顺序为准
+   * （预览里组合条目已拆成两个组条目，这里只做兜底校正）。
+   */
+  const extractComboGroup = useCallback(
+    (comboId: string, groupId: string, finalOrder: string[]) => {
+      update((d) => {
+        const combo = d.combos.find((c) => c.id === comboId);
+        if (!combo || !combo.groupIds.includes(groupId)) return d;
+        d.combos = d.combos.filter((c) => c.id !== comboId);
+        delete d.groupLayouts[comboCardKey(comboId)];
+        const order = finalOrder.filter((k) => k !== comboCardKey(comboId));
+        for (const gid of combo.groupIds) {
+          const k = groupCardKey(gid);
+          if (!order.includes(k)) order.push(k);
+        }
+        d.cardOrder = order;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 切换组合当前 tab（持久化，刷新/跨设备同步后保持） */
+  const setComboActive = useCallback(
+    (comboId: string, groupId: string) => {
+      update((d) => {
+        const combo = d.combos.find((c) => c.id === comboId);
+        if (combo && combo.groupIds.includes(groupId)) combo.activeGroupId = groupId;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 组合卡右键改尺寸：按 combo key 存 groupLayouts，缺省同 C 卡（1 栏 × 1x），宽度夹到 ≤2 栏 */
+  const setComboLayout = useCallback(
+    (comboId: string, patch: Partial<WidgetLayout>) => {
+      update((d) => {
+        const key = comboCardKey(comboId);
+        const cur = d.groupLayouts[key] ?? DEFAULT_STACK_LAYOUT;
+        const next = { ...cur, ...patch };
+        next.colSpan = clampColSpan(next.colSpan);
+        d.groupLayouts[key] = next;
         return d;
       });
     },
@@ -1035,6 +1237,12 @@ export function useLocalStore() {
     setGroupTabColor,
     setGroupDisplay,
     deleteGroup,
+    mergeCombo,
+    splitCombo,
+    extractComboGroup,
+    detachComboMemberAsList,
+    setComboActive,
+    setComboLayout,
     setWidgetVisible,
     setWidgetLayout,
     setGroupLayout,
