@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X, Search, Pin, Plus, Sparkles, Pencil, Trash2, Check } from 'lucide-react';
+import { X, Pin, Plus, Sparkles, Pencil, Trash2, Check } from 'lucide-react';
 import { deadCount, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
-import { searchInGroup } from '../../utils/search';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import { SiteForm } from './GroupExpanded';
@@ -10,7 +9,7 @@ import { SiteForm } from './GroupExpanded';
 /**
  * C 型 · 编组展开弹窗（第三轮恢复）
  * 点击堆叠卡弹出居中弹窗：组内站点为 ICON 瓷砖（图标 + 名字，置顶优先 + 频率排序），
- * 带组内搜索、「+ 添加网站」瓷砖、瓷砖悬停可编辑/删除；头部可改组名、切换形态、删组；
+ * 带「+ 添加网站」瓷砖、瓷砖悬停可编辑/删除；头部可改组名、切换形态、删组；
  * 底部失效提示条：失效链接只标记不删除。面板为实色背景，不用半透明/毛玻璃。
  * （B 型列表卡不走这里——它在主页原地向下拉开。）
  */
@@ -74,7 +73,6 @@ function PanelBody({
   onClose: () => void;
   onBecomeList: (group: NavGroup) => void;
 }) {
-  const [keyword, setKeyword] = useState('');
   const [barDismissed, setBarDismissed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingSite, setEditingSite] = useState<SiteEntry | null>(null);
@@ -83,11 +81,6 @@ function PanelBody({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const sorted = useMemo(() => sortSites(group.sites), [group]);
-  const filtered = useMemo(() => {
-    const hits = searchInGroup(group, keyword);
-    const hitSet = new Set(hits.map((s) => s.name));
-    return sorted.filter((s) => hitSet.has(s.name));
-  }, [group, keyword, sorted]);
   const dead = deadCount(group);
   const showForm = adding || editingSite !== null;
 
@@ -204,23 +197,9 @@ function PanelBody({
         )}
       </div>
 
-      {/* 组内搜索 */}
+      {/* 排序说明（组内不设搜索框） */}
       <div className="px-5 sm:px-6 pb-3 shrink-0">
-        <div className="flex items-center gap-2.5 h-10 px-3.5 rounded-xl bg-white/5 border border-white/10 focus-within:border-indigo-400/50 transition-colors">
-          <Search size={15} className="text-white/40 shrink-0" />
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="在组内搜索…"
-            className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/35 min-w-0"
-          />
-          {keyword && (
-            <button onClick={() => setKeyword('')} className="text-[11px] text-white/40 hover:text-white shrink-0">
-              清除
-            </button>
-          )}
-        </div>
-        <p className="text-[11px] text-white/40 mt-2.5">按使用频率排序 · 置顶在前</p>
+        <p className="text-[11px] text-white/40">按使用频率排序 · 置顶在前</p>
       </div>
 
       {/* 内容区：表单（添加/编辑） + 瓷砖网格 */}
@@ -243,13 +222,13 @@ function PanelBody({
           </div>
         )}
 
-        {filtered.length === 0 && !showForm ? (
+        {sorted.length === 0 && !showForm ? (
           <div className="py-10 text-center text-sm text-white/40">
-            {keyword ? `组内没有匹配「${keyword}」的站点` : '这个编组还没有网站，点下方「+ 添加网站」加上第一个吧'}
+            这个编组还没有网站，点下方「+ 添加网站」加上第一个吧
           </div>
         ) : (
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
-            {filtered.map((site) => (
+            {sorted.map((site) => (
               <div
                 key={site.id ?? site.name}
                 className="group/tile relative flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.05] hover:bg-white/10 border border-white/5 transition-colors"

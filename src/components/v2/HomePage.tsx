@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder } from 'lucide-react';
 import type { GroupDisplay, NavGroup } from '../../data/groups';
-import { ALL_WIDGETS, useLocalStore, type WidgetId } from '../../store/localStore';
+import { ALL_WIDGETS, clampColSpan, useLocalStore, type WidgetId } from '../../store/localStore';
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import NewsCard from './NewsCard';
@@ -18,7 +18,7 @@ import TrendingWidget from '../widgets/TrendingWidget';
  * - 无顶部标题栏：页面直接从吸顶搜索区开始，搜索区旁有低调的「数据」入口（导出/导入）
  * - 4 栏基准网格瀑布流（桌面 4 栏 / 手机 2 栏）
  * - B 型编组（display=list）：主页原地向下拉开 + 卡内滚动；C 型编组（display=stack）：点击弹窗看 ICON 瓷砖
- * - A 型原生组件可右键改尺寸（1/2/4 栏 × 1x/2x），布局存本地
+ * - A 型原生组件可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地
  * - 全部编组与布局来自本地存储（方案三：本地优先），用户可增删改
  */
 export default function HomePage({ onNavigate }: { onNavigate: (page: string) => void }) {
@@ -73,8 +73,8 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
 
   const widgetCls = (id: WidgetId) => {
     const layout = widgetLayouts[id];
-    const col =
-      layout.colSpan === 4 ? 'col-span-2 lg:col-span-4' : layout.colSpan === 2 ? 'col-span-2' : 'col-span-1';
+    // 宽度上限 2 栏：渲染侧再夹一次，存量异常值也不破版
+    const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
     const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
     return `${col} ${row}`;
   };
@@ -256,7 +256,7 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
             </p>
             <p className="px-1 pb-1 text-[10px] tracking-wider text-white/40 uppercase">宽度</p>
             <div className="flex gap-1 pb-2.5">
-              {([1, 2, 4] as const).map((n) => {
+              {([1, 2] as const).map((n) => {
                 const selected = widgetLayouts[widgetMenu.id].colSpan === n;
                 return (
                   <button
