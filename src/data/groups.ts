@@ -19,11 +19,14 @@ export interface SiteEntry {
   dead?: boolean;
 }
 
+/** 编组卡片形态：list = B 详细列表卡（原地展开）；stack = C 文件夹堆叠卡（点击弹窗） */
+export type GroupDisplay = 'list' | 'stack';
+
 export interface NavGroup {
   id: string;
   name: string;
-  /** B 型 = 列表式（默认跨 2 栏）；C 型 = 堆叠式（默认 1 栏 × 1X） */
-  type: 'list' | 'stack';
+  /** 卡片形态：list = B 详细列表卡；stack = C 文件夹堆叠卡 */
+  display: GroupDisplay;
   /** 编组自身的搜索别名 */
   aliases?: string[];
   sites: SiteEntry[];
@@ -102,7 +105,7 @@ export const navGroups: NavGroup[] = [
   {
     id: 'ai-chat',
     name: 'AI 对话',
-    type: 'list',
+    display: 'list',
     aliases: ['聊天机器人', '对话', '聊天'],
     sites: [
       { name: 'ChatGPT', logo: getSiteLogo('chatgpticon'), description: 'OpenAI推出的AI对话助手', url: 'https://chat.openai.com', needVpn: true, pinned: true, frequency: 100, aliases: ['gpt', 'openai', '聊天机器人'] },
@@ -123,7 +126,7 @@ export const navGroups: NavGroup[] = [
   {
     id: 'image',
     name: '图像生成',
-    type: 'stack',
+    display: 'stack',
     aliases: ['绘画', '图片', '绘图'],
     sites: [
       { name: 'Midjourney', logo: getSiteLogo('Midjourney'), description: '领先的AI图像生成工具', url: 'https://www.midjourney.com', needVpn: true, pinned: true, frequency: 96, aliases: ['mj'] },
@@ -140,7 +143,7 @@ export const navGroups: NavGroup[] = [
   {
     id: 'video',
     name: '视频生成',
-    type: 'stack',
+    display: 'stack',
     aliases: ['视频', '影视'],
     sites: [
       { name: '可灵', logo: getSiteLogo('keling'), description: '快手AI视频生成', url: 'https://kling.kuaishou.com', needVpn: false, pinned: true, frequency: 96, aliases: ['kling', '快手'] },
@@ -154,7 +157,7 @@ export const navGroups: NavGroup[] = [
   {
     id: 'code',
     name: '编程工具',
-    type: 'stack',
+    display: 'stack',
     aliases: ['编程', '代码', '开发'],
     sites: [
       { name: 'Cursor', logo: getSiteLogo('cursor'), description: 'AI驱动代码编辑器', url: 'https://cursor.sh', needVpn: true, pinned: true, frequency: 96, aliases: ['ai编辑器'] },
@@ -169,7 +172,7 @@ export const navGroups: NavGroup[] = [
   {
     id: 'audio',
     name: '音频生成',
-    type: 'stack',
+    display: 'stack',
     aliases: ['音频', '音乐', '语音'],
     sites: [
       { name: '剪映', logo: getSiteLogo('jianying'), description: '字节跳动AI视频剪辑', url: 'https://www.capcut.cn', needVpn: false, pinned: true, frequency: 96, aliases: ['capcut', '剪辑'] },
@@ -182,7 +185,7 @@ export const navGroups: NavGroup[] = [
   {
     id: 'agent',
     name: 'Agent工具',
-    type: 'stack',
+    display: 'stack',
     aliases: ['智能体', 'agent'],
     sites: [
       { name: '有道龙虾', logo: getSiteLogo('有道龙虾'), description: '网易有道AI智能体', url: 'https://www.youdao.com', needVpn: false, pinned: true, frequency: 92, aliases: ['龙虾'] },
@@ -195,7 +198,7 @@ export const navGroups: NavGroup[] = [
   {
     id: 'writing',
     name: 'AI写作',
-    type: 'stack',
+    display: 'stack',
     aliases: ['写作', '文案'],
     sites: [
       { name: 'Notion AI', logo: getSiteLogo('notion'), description: 'AI写作神器！比你想得更多！写得更快', url: 'https://www.notion.so', needVpn: true, pinned: true, frequency: 92, aliases: ['notion'] },
