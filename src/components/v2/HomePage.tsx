@@ -1,17 +1,19 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder } from 'lucide-react';
-import type { GroupDisplay, NavGroup } from '../../data/groups';
+import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder, Unlink, Combine } from 'lucide-react';
+import { GROUP_NAME_MAX, clampGroupName, textCharCount, type GroupDisplay, type NavGroup } from '../../data/groups';
 import {
   ALL_WIDGETS,
   cardFaceStyleOf,
   clampColSpan,
+  comboCardKey,
   groupCardKey,
   groupLayoutOf,
   resolveCardOrder,
   stackLayoutOf,
   widgetCardKey,
   type CardFaceStyle,
+  type ComboItem,
   type LocalStore,
   type WidgetId,
   type WidgetLayout,
@@ -25,8 +27,10 @@ import RankingCard from './RankingCard';
 import TaskCard from './TaskCard';
 import TaskPanel from './TaskPanel';
 import GroupListCard from './GroupListCard';
-import GroupStackCard from './GroupStackCard';
+import GroupStackCard, { StackGroupIcon } from './GroupStackCard';
 import GroupPanel from './GroupPanel';
+import ComboCard from './ComboCard';
+import ComboPanel from './ComboPanel';
 import TrendingWidget from '../widgets/TrendingWidget';
 
 /**
@@ -53,21 +57,69 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [panelGroupId, setPanelGroupId] = useState<string | null>(null);
+  const [comboPanelId, setComboPanelId] = useState<string | null>(null);
   const [showTaskPanel, setShowTaskPanel] = useState(false);
   const [showWidgetPanel, setShowWidgetPanel] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDisplay, setNewGroupDisplay] = useState<GroupDisplay>('stack');
-  /** 右键尺寸菜单的目标：原生组件或 B 型编组（共用同一套菜单） */
-  type SizeMenuTarget = { kind: 'widget'; id: WidgetId } | { kind: 'group'; id: string };
+  /** 右键尺寸菜单的目标：原生组件 / 编组 / 组合卡（共用同一套菜单，组合卡多一项「拆分组合」） */
+  type SizeMenuTarget = { kind: 'widget'; id: WidgetId } | { kind: 'group'; id: string } | { kind: 'combo'; id: string };
   const [sizeMenu, setSizeMenu] = useState<(SizeMenuTarget & { x: number; y: number }) | null>(null);
   const sizeMenuRef = useRef<HTMLDivElement>(null);
+  /** 空白处右键菜单（第二十七轮）：新建组合 / 添加组件；只在非卡片、非弹窗、非顶栏区域触发 */
+  const [blankMenu, setBlankMenu] = useState<{ x: number; y: number } | null>(null);
+  const blankMenuRef = useRef<HTMLDivElement>(null);
+  /** 新建组合选择器：勾选恰好 2 个候选组后生成组合卡 */
+  const [showComboPicker, setShowComboPicker] = useState(false);
+  const [pickerSelected, setPickerSelected] = useState<string[]>([]);
+  /** 拖拽合并提示（充能完成后压住的目标卡），由拖拽逻辑写入、渲染层在目标卡上画高亮 */
+  const [mergeUi, setMergeUi] = useState<{ targetKey: string; progress: number; ready: boolean } | null>(null);
+  /** 拖拽充能进度（拖影上的提示条），仅可合并的 stack 卡拖拽时出现 */
+  const [chargeUi, setChargeUi] = useState<{ progress: number; ready: boolean } | null>(null);
+  /** tab 拖出时的拖影来源：把被拖组的普通 C 卡渲染到屏外，取其 HTML 作拖拽快照 */
+  const [tabSnap, setTabSnap] = useState<{
+    group: NavGroup;
+    w: number;
+    h: number;
+    colSpan: 1 | 2;
+    heightUnits: 1 | 2;
+  } | null>(null);
+  const tabSnapRef = useRef<HTMLDivElement>(null);
 
   const listGroups = useMemo(() => groups.filter((g) => g.display === 'list'), [groups]);
   const stackGroups = useMemo(() => groups.filter((g) => g.display === 'stack'), [groups]);
-  const [stackA, stackB, stackC, ...stackRest] = stackGroups;
+
+  /* ---------- C 卡组合（第二十一轮）：有效组合 = 两个成员都还在且仍为 stack 型；
+     失效组合（成员被删/改型）渲染侧直接忽略，成员组按普通卡出现（store 归一化也会清） ---------- */
+  const validCombos = useMemo(
+    () =>
+      store.data.combos.filter((c) => {
+        const ga = groups.find((g) => g.id === c.groupIds[0]);
+        const gb = groups.find((g) => g.id === c.groupIds[1]);
+        return ga?.display === 'stack' && gb?.display === 'stack';
+      }),
+    [store.data.combos, groups],
+  );
+  const memberIds = useMemo(() => new Set(validCombos.flatMap((c) => c.groupIds)), [validCombos]);
+  /** 未入组合的 stack 组才单独成卡（组合成员由组合卡代表） */
+  const singleStackGroups = useMemo(() => stackGroups.filter((g) => !memberIds.has(g.id)), [stackGroups, memberIds]);
+  const [stackA, stackB, stackC, ...stackRest] = singleStackGroups;
   const hasWidget = (id: WidgetId) => widgets.includes(id);
   const panelGroup = panelGroupId ? (groups.find((g) => g.id === panelGroupId) ?? null) : null;
+  const comboPanel = comboPanelId ? (validCombos.find((c) => c.id === comboPanelId) ?? null) : null;
+  const comboPanelGroups: [NavGroup, NavGroup] | null = comboPanel
+    ? (() => {
+        const ga = groups.find((g) => g.id === comboPanel.groupIds[0]);
+        const gb = groups.find((g) => g.id === comboPanel.groupIds[1]);
+        return ga && gb ? [ga, gb] : null;
+      })()
+    : null;
+  /** 可参与新建组合的组：文件夹式且不在任何组合中（空白菜单「新建组合」的候选与置灰判定） */
+  const comboCandidates = useMemo(
+    () => groups.filter((g) => g.display === 'stack' && !memberIds.has(g.id)),
+    [groups, memberIds],
+  );
 
   /* ---------- 右键尺寸菜单（原生组件与 B 型编组共用） ---------- */
   useEffect(() => {
@@ -89,12 +141,70 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     };
   }, [sizeMenu]);
 
+  /* ---------- 空白处右键菜单（第二十七轮） ---------- */
+  useEffect(() => {
+    if (!blankMenu) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (blankMenuRef.current && !blankMenuRef.current.contains(e.target as Node)) setBlankMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setBlankMenu(null);
+    };
+    const onScroll = () => setBlankMenu(null);
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', onScroll, true);
+    };
+  }, [blankMenu]);
+
+  /** 只在真正空白处触发：卡片（自有菜单）、弹窗/浮动层（.fixed）、吸顶导航条（.sticky）都跳过 */
+  const handleBlankContextMenu = (e: React.MouseEvent) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('[data-card-key]')) return;
+    if (t.closest('.fixed')) return;
+    if (t.closest('.sticky')) return;
+    e.preventDefault();
+    const MENU_W = 208;
+    const MENU_H = 132;
+    setBlankMenu({
+      x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
+      y: Math.max(8, Math.min(e.clientY, window.innerHeight - MENU_H - 8)),
+    });
+  };
+
+  const togglePickerGroup = (id: string) => {
+    setPickerSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 2) return prev; // 恰好 2 个：选满后需先取消已选才能换
+      return [...prev, id];
+    });
+  };
+
+  /** 选择器里生成组合卡：复用 mergeCombo，构造顺序让组合落在卡片顺序末尾；先选的组为左 tab */
+  const createComboFromPicker = () => {
+    if (pickerSelected.length !== 2) return;
+    const [a, b] = pickerSelected;
+    const order = [
+      ...baseOrder.filter((k) => k !== groupCardKey(a) && k !== groupCardKey(b)),
+      groupCardKey(a),
+      groupCardKey(b),
+    ];
+    store.mergeCombo(a, b, order);
+    setShowComboPicker(false);
+    setPickerSelected([]);
+  };
+
   const openSizeMenu = (e: React.MouseEvent, target: SizeMenuTarget) => {
     e.preventDefault();
     e.stopPropagation();
     const MENU_W = 208;
-    // 任务卡的菜单多一节「卡面样式」，更高一些
-    const MENU_H = target.kind === 'widget' && target.id === 'task' ? 292 : 196;
+    // 任务卡的菜单多一节「卡面样式」、组合卡多一项「拆分组合」，更高一些
+    const MENU_H =
+      target.kind === 'widget' && target.id === 'task' ? 292 : target.kind === 'combo' ? 244 : 196;
     setSizeMenu({
       ...target,
       x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
@@ -102,24 +212,33 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     });
   };
 
-  /** 菜单当前目标的布局与改尺寸入口（组件走 widgetLayouts，编组走 groupLayouts；
-   *  编组按 display 取缺省：list 回落 2 栏 × 2x，stack 回落 1 栏 × 1x） */
+  /** 菜单当前目标的布局与改尺寸入口（组件走 widgetLayouts，编组/组合走 groupLayouts；
+   *  编组按 display 取缺省：list 回落 2 栏 × 2x，stack 与组合回落 1 栏 × 1x） */
   const sizeMenuLayout: WidgetLayout | null = sizeMenu
     ? sizeMenu.kind === 'widget'
       ? widgetLayouts[sizeMenu.id]
-      : (() => {
-          const g = groups.find((gr) => gr.id === sizeMenu.id);
-          return g?.display === 'stack' ? stackLayoutOf(groupLayouts, sizeMenu.id) : groupLayoutOf(groupLayouts, sizeMenu.id);
-        })()
+      : sizeMenu.kind === 'combo'
+        ? stackLayoutOf(groupLayouts, comboCardKey(sizeMenu.id))
+        : (() => {
+            const g = groups.find((gr) => gr.id === sizeMenu.id);
+            return g?.display === 'stack' ? stackLayoutOf(groupLayouts, sizeMenu.id) : groupLayoutOf(groupLayouts, sizeMenu.id);
+          })()
     : null;
   const sizeMenuTitle = sizeMenu
     ? sizeMenu.kind === 'widget'
       ? `${ALL_WIDGETS.find((w) => w.id === sizeMenu.id)?.name ?? ''} · 组件尺寸`
-      : `${groups.find((g) => g.id === sizeMenu.id)?.name ?? ''} · 编组尺寸`
+      : sizeMenu.kind === 'combo'
+        ? (() => {
+            const c = validCombos.find((cc) => cc.id === sizeMenu.id);
+            const names = c ? c.groupIds.map((gid) => groups.find((g) => g.id === gid)?.name ?? '').join(' + ') : '';
+            return `${names} · 组合尺寸`;
+          })()
+        : `${groups.find((g) => g.id === sizeMenu.id)?.name ?? ''} · 编组尺寸`
     : '';
   const applySizeMenuLayout = (patch: Partial<WidgetLayout>) => {
     if (!sizeMenu) return;
     if (sizeMenu.kind === 'widget') store.setWidgetLayout(sizeMenu.id, patch);
+    else if (sizeMenu.kind === 'combo') store.setComboLayout(sizeMenu.id, patch);
     else store.setGroupLayout(sizeMenu.id, patch);
   };
 
@@ -152,9 +271,18 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   };
 
   const handleBecomeList = (group: NavGroup) => {
+    // 该组若还在组合中（如从搜索打开单组弹窗切换形态），组合随之解散并把顺序修正为 [另一组, 该组]
+    const combo = store.data.combos.find((c) => c.groupIds.includes(group.id));
+    if (combo) store.detachComboMemberAsList(combo.id, group.id, baseOrderRef.current);
     setPanelGroupId(null);
     setExpandedId(group.id);
     scrollToGroup(group.id);
+  };
+
+  /** 组合弹窗内某组切成详细列表：脱离组合（另一组变回普通 C 卡留在组合位，该组排其后），关弹窗 */
+  const handleComboBecomeList = (group: NavGroup) => {
+    if (comboPanel) store.detachComboMemberAsList(comboPanel.id, group.id, baseOrderRef.current);
+    setComboPanelId(null);
   };
 
   const groupWrapperCls = (group: NavGroup) => {
@@ -206,10 +334,12 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     if (stackC) order.push(groupCardKey(stackC.id));
     if (hasWidget('ranking')) order.push(widgetCardKey('ranking'));
     for (const g of stackRest) order.push(groupCardKey(g.id));
+    // 组合卡作为一个条目参与顺序（成员组不再单独出现）；已存顺序里组合的位置由 merge/split 动作维护
+    for (const c of validCombos) order.push(comboCardKey(c.id));
     if (hasWidget('trending')) order.push(widgetCardKey('trending'));
     return order;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listGroups, stackA, stackB, stackC, stackRest, widgets]);
+  }, [listGroups, stackA, stackB, stackC, stackRest, widgets, validCombos]);
 
   const baseOrder = useMemo(
     () => resolveCardOrder(store.data.cardOrder, defaultOrder),
@@ -219,18 +349,26 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const displayOrder = previewOrder ?? baseOrder;
 
   const itemByKey = useMemo(() => {
-    const map = new Map<string, { group?: NavGroup; widgetId?: WidgetId }>();
+    const map = new Map<string, { group?: NavGroup; widgetId?: WidgetId; combo?: ComboItem }>();
     for (const g of groups) map.set(groupCardKey(g.id), { group: g });
+    for (const c of validCombos) map.set(comboCardKey(c.id), { combo: c });
     for (const w of ALL_WIDGETS) {
       if (widgets.includes(w.id)) map.set(widgetCardKey(w.id), { widgetId: w.id });
     }
     return map;
-  }, [groups, widgets]);
+  }, [groups, widgets, validCombos]);
 
   const cardSpanCls = (key: string) => {
     const item = itemByKey.get(key);
     if (!item) return 'col-span-1 row-span-1';
     if (item.group) return groupWrapperCls(item.group);
+    if (item.combo) {
+      // 组合卡占格同 C 卡：按 groupLayouts 的 combo key（缺省 1 栏 × 1x）
+      const layout = stackLayoutOf(groupLayouts, comboCardKey(item.combo.id));
+      const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
+      const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
+      return `${col} ${row}`;
+    }
     return widgetCls(item.widgetId as WidgetId);
   };
 
@@ -239,9 +377,34 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     if (!item) return null;
     const delay = Math.min(0.02 + index * 0.04, 0.4);
     if (item.group) return renderGroup(item.group, delay);
+    if (item.combo) {
+      const ga = groups.find((g) => g.id === item.combo!.groupIds[0]);
+      const gb = groups.find((g) => g.id === item.combo!.groupIds[1]);
+      if (!ga || !gb) return null;
+      const layout = stackLayoutOf(groupLayouts, comboCardKey(item.combo.id));
+      return (
+        <ComboCard
+          combo={item.combo}
+          groups={[ga, gb]}
+          store={store}
+          onOpen={(c) => setComboPanelId(c.id)}
+          delay={delay}
+          colSpan={layout.colSpan}
+          heightUnits={layout.heightUnits}
+        />
+      );
+    }
     switch (item.widgetId) {
       case 'task':
-        return <TaskCard store={store} onOpen={() => setShowTaskPanel(true)} delay={delay} />;
+        return (
+          <TaskCard
+            store={store}
+            onOpen={() => setShowTaskPanel(true)}
+            delay={delay}
+            colSpan={widgetLayouts.task.colSpan}
+            heightUnits={widgetLayouts.task.heightUnits}
+          />
+        );
       case 'news':
         return <NewsCard onNavigate={onNavigate} delay={delay} />;
       case 'ranking':
@@ -259,7 +422,14 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
    * 表单控件与 data-nodrag 区域（B 卡展开的滚动列表）内按下不触发拖拽。 */
   const DRAG_THRESHOLD = 8;
   const wrapperRefs = useRef(new Map<string, HTMLDivElement>());
-  const pendingDragRef = useRef<{ key: string; pointerId: number; startX: number; startY: number } | null>(null);
+  const pendingDragRef = useRef<{
+    key: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    /** 从组合卡 tab 头按下时记下：这是一次「把该组拖出组合」的拖拽（第二十一轮修订） */
+    tab?: { comboId: string; groupId: string };
+  } | null>(null);
   const activeDragRef = useRef<{
     key: string;
     pointerId: number;
@@ -268,8 +438,16 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     lastX: number;
     lastY: number;
     scrollEl: HTMLElement | null;
+    tabExtract?: { comboId: string; groupId: string };
+    /** 拖拽激活瞬间各卡的矩形快照（合并目标兜底判定用：按压开始时指针所指的卡） */
+    startRects?: Map<string, DOMRect>;
   } | null>(null);
   const previewOrderRef = useRef<string[] | null>(null);
+  /** 拖拽合并充能（第二十一轮修订）：拖动满 3 秒点亮「可合并」；chargeTimer 推进度 */
+  const chargeRef = useRef<{ startAt: number; ready: boolean } | null>(null);
+  const chargeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** 充能完成后指针压住的合并目标卡 key（松手即合并） */
+  const mergeTargetRef = useRef<string | null>(null);
   const baseOrderRef = useRef<string[]>(baseOrder);
   baseOrderRef.current = baseOrder;
   const storeRef = useRef(store);
@@ -322,6 +500,98 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       }
     };
 
+    /* ---------- 拖拽合并（第二十一轮，含手势修订） ----------
+     * 合并：拖动一张可合并的 stack 卡（不在组合中）持续满 3 秒 → 充能完成进入「可合并」状态，
+     * 拖影上有充能进度提示（条 + 文案，满 3 秒点亮「可合并」）；此后拖影压到任意其他可合并
+     * stack 卡上立即在目标卡显示合并提示，松手即合并；压到不可合并目标/空白松手 = 普通排序。
+     * 未满 3 秒松手全程只是普通排序。充能靠真实时间：指针静止时没有 pointermove，
+     * 用 60ms 定时器推进度，并在点亮瞬间复核悬停目标（指针可能早已压在目标上）。 */
+    const CHARGE_MS = 3000;
+    const groupIdFromKey = (key: string) => (key.startsWith('group:') ? key.slice('group:'.length) : null);
+
+    const clearCharge = () => {
+      if (chargeTimerRef.current) {
+        clearInterval(chargeTimerRef.current);
+        chargeTimerRef.current = null;
+      }
+      chargeRef.current = null;
+      mergeTargetRef.current = null;
+      setChargeUi(null);
+      setMergeUi(null);
+    };
+
+    /** 某组当前可否作为合并参与方：stack 型且不在任何组合中 */
+    const mergeableGroup = (gid: string | null) => {
+      if (!gid) return null;
+      const data = storeRef.current.data;
+      const g = data.groups.find((gr) => gr.id === gid);
+      if (!g || g.display !== 'stack') return null;
+      if (data.combos.some((c) => c.groupIds.includes(gid))) return null;
+      return g;
+    };
+
+    /** 充能完成后复核指针压住的合并目标（无目标/不可合并时清掉提示） */
+    const updateMergeTarget = (x: number, y: number) => {
+      const d = activeDragRef.current;
+      if (!d || !chargeRef.current?.ready || !mergeableGroup(groupIdFromKey(d.key))) {
+        if (mergeTargetRef.current) {
+          mergeTargetRef.current = null;
+          setMergeUi(null);
+        }
+        return;
+      }
+      const found: { key: string | null } = { key: null };
+      wrapperRefs.current.forEach((el, key) => {
+        if (found.key || key === d.key) return;
+        if (!mergeableGroup(groupIdFromKey(key))) return;
+        const r = el.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) found.key = key;
+      });
+      if (!found.key && d.startRects) {
+        // 兜底：拖拽预览重排会把目标卡挤走、占位槽盖住指针——指针当前不在任何可合并卡的
+        // 现矩形内，但若它正压在某张可合并卡「拖拽开始时」的位置上，那张卡就是用户瞄准的
+        // 目标（开始时的槽位互不重叠，不会多义）。充能完成本身即明确的合并意图信号，
+        // 此兜底只在 ready 态走 updateMergeTarget 时生效。
+        d.startRects.forEach((r, key) => {
+          if (found.key || key === d.key) return;
+          if (!mergeableGroup(groupIdFromKey(key))) return;
+          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) found.key = key;
+        });
+      }
+      if (found.key !== mergeTargetRef.current) {
+        mergeTargetRef.current = found.key;
+        setMergeUi(found.key ? { targetKey: found.key, progress: 1, ready: true } : null);
+      }
+    };
+
+    /** 拖拽激活时若被拖卡可合并则开始充能计时 */
+    const startChargeIfEligible = (dragKey: string) => {
+      if (!mergeableGroup(groupIdFromKey(dragKey))) return;
+      chargeRef.current = { startAt: Date.now(), ready: false };
+      setChargeUi({ progress: 0, ready: false });
+      chargeTimerRef.current = setInterval(() => {
+        const c = chargeRef.current;
+        const d = activeDragRef.current;
+        if (!c || !d) {
+          clearCharge();
+          return;
+        }
+        const progress = Math.min(1, (Date.now() - c.startAt) / CHARGE_MS);
+        if (progress >= 1) {
+          if (!c.ready) {
+            c.ready = true;
+            setChargeUi({ progress: 1, ready: true });
+          }
+          // 点亮后不停止计时器：持续复核指针压住的合并目标——拖拽预览重排会让卡片在
+          // 静止指针下方滑动，单靠 pointermove/点亮瞬间的一次复核会漏判（压着目标却没提示）；
+          // 每 60ms 按当前布局复核一次，目标变化时才更新 UI，无额外渲染负担
+          updateMergeTarget(d.lastX, d.lastY);
+          return;
+        }
+        setChargeUi({ progress, ready: false });
+      }, 60);
+    };
+
     const stopAutoScroll = () => cancelAnimationFrame(autoScrollRafRef.current);
     const startAutoScroll = () => {
       const step = () => {
@@ -347,6 +617,16 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
 
     const endDrag = (commit: boolean) => {
       if (!activeDragRef.current) return;
+      const dragKeyNow = activeDragRef.current.key;
+      const tabExtract = activeDragRef.current.tabExtract;
+      const chargeReady = !!chargeRef.current?.ready;
+      // 落手瞬间按最终指针位置与当前布局再复核一次合并目标（预览重排后目标可能刚滑入/滑出指针下方）
+      if (commit && chargeReady) {
+        updateMergeTarget(activeDragRef.current.lastX, activeDragRef.current.lastY);
+      }
+      const mergeTarget = mergeTargetRef.current;
+      clearCharge();
+      setTabSnap(null);
       activeDragRef.current = null;
       pendingDragRef.current = null;
       stopAutoScroll();
@@ -357,7 +637,22 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       setPreviewOrder(null);
       setDragKey(null);
       setDragSnap(null);
-      if (commit && finalOrder && finalOrder.join('|') !== baseOrderRef.current.join('|')) {
+      let handled = false;
+      if (commit && !tabExtract && chargeReady && mergeTarget) {
+        // 充能完成且压着合并目标松手：执行合并而不是排序落盘（基于当前已存顺序计算落点）
+        const dragGid = groupIdFromKey(dragKeyNow);
+        const targetGid = groupIdFromKey(mergeTarget);
+        if (dragGid && targetGid) {
+          storeRef.current.mergeCombo(dragGid, targetGid, baseOrderRef.current);
+          handled = true;
+        }
+      }
+      if (!handled && commit && tabExtract && finalOrder) {
+        // tab 拖出落定：组合解散，被拖组按预览落点成独立卡（取消拖拽则不落盘、组合原样）
+        storeRef.current.extractComboGroup(tabExtract.comboId, tabExtract.groupId, finalOrder);
+        handled = true;
+      }
+      if (!handled && commit && finalOrder && finalOrder.join('|') !== baseOrderRef.current.join('|')) {
         storeRef.current.setCardOrder(finalOrder);
       }
       // 拖拽松手后的那次 click 可能落在站点按钮上，吞掉避免误开站点 / 误触展开
@@ -377,21 +672,54 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           return;
         }
         const rect = el.getBoundingClientRect();
+        const tab = pending.tab;
+        pendingDragRef.current = null;
+        clearCharge();
+        let dragEntityKey = pending.key;
+        const order = [...baseOrderRef.current];
+        if (tab) {
+          // tab 拖出：预览顺序里把组合条目拆成 [另一组, 被拖组]，此后与普通卡拖拽同路；
+          // 拖影不用组合卡的 HTML，改由屏外渲染的该组普通 C 卡提供（见 tabSnap 渲染与布局副作用）
+          dragEntityKey = groupCardKey(tab.groupId);
+          const combo = storeRef.current.data.combos.find((c) => c.id === tab.comboId);
+          const otherId = combo?.groupIds.find((id) => id !== tab.groupId);
+          if (combo && otherId) {
+            const pair = [groupCardKey(otherId), dragEntityKey];
+            const ci = order.indexOf(comboCardKey(combo.id));
+            if (ci >= 0) order.splice(ci, 1, ...pair);
+            else order.push(...pair);
+          }
+        }
         activeDragRef.current = {
-          key: pending.key,
+          key: dragEntityKey,
           pointerId: pending.pointerId,
           offsetX: pending.startX - rect.left,
           offsetY: pending.startY - rect.top,
           lastX: e.clientX,
           lastY: e.clientY,
           scrollEl: findScrollAncestor(el),
+          tabExtract: tab,
         };
-        pendingDragRef.current = null;
-        const order = [...baseOrderRef.current];
+        if (!tab) {
+          // 拖拽开始瞬间的卡片矩形快照（此时预览尚未重排）：合并目标兜底判定按「开始时指针所指的卡」
+          const rects = new Map<string, DOMRect>();
+          wrapperRefs.current.forEach((el2, key) => rects.set(key, el2.getBoundingClientRect()));
+          activeDragRef.current.startRects = rects;
+        }
         previewOrderRef.current = order;
         setPreviewOrder(order);
-        setDragKey(pending.key);
-        setDragSnap({ html: el.innerHTML, w: rect.width, h: rect.height });
+        setDragKey(dragEntityKey);
+        if (tab) {
+          const data = storeRef.current.data;
+          const g = data.groups.find((gr) => gr.id === tab.groupId);
+          const comboLayout = stackLayoutOf(data.groupLayouts, comboCardKey(tab.comboId));
+          if (g) {
+            setTabSnap({ group: g, w: rect.width, h: rect.height, colSpan: comboLayout.colSpan, heightUnits: comboLayout.heightUnits });
+          }
+        } else {
+          setDragSnap({ html: el.innerHTML, w: rect.width, h: rect.height });
+          startChargeIfEligible(dragEntityKey);
+        }
         document.body.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
         startAutoScroll();
@@ -402,6 +730,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         d.lastY = e.clientY;
         positionClone(e.clientX, e.clientY);
         updatePreviewTarget(e.clientX, e.clientY);
+        updateMergeTarget(e.clientX, e.clientY);
       }
     };
 
@@ -427,6 +756,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       window.removeEventListener('pointercancel', onPointerCancel);
       window.removeEventListener('keydown', onKeyDown);
       stopAutoScroll();
+      if (chargeTimerRef.current) {
+        clearInterval(chargeTimerRef.current);
+        chargeTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -438,11 +771,30 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     }
   }, [dragSnap]);
 
+  // tab 拖出：屏外渲染的该组普通 C 卡就绪后，把其 HTML 设为拖拽快照（拖影即该组卡面）
+  useLayoutEffect(() => {
+    if (tabSnap && tabSnapRef.current) {
+      setDragSnap({ html: tabSnapRef.current.innerHTML, w: tabSnap.w, h: tabSnap.h });
+    }
+  }, [tabSnap]);
+
   const handleCardPointerDown = (e: React.PointerEvent, key: string) => {
     if (e.button !== 0 || activeDragRef.current || pendingDragRef.current) return;
     const target = e.target as HTMLElement;
     if (target.closest('input, textarea, select, [contenteditable="true"], [data-nodrag]')) return;
     suppressClickRef.current = false;
+    // 组合卡 tab 头按下：记为「把该组拖出组合」的候选拖拽（超过阈值才激活，普通点击仍是切 tab）
+    const tabEl = target.closest<HTMLElement>('[data-combo-tab-drag]');
+    if (tabEl?.dataset.comboId && tabEl?.dataset.groupId) {
+      pendingDragRef.current = {
+        key,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        tab: { comboId: tabEl.dataset.comboId, groupId: tabEl.dataset.groupId },
+      };
+      return;
+    }
     pendingDragRef.current = { key, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
   };
 
@@ -455,7 +807,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   };
 
   const createGroup = () => {
-    const name = newGroupName.trim();
+    // 组名上限 8 字（第三十二轮）：输入框 maxLength 之外再按码点截断兜底
+    const name = clampGroupName(newGroupName.trim());
     if (!name) return;
     const id = store.addGroup(name, newGroupDisplay);
     setNewGroupName('');
@@ -473,7 +826,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     'w-full h-full rounded-[26px] border border-dashed border-white/15 text-white/45 hover:text-white/85 hover:border-white/35 transition-colors flex flex-col items-center justify-center gap-1.5 text-xs';
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" onContextMenu={handleBlankContextMenu}>
       {/* 吸顶栏（一行对齐）：与下方卡片网格同款 4 栏 grid——左半 2 栏放页面导航图标组（靠左），
           右半 2 栏放搜索框 +「数据」入口（算在右半内）；整条栏吸顶，滚动时停留在视口顶部。
           移动端为 2 栏 grid，左右各半，仍保持一行不换行。 */}
@@ -491,9 +844,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         </div>
       </div>
 
-      {/* 瀑布流网格：4 栏（手机 2 栏），dense 流自动补齐；卡片按 displayOrder 统一渲染，可拖拽排序 */}
+      {/* 瀑布流网格：4 栏（手机 2 栏），dense 流自动补齐；卡片按 displayOrder 统一渲染，可拖拽排序。
+          顶部留白约 28–32px 级别（移动端略小），让第一行卡片与吸顶导航条明显隔开、有呼吸感 */}
       <div
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-2 [grid-auto-flow:dense] auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]"
+        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 sm:mt-7 lg:mt-8 [grid-auto-flow:dense] auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]"
         onClickCapture={handleGridClickCapture}
         onDragStart={(e) => e.preventDefault()}
       >
@@ -516,14 +870,30 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
               onContextMenu={
                 item.group
                   ? (e) => openSizeMenu(e, { kind: 'group', id: item.group!.id })
-                  : wid
-                    ? (e) => openSizeMenu(e, { kind: 'widget', id: wid })
-                    : undefined
+                  : item.combo
+                    ? (e) => openSizeMenu(e, { kind: 'combo', id: item.combo!.id })
+                    : wid
+                      ? (e) => openSizeMenu(e, { kind: 'widget', id: wid })
+                      : undefined
               }
             >
               <div className={dragKey === key ? 'h-full invisible' : 'h-full'}>{renderCardItem(key, i)}</div>
               {dragKey === key && (
                 <div className="absolute inset-0 z-10 rounded-[26px] border-2 border-dashed border-indigo-400/60 bg-indigo-500/10 pointer-events-none" />
+              )}
+              {/* 合并提示（第二十一轮修订）：充能完成后拖影压住的目标卡——描边高亮 + 「松开合并」，出现即松手合并 */}
+              {dragKey && mergeUi && mergeUi.targetKey === key && (
+                <div
+                  data-merge-hint="ready"
+                  className="absolute inset-0 z-20 rounded-[26px] border-2 border-indigo-400 bg-indigo-500/15 pointer-events-none flex flex-col items-center justify-end overflow-hidden"
+                >
+                  <div className="m-2 w-[calc(100%-16px)] rounded-xl bg-[#17171d]/95 border border-white/15 px-3 py-2">
+                    <p className="text-[11px] font-medium text-white/85 text-center">松开合并为组合卡</p>
+                    <div className="mt-1.5 h-1 rounded-full bg-white/10 overflow-hidden">
+                      <div data-merge-progress className="h-full bg-indigo-400" style={{ width: '100%' }} />
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           );
@@ -555,15 +925,62 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           className="fixed left-0 top-0 z-[95] pointer-events-none will-change-transform"
           style={{ width: dragSnap.w, height: dragSnap.h }}
         >
-          <div
-            className="w-full h-full rounded-[26px] overflow-hidden shadow-2xl shadow-black/80 ring-1 ring-white/25 opacity-95 scale-[1.02] [&>*]:h-full"
-            dangerouslySetInnerHTML={{ __html: dragSnap.html }}
+          <div className="relative w-full h-full">
+            <div
+              className="w-full h-full rounded-[26px] overflow-hidden shadow-2xl shadow-black/80 ring-1 ring-white/25 opacity-95 scale-[1.02] [&>*]:h-full"
+              dangerouslySetInnerHTML={{ __html: dragSnap.html }}
+            />
+            {/* 合并充能提示（第二十一轮修订）：拖影底部进度条，满 3 秒点亮「可合并」 */}
+            {chargeUi && (
+              <div
+                data-charge={chargeUi.ready ? 'ready' : 'charging'}
+                className="absolute inset-x-3 bottom-3 z-10 rounded-xl bg-[#17171d]/95 border border-white/15 px-3 py-2"
+              >
+                <p className={`text-[11px] font-medium text-center ${chargeUi.ready ? 'text-indigo-300' : 'text-white/75'}`}>
+                  {chargeUi.ready ? '可合并：压住另一张文件夹卡松手即合并' : '充能中…保持拖动，满 3 秒可合并'}
+                </p>
+                <div className="mt-1.5 h-1 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    data-charge-progress
+                    className={`h-full ${chargeUi.ready ? 'bg-indigo-400' : 'bg-white/50'}`}
+                    style={{ width: `${Math.round(chargeUi.progress * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* tab 拖出的拖影来源（屏外渲染）：被拖组的普通 C 卡，挂载后其 HTML 被取作拖拽快照 */}
+      {tabSnap && (
+        <div
+          ref={tabSnapRef}
+          aria-hidden
+          className="fixed top-0 pointer-events-none"
+          style={{ left: -9999, width: tabSnap.w, height: tabSnap.h }}
+        >
+          <GroupStackCard
+            group={tabSnap.group}
+            onOpen={() => {}}
+            delay={0}
+            colSpan={tabSnap.colSpan}
+            heightUnits={tabSnap.heightUnits}
           />
         </div>
       )}
 
       {/* C 型编组弹窗（ICON 瓷砖） */}
       <GroupPanel group={panelGroup} store={store} onClose={() => setPanelGroupId(null)} onBecomeList={handleBecomeList} />
+
+      {/* 组合弹窗（第二十一轮）：上下两个组的管理区 */}
+      <ComboPanel
+        combo={comboPanel}
+        groups={comboPanelGroups}
+        store={store}
+        onClose={() => setComboPanelId(null)}
+        onBecomeList={handleComboBecomeList}
+      />
 
       {/* 计划任务面板（第十八轮） */}
       <TaskPanel open={showTaskPanel} store={store} onClose={() => setShowTaskPanel(false)} />
@@ -573,6 +990,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         {sizeMenu && sizeMenuLayout && (
           <motion.div
             ref={sizeMenuRef}
+            data-size-menu
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
@@ -617,6 +1035,22 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 );
               })}
             </div>
+            {/* 组合卡专属：拆分组合（原位还原成左右两张普通 C 卡） */}
+            {sizeMenu.kind === 'combo' && (
+              <>
+                <div className="my-2.5 h-px bg-white/10" />
+                <button
+                  data-combo-split
+                  onClick={() => {
+                    store.splitCombo(sizeMenu.id, baseOrder);
+                    setSizeMenu(null);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                >
+                  <Unlink size={12} /> 拆分组合
+                </button>
+              </>
+            )}
             {/* 计划卡专属：卡面样式切换（列表式/焦点式，按卡片存 cardFaceStyles） */}
             {sizeMenu.kind === 'widget' && sizeMenu.id === 'task' && (
               <>
@@ -646,6 +1080,130 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 </div>
               </>
             )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 空白处右键菜单（第二十七轮，实色、跟随鼠标，风格同尺寸菜单） */}
+      <AnimatePresence>
+        {blankMenu && (
+          <motion.div
+            ref={blankMenuRef}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.12 }}
+            data-blank-menu
+            className="fixed z-[80] w-[200px] rounded-2xl bg-[#1e1e26] border border-white/15 shadow-2xl shadow-black/70 p-2"
+            style={{ left: blankMenu.x, top: blankMenu.y }}
+          >
+            {comboCandidates.length >= 2 ? (
+              <button
+                data-blank-new-combo
+                onClick={() => {
+                  setBlankMenu(null);
+                  setPickerSelected([]);
+                  setShowComboPicker(true);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs text-white/80 hover:bg-white/8 hover:text-white transition-colors"
+              >
+                <Combine size={14} className="text-white/45" /> 新建组合
+              </button>
+            ) : (
+              <div className="px-2.5 py-2 text-xs text-white/30 cursor-not-allowed" data-blank-new-combo-disabled>
+                <span className="flex items-center gap-2">
+                  <Combine size={14} /> 新建组合
+                </span>
+                <span className="block mt-1 text-[10px] text-white/30">需要至少 2 个文件夹式编组</span>
+              </div>
+            )}
+            <button
+              data-blank-add-widget
+              onClick={() => {
+                setBlankMenu(null);
+                setShowWidgetPanel(true);
+              }}
+              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs text-white/80 hover:bg-white/8 hover:text-white transition-colors"
+            >
+              <LayoutGrid size={14} className="text-white/45" /> 添加组件
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 新建组合选择器：列出全部可合并的文件夹式编组，勾选恰好 2 个生成组合卡 */}
+      <AnimatePresence>
+        {showComboPicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowComboPicker(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.18 }}
+              onClick={(e) => e.stopPropagation()}
+              data-combo-picker
+              className="rounded-[24px] bg-[#17171d] border border-white/15 w-full max-w-sm p-4 shadow-2xl shadow-black/70"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-sm">新建组合卡</h3>
+                <button
+                  onClick={() => setShowComboPicker(false)}
+                  className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10"
+                  aria-label="关闭"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <p className="text-[11px] text-white/40 mb-3">选择两个文件夹式编组，合并成一张左右双 tab 的组合卡。</p>
+              <div className="flex flex-col gap-1 max-h-[46vh] overflow-y-auto">
+                {comboCandidates.map((g) => {
+                  const selected = pickerSelected.includes(g.id);
+                  const orderIdx = pickerSelected.indexOf(g.id);
+                  const disabled = !selected && pickerSelected.length >= 2;
+                  return (
+                    <button
+                      key={g.id}
+                      data-picker-group={g.id}
+                      onClick={() => togglePickerGroup(g.id)}
+                      disabled={disabled}
+                      className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-colors ${
+                        selected
+                          ? 'bg-indigo-500/15 border border-indigo-400/50'
+                          : 'border border-transparent hover:bg-white/5'
+                      } ${disabled ? 'opacity-35 cursor-not-allowed' : ''}`}
+                    >
+                      <span
+                        className={`w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
+                          selected ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/30 text-transparent'
+                        }`}
+                      >
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                      <StackGroupIcon group={g} size={26} />
+                      <span className="flex-1 min-w-0 truncate text-sm">{g.name}</span>
+                      {selected && (
+                        <span className="text-[10px] text-indigo-300 shrink-0">{orderIdx === 0 ? '左 tab' : '右 tab'}</span>
+                      )}
+                      <span className="text-[11px] text-white/35 shrink-0">{g.sites.length} 个站点</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={createComboFromPicker}
+                disabled={pickerSelected.length !== 2}
+                data-combo-create
+                className="mt-3.5 w-full py-2 rounded-xl bg-indigo-500/80 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+              >
+                生成组合卡（已选 {pickerSelected.length}/2）
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -727,14 +1285,21 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                   <X size={15} />
                 </button>
               </div>
-              <input
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && createGroup()}
-                placeholder="编组名称，如 影视娱乐"
-                autoFocus
-                className="w-full bg-white/5 border border-white/12 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30"
-              />
+              <div className="relative">
+                <input
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && createGroup()}
+                  placeholder="编组名称，如 影视娱乐"
+                  autoFocus
+                  maxLength={GROUP_NAME_MAX}
+                  data-group-name-input
+                  className="w-full bg-white/5 border border-white/12 rounded-xl px-3 py-2 pr-11 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-white/30 pointer-events-none">
+                  {textCharCount(newGroupName)}/{GROUP_NAME_MAX}
+                </span>
+              </div>
               <p className="text-[11px] text-white/45 mt-3.5 mb-2">编组形态（之后也能在组内切换）</p>
               <div className="grid grid-cols-2 gap-2">
                 <button

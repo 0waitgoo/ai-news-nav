@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pin, Plus, Check, X } from 'lucide-react';
-import { sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { SITE_TAG_MAX, cleanSiteTag, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
 import type { LocalStore, SiteDraft } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteContextMenu';
@@ -8,6 +8,17 @@ import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteCon
 /** 站点名称 / 说明的长度上限（第十六轮⑦）：表单 maxLength + 计数，保存时再硬截断兜底 */
 export const SITE_NAME_MAX = 20;
 export const SITE_DESC_MAX = 40;
+
+/** 站点行小徽标（第二十六轮）：文本 = 站点 tag（已归一化落盘），无 tag 不显示；各处（B 卡行/面板网格）共用同款式 */
+export function SiteTagBadge({ site }: { site: SiteEntry }) {
+  const tag = cleanSiteTag(site.tag);
+  if (!tag) return null;
+  return (
+    <span data-site-tag={tag} className="text-[8px] font-bold text-white/40 bg-white/10 px-1.5 py-0.5 rounded shrink-0">
+      {tag}
+    </span>
+  );
+}
 
 /** 网址输入自动补协议 */
 export function normalizeUrl(raw: string): string {
@@ -33,7 +44,8 @@ export function SiteForm({
   const [name, setName] = useState(initial?.name ?? '');
   const [url, setUrl] = useState(initial?.url ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [aliases, setAliases] = useState((initial?.aliases ?? []).join('，'));
+  // 标签初值：已迁移的 tag 优先；老站点只有 needVpn 标记时预填 VPN，保存即正式写入 tag
+  const [tag, setTag] = useState(() => cleanSiteTag(initial?.tag) || (initial?.needVpn ? 'VPN' : ''));
   const [pinned, setPinned] = useState(!!initial?.pinned);
   const [error, setError] = useState('');
 
@@ -46,11 +58,10 @@ export function SiteForm({
       name: name.trim().slice(0, SITE_NAME_MAX),
       url: finalUrl,
       description: description.trim().slice(0, SITE_DESC_MAX),
-      aliases: aliases
-        .split(/[,，]/)
-        .map((a) => a.trim())
-        .filter(Boolean),
+      // 别名（第二十六轮）：表单不再提供编辑入口，但既有别名数据原样回传保留，继续供搜索直达
+      aliases: [...(initial?.aliases ?? [])],
       pinned,
+      tag: cleanSiteTag(tag),
     });
   };
 
@@ -84,7 +95,15 @@ export function SiteForm({
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <input value={aliases} onChange={(e) => setAliases(e.target.value)} placeholder="别名（可选，逗号分隔，搜别名可直达）" className={`${inputCls} flex-1`} />
+        {/* 标签（第二十六轮，占原别名输入的位置）：仅英文字母、自动转大写、最多 4 个，输入即过滤非法字符 */}
+        <input
+          value={tag}
+          onChange={(e) => setTag(cleanSiteTag(e.target.value))}
+          placeholder="标签，1-4 个英文字母，如 VPN"
+          maxLength={SITE_TAG_MAX}
+          data-site-tag-input
+          className={`${inputCls} flex-1`}
+        />
         <label className="flex items-center gap-1.5 text-[11px] text-white/60 shrink-0 cursor-pointer select-none">
           <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="accent-amber-400" />
           置顶
@@ -158,9 +177,7 @@ function EditableSiteRow({
           </span>
           <span className="block text-[11px] text-white/45 truncate mt-0.5">{site.description}</span>
         </span>
-        {site.needVpn && (
-          <span className="text-[8px] font-bold text-white/40 bg-white/10 px-1.5 py-0.5 rounded shrink-0">VPN</span>
-        )}
+        <SiteTagBadge site={site} />
       </button>
     </div>
   );
@@ -170,24 +187,24 @@ function EditableSiteRow({
  * B 型列表卡的展开态主体：卡内可滚动的行式列表 + 添加网站。
  * 组操作（改名/删组/切形态/失效提示）第十二轮起上移到 GroupListCard 的标题行，与组名同一行。
  * 只有 B 卡在主页原地展开；C 卡走 GroupPanel 弹窗，不用这里。
- * 列数（第十六轮⑥）：组宽度为 2 栏时展开列表排 3 列（2 列会空出第三列宽）；1 栏宽保持 2 列。
+ * 列数（第二十八轮修订）：展开态站点网格恒为 3 列，不随卡片宽度设置（1 栏/2 栏）变化
+ * （第十六轮⑥曾按 colSpan 分档 3/2 列，用户实测 1 栏宽展开只有 2 列太空，改恒 3 列）；
+ * 收起态列数在 GroupListCard 里另行按宽度走，不受此处影响。
  * 站点行操作（第十六轮⑤）：悬停无图标，右键弹站点菜单（打开/编辑/删除），编辑态由这里控制。
  */
 export default function GroupExpandedBody({
   group,
   store,
-  colSpan = 2,
 }: {
   group: NavGroup;
   store: LocalStore;
-  /** 组的右键布局宽度：2 栏 → 展开列表 3 列；1 栏 → 2 列 */
+  /** 兼容既有调用方传参：展开态列数已恒为 3 列，不再使用此值 */
   colSpan?: 1 | 2;
 }) {
   const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState<SiteMenuState | null>(null);
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const sorted = sortSites(group.sites);
-  const wide = colSpan === 2;
 
   const handleSiteMenu = (e: React.MouseEvent, site: SiteEntry) => {
     // 只出站点菜单：阻止冒泡到卡片包装层（否则会同时弹出卡的尺寸菜单），并屏蔽浏览器默认菜单
@@ -204,7 +221,7 @@ export default function GroupExpandedBody({
         {sorted.length === 0 && !adding && (
           <p className="text-xs text-white/35 py-6 text-center">这个编组还没有网站，点「增加网站」加上第一个吧</p>
         )}
-        <div className={`grid grid-cols-1 gap-x-2 content-start ${wide ? 'min-[480px]:grid-cols-3' : 'min-[480px]:grid-cols-2'}`}>
+        <div className="grid grid-cols-1 gap-x-2 content-start min-[480px]:grid-cols-3" data-expanded-grid>
           {sorted.map((site) => (
             <React.Fragment key={site.id ?? site.name}>
               <EditableSiteRow
@@ -214,7 +231,7 @@ export default function GroupExpandedBody({
                 editing={editingSiteId !== null && editingSiteId === site.id}
                 onEndEdit={() => setEditingSiteId(null)}
                 onSiteMenu={handleSiteMenu}
-                formSpanCls={wide ? 'col-span-1 min-[480px]:col-span-3' : 'col-span-1 min-[480px]:col-span-2'}
+                formSpanCls="col-span-1 min-[480px]:col-span-3"
               />
             </React.Fragment>
           ))}

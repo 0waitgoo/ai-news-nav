@@ -27,6 +27,8 @@ import { splitTasksText, type SplitPlanDraft } from '../../utils/taskSplit';
  * - 行操作走右键菜单（范式同 SiteContextMenu）：编辑 / 删除（菜单内两步确认）；子任务右键只有删除
  * - 头部「AI 整理」切换到整理视图：一句话杂事 → 本地规则拆分预览（可勾选、可改字）→ 确认落库
  *   AI 只做拆分归类，不改动已有事项；拆分实现见 utils/taskSplit.ts（可替换为真 AI）
+ * - 第二十五轮：待办/计划两列抽成 TasksSection / PlansSection 共享组件，本面板（variant='panel'）与
+ *   2x 任务卡卡面（variant='card'，仅核心交互）共用同一套渲染逻辑；本面板行为不变
  */
 
 interface RowMenuState {
@@ -98,6 +100,82 @@ function PanelBody({
 }) {
   const { tasks, plans } = store.data;
   const [view, setView] = useState<'main' | 'ai'>('main');
+
+  // 头部计数口径与卡面一致：组按子任务摊平（taskFlatStats）
+  const flat = taskFlatStats(tasks);
+  const flatOpen = flat.total - flat.done;
+
+  return (
+    <>
+      {/* 头部：标题 + AI 整理入口 + 关闭（整理视图下换成返回） */}
+      <div className="px-5 sm:px-6 pt-5 pb-4 shrink-0 flex items-center gap-2">
+        {view === 'ai' ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setView('main')}
+              className="flex items-center gap-1 text-xs text-white/60 hover:text-white px-2 py-1.5 -ml-2 rounded-lg hover:bg-white/8 transition-colors"
+            >
+              <ArrowLeft size={14} /> 返回
+            </button>
+            <h3 className="font-semibold text-base sm:text-lg tracking-tight">AI 整理</h3>
+          </>
+        ) : (
+          <>
+            <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>
+            <span className="text-xs text-white/40 tabular-nums">
+              待办 {flatOpen} · 计划 {plans.length}
+            </span>
+            <button
+              type="button"
+              data-ai-open
+              onClick={() => setView('ai')}
+              className="ml-auto flex items-center gap-1.5 text-xs font-medium text-indigo-300 hover:text-indigo-200 px-2.5 py-1.5 rounded-lg hover:bg-indigo-500/10 transition-colors"
+            >
+              <Sparkles size={14} /> AI 整理
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className={`${view === 'ai' ? 'ml-auto' : ''} p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10`}
+          aria-label="关闭"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {view === 'ai' ? (
+        <AiView store={store} onDone={() => setView('main')} />
+      ) : (
+        <div className="px-5 sm:px-6 pb-5 overflow-y-auto min-h-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 items-start">
+            <TasksSection store={store} variant="panel" menuOpenRef={menuRef} />
+            <PlansSection store={store} variant="panel" menuOpenRef={menuRef} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * 待办列（第二十五轮抽成共享组件：完整面板与 2x 任务卡共用同一套渲染/交互逻辑，不复制两套）：
+ * - variant='panel'：全功能（含建组入口、行右键编辑/删除）
+ * - variant='card'：只保留核心交互（勾选、组展开勾子任务、已完成折叠、底部添加输入）；
+ *   建组等复杂操作留在完整面板里，行右键菜单仍可用（编辑/删除）
+ */
+export function TasksSection({
+  store,
+  variant,
+  menuOpenRef,
+}: {
+  store: LocalStore;
+  variant: 'panel' | 'card';
+  menuOpenRef?: React.RefObject<RowMenuState | null>;
+}) {
+  const { tasks } = store.data;
   const [menu, setMenu] = useState<RowMenuState | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -105,10 +183,8 @@ function PanelBody({
   const [newTask, setNewTask] = useState('');
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupName, setGroupName] = useState('');
-  const [showPlanForm, setShowPlanForm] = useState(false);
-  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
 
-  menuRef.current = menu;
+  if (menuOpenRef) menuOpenRef.current = menu;
 
   // 计数口径与卡面一致：组按子任务摊平（taskFlatStats）；顶层条目按完成态分未完成/已完成两区
   const flat = taskFlatStats(tasks);
@@ -116,13 +192,7 @@ function PanelBody({
   const openEntries = tasks.filter((t) => !taskEntryDone(t));
   const doneEntries = tasks.filter((t) => taskEntryDone(t));
 
-  const openMenu = (
-    e: React.MouseEvent,
-    kind: RowMenuState['kind'],
-    id: string,
-    title: string,
-    parentId?: string,
-  ) => {
+  const openMenu = (e: React.MouseEvent, kind: RowMenuState['kind'], id: string, title: string, parentId?: string) => {
     e.preventDefault();
     e.stopPropagation();
     setMenu({ ...rowMenuPosition(e), kind, id, title, parentId });
@@ -211,219 +281,193 @@ function PanelBody({
     );
 
   return (
-    <>
-      {/* 头部：标题 + AI 整理入口 + 关闭（整理视图下换成返回） */}
-      <div className="px-5 sm:px-6 pt-5 pb-4 shrink-0 flex items-center gap-2">
-        {view === 'ai' ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setView('main')}
-              className="flex items-center gap-1 text-xs text-white/60 hover:text-white px-2 py-1.5 -ml-2 rounded-lg hover:bg-white/8 transition-colors"
-            >
-              <ArrowLeft size={14} /> 返回
-            </button>
-            <h3 className="font-semibold text-base sm:text-lg tracking-tight">AI 整理</h3>
-          </>
-        ) : (
-          <>
-            <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>
-            <span className="text-xs text-white/40 tabular-nums">
-              待办 {flatOpen} · 计划 {plans.length}
-            </span>
-            <button
-              type="button"
-              data-ai-open
-              onClick={() => setView('ai')}
-              className="ml-auto flex items-center gap-1.5 text-xs font-medium text-indigo-300 hover:text-indigo-200 px-2.5 py-1.5 rounded-lg hover:bg-indigo-500/10 transition-colors"
-            >
-              <Sparkles size={14} /> AI 整理
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={onClose}
-          className={`${view === 'ai' ? 'ml-auto' : ''} p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10`}
-          aria-label="关闭"
-        >
-          <X size={16} />
-        </button>
+    <section>
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <h4 className="text-sm font-semibold">待办</h4>
+        <span className="text-[11px] text-white/40">未完成 {flatOpen}</span>
       </div>
-
-      {view === 'ai' ? (
-        <AiView store={store} onDone={() => setView('main')} />
-      ) : (
-        <div className="px-5 sm:px-6 pb-5 overflow-y-auto min-h-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 items-start">
-            {/* 左列：待办（含组） */}
-            <section>
-              <div className="flex items-baseline gap-2 mb-1.5">
-                <h4 className="text-sm font-semibold">待办</h4>
-                <span className="text-[11px] text-white/40">未完成 {flatOpen}</span>
-              </div>
-              <div data-nodrag>
-                {tasks.length === 0 && (
-                  <p className="text-[13px] text-white/35 px-2 py-3">暂无待办，在下方添加第一件。</p>
-                )}
-                {openEntries.map(taskRow)}
-              </div>
-              {doneEntries.length > 0 && (
-                <div className="mt-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setShowDone((v) => !v)}
-                    className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-white/45 hover:text-white/75 transition-colors"
-                  >
-                    <ChevronDown size={13} className={`transition-transform ${showDone ? '' : '-rotate-90'}`} />
-                    已完成 {doneEntries.length} 项
-                  </button>
-                  {showDone && <div data-nodrag>{doneEntries.map(taskRow)}</div>}
-                </div>
-              )}
-              <form
-                className="mt-2.5 flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  submitNewTask();
-                }}
-              >
-                <Plus size={14} className="text-white/35 shrink-0" />
-                <input
-                  value={newTask}
-                  onChange={(e) => setNewTask(e.target.value)}
-                  placeholder="添加待办，回车确认"
-                  data-task-add
-                  className="flex-1 min-w-0 bg-transparent text-sm py-1.5 outline-none placeholder:text-white/30"
-                />
-              </form>
-              {/* 建组入口：组用来收纳一组相关的子任务（如一次采购清单） */}
-              {showGroupForm ? (
-                <form
-                  className="mt-2 flex items-center gap-1.5"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitGroup();
-                  }}
-                >
-                  <input
-                    value={groupName}
-                    autoFocus
-                    onChange={(e) => setGroupName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') setShowGroupForm(false);
-                    }}
-                    placeholder="组名，如 周末采购"
-                    data-group-name
-                    className="flex-1 min-w-0 bg-white/5 border border-white/12 rounded-xl px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!groupName.trim()}
-                    data-group-create
-                    className="px-3 py-1.5 rounded-lg bg-indigo-500/80 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-medium transition-colors shrink-0"
-                  >
-                    建组
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowGroupForm(false)}
-                    className="px-3 py-1.5 rounded-lg bg-white/8 text-white/70 text-xs hover:bg-white/12 transition-colors shrink-0"
-                  >
-                    取消
-                  </button>
-                </form>
-              ) : (
-                <button
-                  type="button"
-                  data-group-new
-                  onClick={() => setShowGroupForm(true)}
-                  className="mt-2 w-full py-1.5 rounded-xl border border-dashed border-white/12 text-[11px] text-white/45 hover:text-white/80 hover:border-white/30 transition-colors"
-                >
-                  + 建组（把几件相关的事收在一起）
-                </button>
-              )}
-            </section>
-
-            {/* 右列：长期计划（次数型 / 日期型） */}
-            <section>
-              <div className="flex items-baseline gap-2 mb-1.5">
-                <h4 className="text-sm font-semibold">长期计划</h4>
-                <span className="text-[11px] text-white/40">{plans.length} 个</span>
-              </div>
-              <div className="flex flex-col gap-1.5" data-nodrag>
-                {plans.length === 0 && !showPlanForm && (
-                  <p className="text-[13px] text-white/35 px-2 py-3">暂无长期计划，点下方「+ 新计划」添加。</p>
-                )}
-                {plans.map((plan) =>
-                  editingPlanId === plan.id ? (
-                    <PlanEditForm
-                      key={plan.id}
-                      plan={plan}
-                      store={store}
-                      onClose={() => setEditingPlanId(null)}
-                    />
-                  ) : (
-                    <PlanRow
-                      key={plan.id}
-                      plan={plan}
-                      store={store}
-                      onContextMenu={(e) => openMenu(e, 'plan', plan.id, plan.title)}
-                    />
-                  ),
-                )}
-              </div>
-              {showPlanForm ? (
-                <PlanCreateForm
-                  store={store}
-                  onClose={() => setShowPlanForm(false)}
-                />
-              ) : (
-                <button
-                  type="button"
-                  data-plan-new
-                  onClick={() => setShowPlanForm(true)}
-                  className="mt-3 w-full py-2 rounded-xl border border-dashed border-white/15 text-xs text-white/50 hover:text-white/85 hover:border-white/35 transition-colors"
-                >
-                  + 新计划
-                </button>
-              )}
-            </section>
-          </div>
+      <div data-nodrag>
+        {tasks.length === 0 && <p className="text-[13px] text-white/35 px-2 py-3">暂无待办，在下方添加第一件。</p>}
+        {openEntries.map(taskRow)}
+      </div>
+      {doneEntries.length > 0 && (
+        <div className="mt-1.5">
+          <button
+            type="button"
+            onClick={() => setShowDone((v) => !v)}
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-white/45 hover:text-white/75 transition-colors"
+          >
+            <ChevronDown size={13} className={`transition-transform ${showDone ? '' : '-rotate-90'}`} />
+            已完成 {doneEntries.length} 项
+          </button>
+          {showDone && <div data-nodrag>{doneEntries.map(taskRow)}</div>}
         </div>
       )}
+      <form
+        className="mt-2.5 flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitNewTask();
+        }}
+      >
+        <Plus size={14} className="text-white/35 shrink-0" />
+        <input
+          value={newTask}
+          onChange={(e) => setNewTask(e.target.value)}
+          placeholder="添加待办，回车确认"
+          data-task-add
+          className="flex-1 min-w-0 bg-transparent text-sm py-1.5 outline-none placeholder:text-white/30"
+        />
+      </form>
+      {/* 建组入口：组用来收纳一组相关的子任务（如一次采购清单）；仅完整面板提供，2x 卡面不放 */}
+      {variant === 'panel' &&
+        (showGroupForm ? (
+          <form
+            className="mt-2 flex items-center gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitGroup();
+            }}
+          >
+            <input
+              value={groupName}
+              autoFocus
+              onChange={(e) => setGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setShowGroupForm(false);
+              }}
+              placeholder="组名，如 周末采购"
+              data-group-name
+              className="flex-1 min-w-0 bg-white/5 border border-white/12 rounded-xl px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30"
+            />
+            <button
+              type="submit"
+              disabled={!groupName.trim()}
+              data-group-create
+              className="px-3 py-1.5 rounded-lg bg-indigo-500/80 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-medium transition-colors shrink-0"
+            >
+              建组
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowGroupForm(false)}
+              className="px-3 py-1.5 rounded-lg bg-white/8 text-white/70 text-xs hover:bg-white/12 transition-colors shrink-0"
+            >
+              取消
+            </button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            data-group-new
+            onClick={() => setShowGroupForm(true)}
+            className="mt-2 w-full py-1.5 rounded-xl border border-dashed border-white/12 text-[11px] text-white/45 hover:text-white/80 hover:border-white/30 transition-colors"
+          >
+            + 建组（把几件相关的事收在一起）
+          </button>
+        ))}
 
-      {/* 行右键菜单（编辑/删除等，按行类型给不同项） */}
+      {/* 行右键菜单（编辑/删除，删除在菜单内两步确认） */}
       {menu && (
         <RowContextMenu
           state={menu}
           onClose={() => setMenu(null)}
           onPick={(action) => {
             if (action === 'edit') {
-              if (menu.kind === 'task' || menu.kind === 'taskGroup') {
-                const task = tasks.find((t) => t.id === menu.id);
-                if (task) {
-                  // 在已完成区里的条目要先展开该区，就地编辑框才看得见
-                  if (taskEntryDone(task)) setShowDone(true);
-                  startEditTask(task);
-                }
-              } else if (menu.kind === 'plan') {
-                setEditingPlanId(menu.id);
+              const task = tasks.find((t) => t.id === menu.id);
+              if (task) {
+                // 在已完成区里的条目要先展开该区，就地编辑框才看得见
+                if (taskEntryDone(task)) setShowDone(true);
+                startEditTask(task);
               }
             } else if (action === 'delete') {
               if (menu.kind === 'taskChild' && menu.parentId) store.deleteSubTask(menu.parentId, menu.id);
-              else if (menu.kind === 'task' || menu.kind === 'taskGroup') store.deleteTask(menu.id);
-              else if (menu.kind === 'plan') store.deletePlan(menu.id);
-            } else if (action === 'markDone' && menu.kind === 'plan') {
-              store.setPlanDone(menu.id, true);
-            } else if (action === 'unmarkDone' && menu.kind === 'plan') {
-              store.setPlanDone(menu.id, false);
+              else store.deleteTask(menu.id);
             }
             setMenu(null);
           }}
         />
       )}
-    </>
+    </section>
+  );
+}
+
+/**
+ * 长期计划列（第二十五轮抽成共享组件，理由同 TasksSection）：
+ * - variant='panel'：全功能（含新计划表单、行右键编辑/删除）
+ * - variant='card'：核心交互直接可用（次数型 −1/+1、日期型「完成」），新建/编辑表单留在完整面板
+ */
+export function PlansSection({
+  store,
+  variant,
+  menuOpenRef,
+}: {
+  store: LocalStore;
+  variant: 'panel' | 'card';
+  menuOpenRef?: React.RefObject<RowMenuState | null>;
+}) {
+  const { plans } = store.data;
+  const [menu, setMenu] = useState<RowMenuState | null>(null);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [showPlanForm, setShowPlanForm] = useState(false);
+
+  if (menuOpenRef) menuOpenRef.current = menu;
+
+  const openMenu = (e: React.MouseEvent, plan: PlanItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ ...rowMenuPosition(e), kind: 'plan', id: plan.id, title: plan.title });
+  };
+
+  return (
+    <section>
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <h4 className="text-sm font-semibold">长期计划</h4>
+        <span className="text-[11px] text-white/40">{plans.length} 个</span>
+      </div>
+      <div className="flex flex-col gap-1.5" data-nodrag>
+        {plans.length === 0 && !showPlanForm && (
+          <p className="text-[13px] text-white/35 px-2 py-3">
+            {variant === 'panel' ? '暂无长期计划，点下方「+ 新计划」添加。' : '暂无长期计划，展开面板添加。'}
+          </p>
+        )}
+        {plans.map((plan) =>
+          editingPlanId === plan.id ? (
+            <PlanEditForm key={plan.id} plan={plan} store={store} onClose={() => setEditingPlanId(null)} />
+          ) : (
+            <PlanRow key={plan.id} plan={plan} store={store} onContextMenu={(e) => openMenu(e, plan)} />
+          ),
+        )}
+      </div>
+      {variant === 'panel' &&
+        (showPlanForm ? (
+          <PlanCreateForm store={store} onClose={() => setShowPlanForm(false)} />
+        ) : (
+          <button
+            type="button"
+            data-plan-new
+            onClick={() => setShowPlanForm(true)}
+            className="mt-3 w-full py-2 rounded-xl border border-dashed border-white/15 text-xs text-white/50 hover:text-white/85 hover:border-white/35 transition-colors"
+          >
+            + 新计划
+          </button>
+        ))}
+
+      {/* 行右键菜单（编辑/删除） */}
+      {menu && (
+        <RowContextMenu
+          state={menu}
+          onClose={() => setMenu(null)}
+          onPick={(action) => {
+            if (action === 'edit') setEditingPlanId(menu.id);
+            else if (action === 'delete') store.deletePlan(menu.id);
+            else if (action === 'markDone') store.setPlanDone(menu.id, true);
+            else if (action === 'unmarkDone') store.setPlanDone(menu.id, false);
+            setMenu(null);
+          }}
+        />
+      )}
+    </section>
   );
 }
 

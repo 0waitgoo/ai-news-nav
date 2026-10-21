@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Check, Layers, ListTodo, Plus } from 'lucide-react';
+import { Check, Layers, ListTodo, Maximize2 } from 'lucide-react';
 import {
   cardFaceStyleOf,
   isTaskGroup,
@@ -12,29 +12,41 @@ import {
   type LocalStore,
   type TaskItem,
 } from '../../store/localStore';
+import { PlansSection, TasksSection } from './TaskPanel';
 
 /**
  * A 型 · 计划任务卡（第十八轮，替换原「今日任务」占位卡；第十九轮加待办分组）
  * 数据走 localStore 的 tasks/plans（本地优先，随导出/文件/GitHub 同步一起走）。
  * 卡面两样式（右键菜单切换，按卡片存 cardFaceStyles）：
- * - list 列表式（默认）：今日进度 x/y + 细进度线 + 前 3 条未完成待办（卡面可直接勾，勾完划线留影片刻后移出）+ 快速添加行
- * - focus 焦点式：只突出第一条未完成待办（大字）+「还有 N 件」+ 快速添加行
- * 点卡面（非控件区域）打开计划面板。
+ * - list 列表式（默认）：今日进度 x/y + 细进度线 + 前 3 条未完成待办（卡面可直接勾，勾完划线留影片刻后移出）
+ * - focus 焦点式：只突出第一条未完成待办（大字）+「还有 N 件」
  * 进度计数口径（第十九轮）：组按子任务摊平计数（见 localStore.taskFlatStats）。
  * 组在卡面只算一个顶层条目、显示「组名 · n/m」、不展开子任务，点行进面板处理。
+ * 第二十五轮（尺寸布局）：
+ * - 高 1x：两种卡面都隐藏「添加待办」输入框（原先会压住第三行待办），添加走弹窗或 2x 卡面；
+ *   卡面只展示进度与待办行，点卡面（非控件区域）打开计划面板
+ * - 高 2x：卡面直接呈现弹窗式布局——复用 TaskPanel 的 TasksSection/PlansSection（variant='card'）：
+ *   宽 2 栏左右双列、宽 1 栏上下堆叠，勾选/添加待办/计划 +1 与完成在卡内直接可用；
+ *   建组、AI 整理、新建计划表单等复杂操作仍留在弹窗，头部留「展开」入口打开完整面板；
+ *   2x 时点卡面空白不再打开弹窗（避免和卡内交互冲突）
  */
 export default function TaskCard({
   store,
   onOpen,
   delay = 0,
+  colSpan = 1,
+  heightUnits = 1,
 }: {
   store: LocalStore;
   onOpen: () => void;
   delay?: number;
+  /** 右键布局宽度（2x 面板式布局时决定双列/堆叠） */
+  colSpan?: 1 | 2;
+  /** 右键布局高度：1 = 简洁卡面（点开弹窗），2 = 面板式布局（卡内直接操作） */
+  heightUnits?: 1 | 2;
 }) {
   const { tasks, cardFaceStyles } = store.data;
   const face = cardFaceStyleOf(cardFaceStyles, widgetCardKey('task'));
-  const [draft, setDraft] = useState('');
   /** 刚在卡面上勾完的待办：先划线留影，片刻后才移出前 3（避免勾完瞬间跳变） */
   const [justDone, setJustDone] = useState<Record<string, true>>({});
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -81,13 +93,6 @@ export default function TaskCard({
     }
   }
 
-  const submitDraft = () => {
-    const title = draft.trim();
-    if (!title) return;
-    store.addTask(title);
-    setDraft('');
-  };
-
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, input, form, [data-nopanel]')) return;
     onOpen();
@@ -96,6 +101,51 @@ export default function TaskCard({
   const focusTask = open[0];
   const restCount = Math.max(0, open.length - 1);
 
+  /* ---------- 高 2x：面板式布局（复用 TaskPanel 双列内容，核心交互卡内直接可用） ---------- */
+  if (heightUnits === 2) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, delay }}
+        data-task-card
+        data-task-mode="full"
+        className="glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
+      >
+        {/* 头部：标题 + 今日进度 + 「展开」入口（打开完整面板，复杂操作都在那里） */}
+        <div className="flex items-center gap-2 mb-2.5 shrink-0">
+          <div className="w-7 h-7 rounded-full bg-indigo-500/25 text-indigo-200 flex items-center justify-center">
+            <ListTodo size={14} />
+          </div>
+          <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>
+          <span data-task-progress className="ml-auto text-xs text-white/45 tabular-nums">
+            {doneCount}/{total}
+          </span>
+          <button
+            type="button"
+            data-task-expand
+            onClick={onOpen}
+            className="flex items-center gap-1 text-[11px] font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
+          >
+            <Maximize2 size={12} /> 展开
+          </button>
+        </div>
+        <div className="h-1 rounded-full bg-white/8 overflow-hidden shrink-0 mb-3">
+          <div className="h-full rounded-full bg-indigo-400/90 transition-all duration-300" style={{ width: `${pct}%` }} />
+        </div>
+
+        {/* 双列内容与完整面板同一套组件（variant='card' 仅核心交互）；整区 data-nodrag：在卡内滚动/操作不触发卡片拖拽 */}
+        <div className="flex-1 min-h-0 overflow-y-auto" data-nodrag>
+          <div className={`grid gap-5 sm:gap-6 items-start ${colSpan === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <TasksSection store={store} variant="card" />
+            <PlansSection store={store} variant="card" />
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  /* ---------- 高 1x：简洁卡面（无添加输入框，点卡面开弹窗） ---------- */
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -123,7 +173,7 @@ export default function TaskCard({
       {face === 'list' ? (
         <div className="flex-1 min-h-0 flex flex-col gap-1">
           {rows.length === 0 ? (
-            <p className="flex-1 flex items-center text-[13px] text-white/35">暂无待办，在下方添加第一件。</p>
+            <p className="flex-1 flex items-center text-[13px] text-white/35">暂无待办，点开面板添加第一件。</p>
           ) : (
             rows.map((t) =>
               isTaskGroup(t) ? (
@@ -174,29 +224,11 @@ export default function TaskCard({
             <>
               <p className="text-[11px] tracking-wider text-white/40 uppercase mb-1.5">下一件事</p>
               <p className="text-xl font-semibold leading-snug text-white/50">暂无待办</p>
-              <p className="mt-auto text-xs text-white/35">在下方添加第一件。</p>
+              <p className="mt-auto text-xs text-white/35">点开面板添加第一件。</p>
             </>
           )}
         </div>
       )}
-
-      {/* 快速添加行（卡面直接加待办，回车落库） */}
-      <form
-        className="mt-3 shrink-0 flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submitDraft();
-        }}
-      >
-        <Plus size={14} className="text-white/35 shrink-0" />
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="添加待办，回车确认"
-          data-task-quickadd
-          className="flex-1 min-w-0 bg-transparent text-[13px] py-1 outline-none placeholder:text-white/30"
-        />
-      </form>
     </motion.div>
   );
 }

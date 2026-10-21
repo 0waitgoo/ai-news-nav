@@ -13,9 +13,194 @@ import { groupIcon, siteLogoFallback, sortSites, type NavGroup, type SiteEntry }
  *   与 .glass-panel 同数值：rgba(30, 30, 35, 0.4) + backdrop-blur(24px)，页面背景半透出、两型卡观感一致
  * - 第十六轮：与 B 卡一样可右键改尺寸（groupLayouts 按组存，缺省 1 栏 × 1x）；
  *   图标排去掉「+N」尾巴——1 栏每排 7 个（瓷砖 flex 自适应缩小以整排放下），2 栏每排按 48px 瓷砖放宽到 11 个；
- *   排数 = 高度（1x 一排、2x 两排）；未展示完时图标区右端加渐隐罩作提示，不再写数字（总数在标题行已有）
+ *   未展示完时图标区右端加渐隐罩作提示，不再写数字（总数在标题行已有）
  * - 第十七轮：去掉卡身外投影（原 shadow-xl shadow-black/30），卡面走扁平；图标瓷砖经常态/悬停态核查本就无阴影类，未动
+ * - 第二十二轮：卡高 2x 时图标区改 5 列网格——瓷砖从左到右、从上往下逐行排，网格撑满卡宽（左右对齐）、
+ *   间距比 1x 更宽松、瓷砖略放大；可见 2 行共 10 个，再多底部渐隐提示（1x 规则不变）
+ * - 第二十一轮：卡框（StackCardFrame）与瓷砖区（StackSiteTiles）抽成共享组件，组合卡（ComboCard）复用同一套外观与排版规则
  */
+
+/** C 卡卡框：小角 + 半透明卡身。普通 C 卡与组合卡共用，children 渲染在卡身内（标题行/口线/瓷砖区由调用方组织） */
+export function StackCardFrame({
+  tabColor,
+  onClick,
+  delay = 0,
+  ariaLabel,
+  children,
+  rootProps,
+}: {
+  /** 小角填充色（已解析：空字符串 = 默认同色灰） */
+  tabColor: string;
+  onClick?: () => void;
+  delay?: number;
+  ariaLabel: string;
+  children: React.ReactNode;
+  /** 透传到根节点的数据属性（如组合卡的 data-combo-card） */
+  rootProps?: Record<string, string>;
+}) {
+  const color = tabColor?.trim() ? tabColor.trim() : '';
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay }}
+      onClick={onClick}
+      whileHover={{ y: -3 }}
+      className="relative w-full h-full text-left group/card cursor-pointer"
+      role="button"
+      aria-label={ariaLabel}
+      {...rootProps}
+    >
+      {/* 小角（标签凸起）：从卡身后探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边）。
+          clipPath 裁掉下 7px：卡身透明后，原先被卡身压住的小角下截会透出来，故只保留上沿以上的可见轮廓（与透明化前的外观一致） */}
+      <div
+        data-tab-bump
+        className="absolute top-0 left-[18px] h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
+        style={{
+          backgroundColor: color || '#26262e',
+          borderColor: color || 'rgba(255,255,255,0.1)',
+          clipPath: 'inset(0 0 7px 0)',
+        }}
+      />
+
+      {/* 卡身：四角完整的圆角矩形，底色为 B 卡同款半透明（.glass-panel 同数值 rgba(30,30,35,0.4) + blur(24px)，内联实现不动 index.css），
+          悬停只提亮描边，不改变底色 */}
+      <div
+        data-stack-body
+        style={{ background: 'rgba(30, 30, 35, 0.4)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+        className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
+      >
+        {children}
+      </div>
+    </motion.div>
+  );
+}
+
+/** 组标题图标瓷砖（头图标规则与普通 C 卡一致：组首站图标，无站点时回落组名首字） */
+export function StackGroupIcon({ group, size = 30 }: { group: NavGroup; size?: number }) {
+  return (
+    <div
+      className="rounded-[9px] bg-white flex items-center justify-center overflow-hidden shrink-0"
+      style={{ width: size, height: size }}
+    >
+      {group.sites.length > 0 ? (
+        <img
+          src={groupIcon(group)}
+          alt={group.name}
+          loading="lazy"
+          className="object-contain"
+          style={{ width: size * 0.63, height: size * 0.63 }}
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+          }}
+        />
+      ) : (
+        <span className="text-slate-400 text-[13px] font-bold">{group.name.charAt(0)}</span>
+      )}
+    </div>
+  );
+}
+
+/** 单个站点瓷砖（白底圆角块 + 站点图标），点击直达并阻止冒泡 */
+function SiteTile({ site, className }: { site: SiteEntry; className: string }) {
+  const openSite = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(site.url, '_blank');
+  };
+  return (
+    <button type="button" title={site.name} data-face-site={site.name} onClick={openSite} className={className}>
+      <span className="block w-full aspect-square rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
+        <img
+          src={site.logo}
+          alt={site.name}
+          loading="lazy"
+          className={`w-full h-full object-contain p-[16%] ${site.dead ? 'grayscale opacity-60' : ''}`}
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            if (!target.src.includes('dicebear')) target.src = siteLogoFallback(site.name);
+          }}
+        />
+      </span>
+    </button>
+  );
+}
+
+/**
+ * C 卡底部瓷砖区（普通 C 卡与组合卡共用同一套排版规则）：
+ * - 1x：单行 flex，1 栏每排 7 个 / 2 栏每排 11 个，未展示完右端渐隐
+ * - 2x（第二十二轮）：5 列网格撑满卡宽、从上往下逐行排，可见 2 行共 10 个，未展示完底部渐隐
+ */
+export function StackSiteTiles({
+  group,
+  colSpan = 1,
+  heightUnits = 1,
+}: {
+  group: NavGroup;
+  colSpan?: 1 | 2;
+  heightUnits?: 1 | 2;
+}) {
+  const sorted = sortSites(group.sites);
+
+  if (heightUnits === 2) {
+    const faceSites = sorted.slice(0, 10);
+    const hasMore = group.sites.length > faceSites.length;
+    return (
+      <div className="mt-auto pt-3 relative">
+        {group.sites.length === 0 ? (
+          <span className="text-[11px] text-white/35">点开添加第一个网站</span>
+        ) : (
+          <div data-tiles-grid="5" className="grid grid-cols-5 gap-2.5">
+            {faceSites.map((site) => (
+              <React.Fragment key={site.id ?? site.name}>
+                <SiteTile site={site} className="group/face w-full rounded-[13px] hover:z-20" />
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+        {hasMore && (
+          <div
+            data-icon-fade="bottom"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-10"
+            style={{
+              background:
+                'linear-gradient(to top, rgba(23,23,29,0.92) 0%, rgba(23,23,29,0.55) 55%, rgba(23,23,29,0) 100%)',
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const perRow = colSpan === 1 ? 7 : 11;
+  const faceSites = sorted.slice(0, perRow);
+  const hasMore = group.sites.length > faceSites.length;
+  return (
+    <div className="mt-auto pt-3 relative">
+      <div className="flex flex-col gap-1.5">
+        <div data-icon-row className="flex items-end gap-1.5">
+          {faceSites.map((site) => (
+            <React.Fragment key={site.id ?? site.name}>
+              <SiteTile site={site} className="group/face flex-1 max-w-[48px] rounded-[13px] hover:z-20" />
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      {group.sites.length === 0 && <span className="text-[11px] text-white/35">点开添加第一个网站</span>}
+      {hasMore && (
+        <div
+          data-icon-fade
+          className="pointer-events-none absolute inset-y-0 right-0 w-12 z-10"
+          style={{
+            background:
+              'linear-gradient(to right, rgba(23,23,29,0) 0%, rgba(23,23,29,0.55) 55%, rgba(23,23,29,0.92) 100%)',
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function GroupStackCard({
   group,
   onOpen,
@@ -28,123 +213,23 @@ export default function GroupStackCard({
   delay?: number;
   /** 右键布局宽度：1 栏每排 7 个图标；2 栏每排按 48px 瓷砖放宽 */
   colSpan?: 1 | 2;
-  /** 右键布局高度：1x 一排图标、2x 两排图标 */
+  /** 右键布局高度：1x 一排图标；2x 改 5 列网格两排（第二十二轮） */
   heightUnits?: 1 | 2;
 }) {
-  const sorted = sortSites(group.sites);
-  const perRow = colSpan === 1 ? 7 : 11;
-  const rowCount = heightUnits === 2 ? 2 : 1;
-  const faceSites = sorted.slice(0, perRow * rowCount);
-  const hasMore = group.sites.length > faceSites.length;
-  const iconRows: SiteEntry[][] = [];
-  for (let i = 0; i < faceSites.length; i += perRow) iconRows.push(faceSites.slice(i, i + perRow));
-  const tabColor = group.tabColor?.trim() ? group.tabColor.trim() : '';
-
-  const openSite = (e: React.MouseEvent, site: SiteEntry) => {
-    e.stopPropagation();
-    window.open(site.url, '_blank');
-  };
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay }}
-      onClick={() => onOpen(group)}
-      whileHover={{ y: -3 }}
-      className="relative w-full h-full text-left group/card cursor-pointer"
-      role="button"
-      aria-label={`${group.name} 编组`}
-    >
-      {/* 小角（标签凸起）：从卡身后探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边）。
-          clipPath 裁掉下 7px：卡身透明后，原先被卡身压住的小角下截会透出来，故只保留上沿以上的可见轮廓（与透明化前的外观一致） */}
-      <div
-        data-tab-bump
-        className="absolute top-0 left-[18px] h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
-        style={{
-          backgroundColor: tabColor || '#26262e',
-          borderColor: tabColor || 'rgba(255,255,255,0.1)',
-          clipPath: 'inset(0 0 7px 0)',
-        }}
-      />
-
-      {/* 卡身：四角完整的圆角矩形，底色为 B 卡同款半透明（.glass-panel 同数值 rgba(30,30,35,0.4) + blur(24px)，内联实现不动 index.css），
-          悬停只提亮描边，不改变底色 */}
-      <div
-        data-stack-body
-        style={{ background: 'rgba(30, 30, 35, 0.4)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
-        className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
-      >
-        {/* 标题行：组图标瓷砖 + 组名；右侧小字「N 个站点」 */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-[30px] h-[30px] rounded-[9px] bg-white flex items-center justify-center overflow-hidden shrink-0">
-            {group.sites.length > 0 ? (
-              <img
-                src={groupIcon(group)}
-                alt={group.name}
-                loading="lazy"
-                className="w-[19px] h-[19px] object-contain"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
-              />
-            ) : (
-              <span className="text-slate-400 text-[13px] font-bold">{group.name.charAt(0)}</span>
-            )}
-          </div>
-          <h3 className="flex-1 min-w-0 font-bold text-[15px] tracking-tight truncate">{group.name}</h3>
-          <span className="text-[11px] text-white/40 shrink-0">{group.sites.length} 个站点</span>
-        </div>
-
-        {/* 口线：标题行下的一条分隔线，暗示文件夹的开口 */}
-        <div className="mt-3 h-px bg-white/[0.08] shrink-0" />
-
-        {/* 底部图标区（主角）：按布局分排（1x 一排 / 2x 两排），瓷砖可点击直达、悬停放大；
-            未展示完时右端渐隐罩提示（无 +N 数字）。瓷砖 flex-1 自适应：1 栏 7 个时自动缩小整排放下，宽卡时封顶 48px */}
-        <div className="mt-auto pt-3 relative">
-          <div className="flex flex-col gap-1.5">
-            {iconRows.map((rowSites, ri) => (
-              <div key={ri} data-icon-row className="flex items-end gap-1.5">
-                {rowSites.map((site) => (
-                  <button
-                    key={site.id ?? site.name}
-                    type="button"
-                    title={site.name}
-                    data-face-site={site.name}
-                    onClick={(e) => openSite(e, site)}
-                    className="group/face flex-1 max-w-[48px] rounded-[13px] hover:z-20"
-                  >
-                    <span className="block w-full aspect-square rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
-                      <img
-                        src={site.logo}
-                        alt={site.name}
-                        loading="lazy"
-                        className={`w-full h-full object-contain p-[16%] ${site.dead ? 'grayscale opacity-60' : ''}`}
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          if (!target.src.includes('dicebear')) target.src = siteLogoFallback(site.name);
-                        }}
-                      />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-          {group.sites.length === 0 && <span className="text-[11px] text-white/35">点开添加第一个网站</span>}
-          {hasMore && (
-            <div
-              data-icon-fade
-              className="pointer-events-none absolute inset-y-0 right-0 w-12 z-10"
-              style={{
-                background:
-                  'linear-gradient(to right, rgba(23,23,29,0) 0%, rgba(23,23,29,0.55) 55%, rgba(23,23,29,0.92) 100%)',
-              }}
-            />
-          )}
-        </div>
+    <StackCardFrame tabColor={group.tabColor ?? ''} onClick={() => onOpen(group)} delay={delay} ariaLabel={`${group.name} 编组`}>
+      {/* 标题行：组图标瓷砖 + 组名；右侧小字「N 个站点」 */}
+      <div className="flex items-center gap-2.5 min-w-0">
+        <StackGroupIcon group={group} />
+        <h3 className="flex-1 min-w-0 font-bold text-[15px] tracking-tight truncate">{group.name}</h3>
+        <span className="text-[11px] text-white/40 shrink-0">{group.sites.length} 个站点</span>
       </div>
-    </motion.div>
+
+      {/* 口线：标题行下的一条分隔线，暗示文件夹的开口 */}
+      <div className="mt-3 h-px bg-white/[0.08] shrink-0" />
+
+      {/* 底部图标区（主角）：瓷砖可点击直达、悬停放大；未展示完以渐隐罩提示（无 +N 数字） */}
+      <StackSiteTiles group={group} colSpan={colSpan} heightUnits={heightUnits} />
+    </StackCardFrame>
   );
 }

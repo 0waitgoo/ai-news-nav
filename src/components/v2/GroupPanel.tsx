@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X, Pin, Plus, Sparkles, Pencil, Trash2, Check } from 'lucide-react';
-import { GROUP_TAB_COLORS, deadCount, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { X, Pin, Plus, Pencil, Trash2, Check } from 'lucide-react';
+import { GROUP_NAME_MAX, GROUP_TAB_COLORS, cleanSiteTag, sortSites, textCharCount, type NavGroup, type SiteEntry } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
-import { SiteForm } from './GroupExpanded';
+import { SiteForm, SiteTagBadge } from './GroupExpanded';
 import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteContextMenu';
 
 /**
  * C 型 · 编组展开弹窗（第三轮恢复）
  * 点击堆叠卡弹出居中弹窗：组内站点为 ICON 瓷砖（图标 + 名字，置顶优先 + 频率排序），
  * 带「+ 添加网站」瓷砖；瓷砖的操作（打开/编辑/删除）走右键菜单（第十六轮追加，悬停不再冒图标）；
- * 头部可改组名、切换形态、删组；底部失效提示条：失效链接只标记不删除。面板为实色背景，不用半透明/毛玻璃。
+ * 头部可改组名、切换形态、删组；失效链接只在站点瓷砖上标记（汇总提示条已按用户要求删除）。面板为实色背景，不用半透明/毛玻璃。
  * （B 型列表卡不走这里——它在主页原地向下拉开。）
  */
 export default function GroupPanel({
@@ -54,7 +54,7 @@ export default function GroupPanel({
             className="relative rounded-[28px] bg-[#17171d] border border-white/10 w-full max-w-2xl max-h-[84vh] flex flex-col overflow-hidden shadow-2xl shadow-black/70"
           >
             <React.Fragment key={group.id}>
-              <PanelBody group={group} store={store} onClose={onClose} onBecomeList={onBecomeList} />
+              <GroupPanelSection group={group} store={store} onClose={onClose} onBecomeList={onBecomeList} />
             </React.Fragment>
           </motion.div>
         </div>
@@ -63,18 +63,24 @@ export default function GroupPanel({
   );
 }
 
-function PanelBody({
+/**
+ * 单个编组的管理区（组名行/小角颜色/站点网格/添加网站）：GroupPanel 弹窗本体使用，
+ * 第二十一轮起组合弹窗（ComboPanel）以 embedded 方式上下复用两份——同一套逻辑，不复制。
+ * embedded 时：不渲染关闭按钮（外层弹窗统一提供）、内容区不自带滚动（随外层一起滚）。
+ */
+export function GroupPanelSection({
   group,
   store,
   onClose,
   onBecomeList,
+  embedded = false,
 }: {
   group: NavGroup;
   store: LocalStore;
   onClose: () => void;
   onBecomeList: (group: NavGroup) => void;
+  embedded?: boolean;
 }) {
-  const [barDismissed, setBarDismissed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingSite, setEditingSite] = useState<SiteEntry | null>(null);
   const [siteMenu, setSiteMenu] = useState<SiteMenuState | null>(null);
@@ -83,7 +89,6 @@ function PanelBody({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const sorted = useMemo(() => sortSites(group.sites), [group]);
-  const dead = deadCount(group);
   const showForm = adding || editingSite !== null;
 
   const switchDisplay = (display: 'list' | 'stack') => {
@@ -93,25 +98,32 @@ function PanelBody({
   };
 
   return (
-    <>
+    <div data-panel-section={group.id} className="contents">
       {/* 头部（第十二轮）：组名 + 计数 + 组操作全部与组名同一行，右侧依次 改组名 / 形态切换 / 删组 / 关闭；
           已删除「自定义标题」输入行与「按使用频率排序」提示行（subtitle 仅保留在数据模型兼容老数据） */}
       <div className="px-5 sm:px-6 pt-5 pb-4 shrink-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
           {renaming ? (
             <span className="flex items-center gap-2 min-w-0">
-              <input
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && groupName.trim()) {
-                    store.renameGroup(group.id, groupName.trim());
-                    setRenaming(false);
-                  }
-                }}
-                className="w-44 bg-white/5 border border-white/15 rounded-xl px-3 py-1.5 text-sm outline-none focus:border-indigo-400/60"
-              />
+              <span className="relative block">
+                <input
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  autoFocus
+                  maxLength={GROUP_NAME_MAX}
+                  data-group-name-input
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && groupName.trim()) {
+                      store.renameGroup(group.id, groupName.trim());
+                      setRenaming(false);
+                    }
+                  }}
+                  className="w-44 bg-white/5 border border-white/15 rounded-xl px-3 py-1.5 pr-10 text-sm outline-none focus:border-indigo-400/60"
+                />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/30 pointer-events-none">
+                  {textCharCount(groupName)}/{GROUP_NAME_MAX}
+                </span>
+              </span>
               <button
                 onClick={() => {
                   if (groupName.trim()) store.renameGroup(group.id, groupName.trim());
@@ -186,13 +198,15 @@ function PanelBody({
               )}
             </>
           )}
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0 ml-auto"
-            aria-label="关闭"
-          >
-            <X size={16} />
-          </button>
+          {!embedded && (
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0 ml-auto"
+              aria-label="关闭"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
         {/* 小角颜色：卡面文件夹小角的填充色，点选即时生效并落盘；「默认」= 同色灰。当前色带描边 + 勾标记 */}
@@ -233,7 +247,7 @@ function PanelBody({
       </div>
 
       {/* 内容区：表单（添加/编辑） + 瓷砖网格 */}
-      <div className="flex-1 overflow-y-auto px-5 sm:px-6 pb-4 min-h-0">
+      <div className={embedded ? 'px-5 sm:px-6 pb-4' : 'flex-1 overflow-y-auto px-5 sm:px-6 pb-4 min-h-0'}>
         {showForm && (
           <div className="mb-3">
             <SiteForm
@@ -271,6 +285,12 @@ function PanelBody({
                 className="relative flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.05] hover:bg-white/10 border border-white/5 transition-colors"
               >
                 {site.pinned && <Pin size={10} className="absolute top-1.5 left-1.5 text-amber-400 fill-amber-400 z-10" />}
+                {/* 站点标签徽标（第二十六轮）：与 B 卡行同一来源（tag），置于瓷砖右上角 */}
+                {cleanSiteTag(site.tag) && (
+                  <span className="absolute top-1.5 right-1.5 z-10">
+                    <SiteTagBadge site={site} />
+                  </span>
+                )}
                 <button onClick={() => window.open(site.url, '_blank')} title={site.description} className="flex flex-col items-center gap-1.5 w-full">
                   <SiteLogo logo={site.logo} name={site.name} size={40} imgSize={28} grayscale={site.dead} />
                   <span className={`text-[11px] font-medium w-full text-center truncate ${site.dead ? 'text-white/45' : 'text-white/85'}`}>
@@ -296,22 +316,7 @@ function PanelBody({
         )}
       </div>
 
-      {/* 底部失效提示条：只标记、不删除（无失效时不显示） */}
-      {dead > 0 && !barDismissed && (
-        <div className="shrink-0 mx-5 sm:mx-6 mb-5 flex items-center gap-3 rounded-2xl border border-dashed border-indigo-400/30 bg-indigo-500/10 px-4 py-3">
-          <Sparkles size={16} className="text-indigo-300 shrink-0" />
-          <p className="flex-1 text-xs sm:text-[13px] text-white/80 leading-relaxed">
-            <span className="font-semibold text-indigo-200">AI 整理建议：</span>
-            发现 {dead} 个失效链接 · 已标记（仅标记，不会自动删除）
-          </p>
-          <button
-            onClick={() => setBarDismissed(true)}
-            className="text-[11px] font-medium text-white/70 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
-          >
-            知道了
-          </button>
-        </div>
-      )}
+      {/* 底部失效提示条已按用户要求删除（第二十九轮）：站点瓷砖自身的「失效」徽标与失效标记逻辑保留 */}
 
       {/* 站点右键菜单（打开/编辑/删除）：fixed 定位，渲染在弹窗内容之外不被滚动区裁剪 */}
       {siteMenu && (
@@ -328,6 +333,6 @@ function PanelBody({
           }}
         />
       )}
-    </>
+    </div>
   );
 }
