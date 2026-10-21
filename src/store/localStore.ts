@@ -18,9 +18,9 @@ import {
 
 export type WidgetId = 'task' | 'news' | 'ranking' | 'trending';
 
-/** A 型原生组件在网格中的占位：宽度跨栏数 + 高度单位（1X / 2X） */
+/** A 型原生组件在网格中的占位：宽度跨栏数（最多 2 栏） + 高度单位（1X / 2X） */
 export interface WidgetLayout {
-  colSpan: 1 | 2 | 4;
+  colSpan: 1 | 2;
   heightUnits: 1 | 2;
 }
 
@@ -71,18 +71,27 @@ function seedData(): StoreData {
   };
 }
 
-/** 归一化 widgetLayouts：从默认值出发，仅采纳合法的已存值（旧数据无此字段时全走默认） */
+/**
+ * 归一化 widgetLayouts：从默认值出发，仅采纳合法的已存值（旧数据无此字段时全走默认）。
+ * 宽度上限为 2 栏：第三轮存量数据里的 4 栏在加载时自动夹到 2，老用户数据不破版。
+ */
 function normalizeWidgetLayouts(raw: unknown): Record<WidgetId, WidgetLayout> {
   const layouts = structuredClone(DEFAULT_WIDGET_LAYOUTS);
   if (raw && typeof raw === 'object') {
     for (const w of ALL_WIDGETS) {
       const l = (raw as Record<string, { colSpan?: unknown; heightUnits?: unknown } | undefined>)[w.id];
       if (!l) continue;
-      if (l.colSpan === 1 || l.colSpan === 2 || l.colSpan === 4) layouts[w.id].colSpan = l.colSpan;
+      if (l.colSpan === 1) layouts[w.id].colSpan = 1;
+      else if (typeof l.colSpan === 'number' && l.colSpan >= 2) layouts[w.id].colSpan = 2;
       if (l.heightUnits === 1 || l.heightUnits === 2) layouts[w.id].heightUnits = l.heightUnits;
     }
   }
   return layouts;
+}
+
+/** 渲染/写入侧的宽度上限保护：任何来源的 colSpan 都不超过 2 栏 */
+export function clampColSpan(span: number | undefined): 1 | 2 {
+  return span !== undefined && span >= 2 ? 2 : 1;
 }
 
 /** 校验任意来源（localStorage / 导入文件）的数据结构，合法则归一化返回，否则 null */
@@ -245,7 +254,9 @@ export function useLocalStore() {
     (widgetId: WidgetId, patch: Partial<WidgetLayout>) => {
       update((d) => {
         const cur = d.widgetLayouts[widgetId] ?? DEFAULT_WIDGET_LAYOUTS[widgetId];
-        d.widgetLayouts[widgetId] = { ...cur, ...patch };
+        const next = { ...cur, ...patch };
+        next.colSpan = clampColSpan(next.colSpan);
+        d.widgetLayouts[widgetId] = next;
         return d;
       });
     },
