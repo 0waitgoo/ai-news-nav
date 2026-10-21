@@ -2,6 +2,8 @@
 // 在原有 name/description/url/logo 基础上扩展：aliases（别名）、pinned（置顶）、frequency（使用频率权重）、dead（失效标记，只标记不删除）
 
 export interface SiteEntry {
+  /** 本地存储层分配的稳定 ID（种子/导入时补齐），增删改按 ID 定位 */
+  id?: string;
   name: string;
   url: string;
   description: string;
@@ -80,6 +82,16 @@ export const getSiteLogo = (name: string): string => {
   }
   return `/icon_APP/${name}.svg`;
 };
+
+/** 名称命中内置图标映射时返回本地图标路径，否则 null（用户新增站点用） */
+export function findMappedLogo(name: string): string | null {
+  for (const [mapKey, path] of Object.entries(iconMap)) {
+    if (name.toLowerCase().includes(mapKey.toLowerCase())) {
+      return path;
+    }
+  }
+  return null;
+}
 
 const logoFallback = (name: string) =>
   `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(name.toLowerCase())}&backgroundColor=6366f1`;
