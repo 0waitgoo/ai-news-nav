@@ -112,6 +112,92 @@ export function stackLayoutOf(layouts: Record<string, WidgetLayout>, groupId: st
   return layouts[groupId] ?? DEFAULT_STACK_LAYOUT;
 }
 
+/* ---------- 计划任务小工具数据（第十八轮） ---------- */
+
+/** 短期待办：数组顺序即展示顺序 */
+export interface TaskItem {
+  id: string;
+  title: string;
+  done: boolean;
+  createdAt: number;
+}
+
+/** 长期计划的一个步骤（里程碑） */
+export interface PlanStep {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+/** 长期计划：进度 = 已完成步骤数 / 总步骤数 */
+export interface PlanItem {
+  id: string;
+  title: string;
+  steps: PlanStep[];
+  createdAt: number;
+}
+
+/** 卡面样式（目前只有任务卡有双样式）：按卡片稳定 key 存，缺省列表式 */
+export type CardFaceStyle = 'list' | 'focus';
+
+export function cardFaceStyleOf(styles: Record<string, CardFaceStyle>, cardKey: string): CardFaceStyle {
+  return styles[cardKey] === 'focus' ? 'focus' : 'list';
+}
+
+/** 归一化 tasks：老数据无此字段 / 元素残缺时逐项清洗，非法整体回落空数组（首次即空状态，不塞假数据） */
+function normalizeTasks(raw: unknown): TaskItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TaskItem[] = [];
+  for (const t of raw as Partial<TaskItem>[]) {
+    if (!t || typeof t.title !== 'string' || !t.title) continue;
+    out.push({
+      id: typeof t.id === 'string' && t.id ? t.id : genId('t'),
+      title: t.title,
+      done: t.done === true,
+      createdAt: typeof t.createdAt === 'number' ? t.createdAt : 0,
+    });
+  }
+  return out;
+}
+
+/** 归一化 plans：同 tasks 口径，步骤逐项清洗 */
+function normalizePlans(raw: unknown): PlanItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PlanItem[] = [];
+  for (const p of raw as Partial<PlanItem>[]) {
+    if (!p || typeof p.title !== 'string' || !p.title) continue;
+    const steps: PlanStep[] = [];
+    if (Array.isArray(p.steps)) {
+      for (const s of p.steps as Partial<PlanStep>[]) {
+        if (!s || typeof s.title !== 'string' || !s.title) continue;
+        steps.push({
+          id: typeof s.id === 'string' && s.id ? s.id : genId('ps'),
+          title: s.title,
+          done: s.done === true,
+        });
+      }
+    }
+    out.push({
+      id: typeof p.id === 'string' && p.id ? p.id : genId('p'),
+      title: p.title,
+      steps,
+      createdAt: typeof p.createdAt === 'number' ? p.createdAt : 0,
+    });
+  }
+  return out;
+}
+
+/** 归一化卡面样式表：只采纳合法值 */
+function normalizeCardFaceStyles(raw: unknown): Record<string, CardFaceStyle> {
+  const out: Record<string, CardFaceStyle> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (v === 'list' || v === 'focus') out[k] = v;
+    }
+  }
+  return out;
+}
+
 export interface StoreData {
   version: 1;
   groups: NavGroup[];
@@ -135,6 +221,12 @@ export interface StoreData {
    * 老数据无此字段时为 0（任何带真实时间戳的一端都比它新）。
    */
   updatedAt: number;
+  /** 计划任务小工具：短期待办（第十八轮）；老数据无此字段时归一化为空数组 */
+  tasks: TaskItem[];
+  /** 计划任务小工具：长期计划；老数据无此字段时归一化为空数组 */
+  plans: PlanItem[];
+  /** 卡面样式（按卡片稳定 key 存，如 widget:task）；老数据无此字段时为空表（各卡回落缺省样式） */
+  cardFaceStyles: Record<string, CardFaceStyle>;
 }
 
 /** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
@@ -165,7 +257,7 @@ export function resolveCardOrder(stored: string[], defaultOrder: string[]): stri
 }
 
 export const ALL_WIDGETS: { id: WidgetId; name: string; desc: string }[] = [
-  { id: 'task', name: '今日任务', desc: '任务组件占位卡（设计中）' },
+  { id: 'task', name: '今日任务', desc: '待办与长期计划小工具' },
   { id: 'news', name: 'AI 资讯', desc: '今日最热头条 + 热门榜单' },
   { id: 'ranking', name: 'AI 软件榜', desc: 'Product Hunt 每周更新榜单' },
   { id: 'trending', name: '热门话题', desc: '社区热门话题帖子数' },
@@ -196,6 +288,9 @@ function seedData(): StoreData {
     cardOrder: [],
     background: { ...DEFAULT_BACKGROUND },
     updatedAt: Date.now(),
+    tasks: [],
+    plans: [],
+    cardFaceStyles: {},
   };
 }
 
@@ -295,6 +390,9 @@ export function validateStoreData(raw: unknown): StoreData | null {
     cardOrder,
     background,
     updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+    tasks: normalizeTasks((data as { tasks?: unknown }).tasks),
+    plans: normalizePlans((data as { plans?: unknown }).plans),
+    cardFaceStyles: normalizeCardFaceStyles((data as { cardFaceStyles?: unknown }).cardFaceStyles),
   };
 }
 
@@ -536,6 +634,127 @@ export function useLocalStore() {
     [update],
   );
 
+  /* ---------- 计划任务小工具（第十八轮） ---------- */
+
+  const addTask = useCallback(
+    (title: string) => {
+      const t = title.trim();
+      if (!t) return;
+      update((d) => {
+        d.tasks.push({ id: genId('t'), title: t, done: false, createdAt: Date.now() });
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const toggleTask = useCallback(
+    (taskId: string) => {
+      update((d) => {
+        const task = d.tasks.find((t) => t.id === taskId);
+        if (task) task.done = !task.done;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const renameTask = useCallback(
+    (taskId: string, title: string) => {
+      const t = title.trim();
+      if (!t) return;
+      update((d) => {
+        const task = d.tasks.find((x) => x.id === taskId);
+        if (task) task.title = t;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const deleteTask = useCallback(
+    (taskId: string) => {
+      update((d) => {
+        d.tasks = d.tasks.filter((t) => t.id !== taskId);
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const addPlan = useCallback(
+    (title: string, stepTitles: string[]) => {
+      const t = title.trim();
+      if (!t) return;
+      update((d) => {
+        d.plans.push({
+          id: genId('p'),
+          title: t,
+          steps: stepTitles.map((s) => s.trim()).filter(Boolean).map((s) => ({ id: genId('ps'), title: s, done: false })),
+          createdAt: Date.now(),
+        });
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const togglePlanStep = useCallback(
+    (planId: string, stepId: string) => {
+      update((d) => {
+        const step = d.plans.find((p) => p.id === planId)?.steps.find((s) => s.id === stepId);
+        if (step) step.done = !step.done;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const deletePlan = useCallback(
+    (planId: string) => {
+      update((d) => {
+        d.plans = d.plans.filter((p) => p.id !== planId);
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** AI 整理确认落库：勾选的待办标题与计划（标题+步骤）一次性写入，走同一次 update（同步只推一次） */
+  const addSplitResult = useCallback(
+    (todos: string[], planDrafts: { title: string; steps: string[] }[]) => {
+      update((d) => {
+        for (const title of todos) {
+          const t = title.trim();
+          if (t) d.tasks.push({ id: genId('t'), title: t, done: false, createdAt: Date.now() });
+        }
+        for (const draft of planDrafts) {
+          const t = draft.title.trim();
+          if (!t) continue;
+          d.plans.push({
+            id: genId('p'),
+            title: t,
+            steps: draft.steps.map((s) => s.trim()).filter(Boolean).map((s) => ({ id: genId('ps'), title: s, done: false })),
+            createdAt: Date.now(),
+          });
+        }
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 卡面样式切换（按卡片稳定 key 存，如 widget:task） */
+  const setCardFaceStyle = useCallback(
+    (cardKey: string, style: CardFaceStyle) => {
+      update((d) => {
+        d.cardFaceStyles[cardKey] = style;
+        return d;
+      });
+    },
+    [update],
+  );
+
   const importData = useCallback((raw: unknown): boolean => {
     const validated = validateStoreData(raw);
     if (!validated) return false;
@@ -563,6 +782,15 @@ export function useLocalStore() {
     setGroupLayout,
     setCardOrder,
     setBackground,
+    addTask,
+    toggleTask,
+    renameTask,
+    deleteTask,
+    addPlan,
+    togglePlanStep,
+    deletePlan,
+    addSplitResult,
+    setCardFaceStyle,
     importData,
     resetData,
   };
