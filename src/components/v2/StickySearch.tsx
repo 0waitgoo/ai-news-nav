@@ -1,0 +1,167 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, LayoutGrid, CornerDownLeft } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import type { NavGroup } from '../../data/groups';
+import { searchAll } from '../../utils/search';
+import { SiteLogo } from './Card';
+
+/**
+ * 吸顶搜索：滚动时吸顶常驻。
+ * 支持按站点名 / 编组名 / 别名 / 拼音首字母搜索，站点结果点击直达，编组结果点击打开 D 面板。
+ */
+export default function StickySearch({ onOpenGroup }: { onOpenGroup: (group: NavGroup) => void }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const results = useMemo(() => searchAll(query), [query]);
+  const hasResults = results.sites.length > 0 || results.groups.length > 0;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      if (e.key === 'Escape') {
+        setOpen(false);
+        inputRef.current?.blur();
+      }
+    };
+    const onPointerDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onPointerDown);
+    };
+  }, []);
+
+  const openSite = (url: string) => {
+    window.open(url, '_blank');
+    setOpen(false);
+  };
+
+  const handleEnter = () => {
+    const first = results.sites[0];
+    if (first) openSite(first.site.url);
+    else if (results.groups[0]) {
+      onOpenGroup(results.groups[0]);
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="sticky top-0 z-40 py-2 -mt-2">
+      <div className="relative">
+        <div className="flex items-center gap-3 h-12 sm:h-13 px-4 rounded-2xl bg-[#141419]/85 backdrop-blur-xl border border-white/10 shadow-lg shadow-black/30 focus-within:border-indigo-400/40 transition-colors">
+          <Search size={18} className="text-white/40 shrink-0" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleEnter();
+            }}
+            placeholder="搜索网站、编组…试试拼音首字母或别名，如 db / gpt"
+            className="flex-1 bg-transparent outline-none text-sm sm:text-base placeholder:text-white/35 min-w-0"
+          />
+          {query ? (
+            <button
+              onClick={() => setQuery('')}
+              className="text-white/40 hover:text-white text-xs shrink-0 px-1"
+            >
+              清除
+            </button>
+          ) : (
+            <kbd className="hidden sm:flex items-center gap-0.5 text-[10px] text-white/40 bg-white/5 border border-white/10 rounded-md px-1.5 py-0.5 shrink-0">
+              ⌘ K
+            </kbd>
+          )}
+        </div>
+
+        <AnimatePresence>
+          {open && query.trim() && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ duration: 0.15 }}
+              className="absolute left-0 right-0 top-full mt-2 glass-panel rounded-3xl bg-[#17171d]/95 p-2 shadow-2xl shadow-black/50 max-h-[60vh] overflow-y-auto"
+            >
+              {!hasResults && (
+                <div className="px-4 py-6 text-center text-sm text-white/40">没有找到相关站点或编组</div>
+              )}
+
+              {results.groups.length > 0 && (
+                <div className="mb-1">
+                  <p className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-wider text-white/35 uppercase">编组</p>
+                  {results.groups.map((group) => (
+                    <button
+                      key={group.id}
+                      onClick={() => {
+                        onOpenGroup(group);
+                        setOpen(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-2xl hover:bg-white/8 text-left transition-colors"
+                    >
+                      <span className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0">
+                        <LayoutGrid size={15} />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium truncate">{group.name}</span>
+                        <span className="block text-[11px] text-white/40">{group.sites.length} 个站点 · 点击打开编组</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {results.sites.length > 0 && (
+                <div>
+                  <p className="px-3 pt-2 pb-1 text-[10px] font-medium tracking-wider text-white/35 uppercase">站点 · 回车直达第一个</p>
+                  {results.sites.map(({ site, group, matchedAlias }) => (
+                    <button
+                      key={`${group.id}-${site.name}`}
+                      onClick={() => openSite(site.url)}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-2xl hover:bg-white/8 text-left transition-colors group/item"
+                    >
+                      <SiteLogo logo={site.logo} name={site.name} size={32} imgSize={22} />
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate">{site.name}</span>
+                          {matchedAlias && (
+                            <span className="text-[9px] font-medium text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded shrink-0">
+                              别名 · {matchedAlias}
+                            </span>
+                          )}
+                          {site.dead && (
+                            <span className="text-[9px] font-medium text-red-300 bg-red-500/15 px-1.5 py-0.5 rounded shrink-0">失效</span>
+                          )}
+                        </span>
+                        <span className="block text-[11px] text-white/40 truncate">{site.description}</span>
+                      </span>
+                      <span className="text-[11px] text-white/35 shrink-0 hidden sm:flex items-center gap-1">
+                        {group.name}
+                        <CornerDownLeft size={11} className="opacity-0 group-hover/item:opacity-60" />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
