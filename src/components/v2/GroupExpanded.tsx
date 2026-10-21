@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Pin, Pencil, Trash2, Plus, Check, X, AlertTriangle } from 'lucide-react';
-import { deadCount, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { Pin, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
+import { sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
 import type { LocalStore, SiteDraft } from '../../store/localStore';
 import { SiteLogo } from './Card';
 
@@ -141,108 +141,17 @@ function EditableSiteRow({
 }
 
 /**
- * B 型列表卡的展开态主体：卡内可滚动的 2 列行式列表 + 添加网站 + 组操作（改名/删组/切形态）。
+ * B 型列表卡的展开态主体：卡内可滚动的 2 列行式列表 + 添加网站。
+ * 组操作（改名/删组/切形态/失效提示）第十二轮起上移到 GroupListCard 的标题行，与组名同一行。
  * 只有 B 卡在主页原地展开；C 卡走 GroupPanel 弹窗，不用这里。
  */
 export default function GroupExpandedBody({ group, store }: { group: NavGroup; store: LocalStore }) {
   const [adding, setAdding] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [groupName, setGroupName] = useState(group.name);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const sorted = sortSites(group.sites);
-  const dead = deadCount(group);
 
   return (
-    /* 展开体内点击只做组内操作（改名/加站/开站点等），不冒泡到卡片触发收起 */
+    /* 展开体内点击只做组内操作（加站/开站点等），不冒泡到卡片触发收起 */
     <div className="flex-1 min-h-0 flex flex-col" onClick={(e) => e.stopPropagation()}>
-      {/* 组操作行：改名 / 删组 */}
-      <div className="flex items-center gap-2 pb-2 shrink-0">
-        {renaming ? (
-          <>
-            <input
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              className={`${inputCls} max-w-[180px]`}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && groupName.trim()) {
-                  store.renameGroup(group.id, groupName.trim());
-                  setRenaming(false);
-                }
-              }}
-            />
-            <button
-              onClick={() => {
-                if (groupName.trim()) store.renameGroup(group.id, groupName.trim());
-                setRenaming(false);
-              }}
-              className="text-[11px] px-2.5 py-1.5 rounded-lg bg-indigo-500/80 text-white"
-            >
-              保存
-            </button>
-            <button onClick={() => setRenaming(false)} className="text-[11px] px-2.5 py-1.5 rounded-lg bg-white/8 text-white/70">
-              取消
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() => {
-                setGroupName(group.name);
-                setRenaming(true);
-              }}
-              className="flex items-center gap-1 text-[11px] text-white/45 hover:text-white/80 transition-colors"
-            >
-              <Pencil size={11} /> 改组名
-            </button>
-            {confirmDelete ? (
-              <span className="flex items-center gap-1.5 text-[11px]">
-                <span className="text-red-300">删除整个编组？</span>
-                <button onClick={() => store.deleteGroup(group.id)} className="px-2 py-1 rounded-md bg-red-500/80 text-white font-medium">
-                  确认删除
-                </button>
-                <button onClick={() => setConfirmDelete(false)} className="px-2 py-1 rounded-md bg-white/8 text-white/70">
-                  算了
-                </button>
-              </span>
-            ) : (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="flex items-center gap-1 text-[11px] text-white/45 hover:text-red-300 transition-colors"
-              >
-                <Trash2 size={11} /> 删组
-              </button>
-            )}
-            {/* 形态切换：详细列表（B） ↔ 文件夹式（C） */}
-            <span className="flex items-center rounded-lg bg-white/5 border border-white/10 overflow-hidden">
-              <button
-                onClick={() => store.setGroupDisplay(group.id, 'list')}
-                title="详细列表卡：在主页原地展开成行式列表"
-                className={`text-[11px] px-2.5 py-1 transition-colors ${
-                  group.display === 'list' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
-                }`}
-              >
-                详细列表
-              </button>
-              <button
-                onClick={() => store.setGroupDisplay(group.id, 'stack')}
-                title="文件夹式卡：紧凑堆叠卡，点开弹窗看图标"
-                className={`text-[11px] px-2.5 py-1 transition-colors ${
-                  group.display === 'stack' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
-                }`}
-              >
-                文件夹式
-              </button>
-            </span>
-          </>
-        )}
-        {dead > 0 && (
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-red-300/80 shrink-0">
-            <AlertTriangle size={11} /> {dead} 个失效链接 · 已标记（不会自动删除）
-          </span>
-        )}
-      </div>
-
       {/* 站点列表：卡内滚动（data-nodrag：此区域内按下拖动不触发整卡拖拽排序） */}
       <div data-nodrag className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
         {sorted.length === 0 && !adding && (

@@ -64,7 +64,8 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-0 top-full mt-2 w-64 glass-panel rounded-3xl bg-[#17171d]/95 p-3 shadow-2xl shadow-black/50 z-50"
+            /* 面板全不透明实色（第十二轮）：不用 glass-panel（其 rgba(30,30,35,0.4) + 毛玻璃会透出后面的卡片文字），与搜索下拉同款 bg-[#17171d] */
+            className="absolute left-0 top-full mt-2 w-64 rounded-3xl bg-[#17171d] border border-white/15 p-3 shadow-2xl shadow-black/70 z-50"
           >
             <p className="px-1 pb-2 text-[10px] tracking-wider text-white/40 uppercase">默认背景</p>
             <div className="grid grid-cols-2 gap-2">

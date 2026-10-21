@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, Pin, Plus, Sparkles, Pencil, Trash2, Check } from 'lucide-react';
-import { deadCount, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { GROUP_TAB_COLORS, deadCount, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import { SiteForm } from './GroupExpanded';
@@ -78,7 +78,6 @@ function PanelBody({
   const [editingSite, setEditingSite] = useState<SiteEntry | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [groupName, setGroupName] = useState(group.name);
-  const [subtitleDraft, setSubtitleDraft] = useState(group.subtitle ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const sorted = useMemo(() => sortSites(group.sites), [group]);
@@ -93,9 +92,10 @@ function PanelBody({
 
   return (
     <>
-      {/* 头部 */}
-      <div className="px-5 sm:px-6 pt-5 pb-3 shrink-0">
-        <div className="flex items-center justify-between gap-3">
+      {/* 头部（第十二轮）：组名 + 计数 + 组操作全部与组名同一行，右侧依次 改组名 / 形态切换 / 删组 / 关闭；
+          已删除「自定义标题」输入行与「按使用频率排序」提示行（subtitle 仅保留在数据模型兼容老数据） */}
+      <div className="px-5 sm:px-6 pt-5 pb-4 shrink-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
           {renaming ? (
             <span className="flex items-center gap-2 min-w-0">
               <input
@@ -124,121 +124,110 @@ function PanelBody({
               </button>
             </span>
           ) : (
-            <div className="flex items-baseline gap-2.5 min-w-0">
-              <h3 className="text-lg sm:text-xl font-bold tracking-tight truncate">{group.name}</h3>
-              <span className="text-xs text-white/40 shrink-0">{group.sites.length} 个站点</span>
-            </div>
+            <>
+              <div className="flex items-baseline gap-2.5 min-w-0">
+                <h3 className="text-lg sm:text-xl font-bold tracking-tight truncate">{group.name}</h3>
+                <span className="text-xs text-white/40 shrink-0">{group.sites.length} 个站点</span>
+              </div>
+              <button
+                onClick={() => {
+                  setGroupName(group.name);
+                  setRenaming(true);
+                }}
+                className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white/85 transition-colors shrink-0"
+              >
+                <Pencil size={11} /> 改组名
+              </button>
+              <span className="flex items-center rounded-lg bg-white/5 border border-white/10 overflow-hidden shrink-0">
+                <button
+                  onClick={() => switchDisplay('list')}
+                  title="详细列表卡：在主页原地展开成行式列表"
+                  className={`text-[11px] px-2.5 py-1 transition-colors ${
+                    group.display === 'list' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
+                  }`}
+                >
+                  详细列表
+                </button>
+                <button
+                  onClick={() => switchDisplay('stack')}
+                  title="文件夹式卡：紧凑堆叠卡，点开弹窗看图标"
+                  className={`text-[11px] px-2.5 py-1 transition-colors ${
+                    group.display === 'stack' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
+                  }`}
+                >
+                  文件夹式
+                </button>
+              </span>
+              {confirmDelete ? (
+                <span className="flex items-center gap-1.5 text-[11px]">
+                  <span className="text-red-300">删除整个编组？</span>
+                  <button
+                    onClick={() => {
+                      store.deleteGroup(group.id);
+                      onClose();
+                    }}
+                    className="px-2 py-1 rounded-md bg-red-500/80 text-white font-medium"
+                  >
+                    确认删除
+                  </button>
+                  <button onClick={() => setConfirmDelete(false)} className="px-2 py-1 rounded-md bg-white/10 text-white/70">
+                    算了
+                  </button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-1 text-[11px] text-white/50 hover:text-red-300 transition-colors shrink-0"
+                >
+                  <Trash2 size={11} /> 删组
+                </button>
+              )}
+            </>
           )}
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0"
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0 ml-auto"
             aria-label="关闭"
           >
             <X size={16} />
           </button>
         </div>
 
-        {/* 组操作行：改名 / 形态切换 / 删组 */}
+        {/* 小角颜色：卡面文件夹小角的填充色，点选即时生效并落盘；「默认」= 同色灰。当前色带描边 + 勾标记 */}
         {!renaming && (
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+            <span className="text-[11px] text-white/50 shrink-0 mr-0.5">小角颜色</span>
             <button
-              onClick={() => {
-                setGroupName(group.name);
-                setRenaming(true);
-              }}
-              className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white/85 transition-colors"
+              type="button"
+              title="默认（同色灰）"
+              data-tab-color=""
+              onClick={() => store.setGroupTabColor(group.id, '')}
+              className={`w-5 h-5 rounded-full bg-[#26262e] border flex items-center justify-center transition-transform hover:scale-110 ${
+                (group.tabColor ?? '') === '' ? 'border-white ring-2 ring-white/70 ring-offset-2 ring-offset-[#17171d]' : 'border-white/25'
+              }`}
             >
-              <Pencil size={11} /> 改组名
+              {(group.tabColor ?? '') === '' && <Check size={11} className="text-white/80" />}
             </button>
-            <span className="flex items-center rounded-lg bg-white/5 border border-white/10 overflow-hidden ml-1">
-              <button
-                onClick={() => switchDisplay('list')}
-                title="详细列表卡：在主页原地展开成行式列表"
-                className={`text-[11px] px-2.5 py-1 transition-colors ${
-                  group.display === 'list' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
-                }`}
-              >
-                详细列表
-              </button>
-              <button
-                onClick={() => switchDisplay('stack')}
-                title="文件夹式卡：紧凑堆叠卡，点开弹窗看图标"
-                className={`text-[11px] px-2.5 py-1 transition-colors ${
-                  group.display === 'stack' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
-                }`}
-              >
-                文件夹式
-              </button>
-            </span>
-            {confirmDelete ? (
-              <span className="flex items-center gap-1.5 text-[11px] ml-auto">
-                <span className="text-red-300">删除整个编组？</span>
+            {GROUP_TAB_COLORS.map((c) => {
+              const active = (group.tabColor ?? '') === c.value;
+              return (
                 <button
-                  onClick={() => {
-                    store.deleteGroup(group.id);
-                    onClose();
-                  }}
-                  className="px-2 py-1 rounded-md bg-red-500/80 text-white font-medium"
+                  key={c.value}
+                  type="button"
+                  title={c.name}
+                  data-tab-color={c.value}
+                  onClick={() => store.setGroupTabColor(group.id, c.value)}
+                  className={`w-5 h-5 rounded-full flex items-center justify-center transition-transform hover:scale-110 ${
+                    active ? 'ring-2 ring-white/80 ring-offset-2 ring-offset-[#17171d]' : ''
+                  }`}
+                  style={{ backgroundColor: c.value }}
                 >
-                  确认删除
+                  {active && <Check size={11} className="text-white drop-shadow" />}
                 </button>
-                <button onClick={() => setConfirmDelete(false)} className="px-2 py-1 rounded-md bg-white/10 text-white/70">
-                  算了
-                </button>
-              </span>
-            ) : (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="flex items-center gap-1 text-[11px] text-white/50 hover:text-red-300 transition-colors ml-auto"
-              >
-                <Trash2 size={11} /> 删组
-              </button>
-            )}
+              );
+            })}
           </div>
         )}
-
-        {/* 自定义标题：C 卡卡面第二行文案，留空回落「N 个站点」 */}
-        {!renaming && (
-          <div className="flex items-center gap-2 mt-2.5">
-            <span className="text-[11px] text-white/50 shrink-0">自定义标题</span>
-            <input
-              value={subtitleDraft}
-              onChange={(e) => setSubtitleDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') store.setGroupSubtitle(group.id, subtitleDraft.trim());
-              }}
-              onBlur={() => {
-                if (subtitleDraft.trim() !== (group.subtitle ?? '')) store.setGroupSubtitle(group.id, subtitleDraft.trim());
-              }}
-              placeholder="卡面副标题，留空显示站点数"
-              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-indigo-400/60 placeholder:text-white/25"
-            />
-            {subtitleDraft.trim() !== (group.subtitle ?? '') && (
-              <button
-                onClick={() => store.setGroupSubtitle(group.id, subtitleDraft.trim())}
-                className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-indigo-500/80 text-white shrink-0"
-              >
-                <Check size={12} /> 保存
-              </button>
-            )}
-            {(group.subtitle ?? '') !== '' && subtitleDraft.trim() === (group.subtitle ?? '') && (
-              <button
-                onClick={() => {
-                  setSubtitleDraft('');
-                  store.setGroupSubtitle(group.id, '');
-                }}
-                className="text-[11px] px-2.5 py-1.5 rounded-lg bg-white/10 text-white/70 shrink-0"
-              >
-                清空
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 排序说明（组内不设搜索框） */}
-      <div className="px-5 sm:px-6 pb-3 shrink-0">
-        <p className="text-[11px] text-white/40">按使用频率排序 · 置顶在前</p>
       </div>
 
       {/* 内容区：表单（添加/编辑） + 瓷砖网格 */}

@@ -611,7 +611,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
               exit={{ opacity: 0, scale: 0.96, y: 10 }}
               transition={{ duration: 0.18 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass-panel rounded-[24px] bg-[#17171d]/95 w-full max-w-sm p-4 shadow-2xl shadow-black/50"
+              /* 面板全不透明实色（第十二轮统一口径）：不用 glass-panel 的半透明毛玻璃 */
+              className="rounded-[24px] bg-[#17171d] border border-white/15 w-full max-w-sm p-4 shadow-2xl shadow-black/70"
             >
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-sm">主页组件</h3>

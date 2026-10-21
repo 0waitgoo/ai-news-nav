@@ -1,14 +1,14 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { groupIcon, siteLogoFallback, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
-import { SiteLogo } from './Card';
 
 /**
- * C 型 · 编组堆叠卡（默认 1 栏 × 1X）—— 文件夹卡面（第六轮，用户拍板原方案二造型 + 5 条修订）
- * - 文件夹造型：左上标签页（组图标 + 组名），身子是四角完整的圆角矩形，衔接无缺口/断角
- * - 右上露出两张纸：印排序最靠前两站的真实 LOGO（置顶优先 + 频率），可点击直达，悬停 LOGO 放大
- * - 第二行显示自定义副标题（group.subtitle），未设置时回落「N 个站点」；不显示置顶小字行
- * - 底部一排前 5 站真实 ICON（可点击直达），超出以「+N」尾块收尾（点击开弹窗）
+ * C 型 · 编组堆叠卡（默认 1 栏 × 1X）——「极简文件夹」卡面（第十二轮，用户在第三轮线稿中选定方案四）
+ * - 去掉纸片：卡身为四角完整的圆角矩形；上沿左端一个与卡身一体的小角（标签凸起，从卡身后探出、同色系），
+ *   小角颜色可按组设置（group.tabColor），未设置时为默认同色灰——用户靠颜色一眼认组
+ * - 标题行：组图标瓷砖 + 组名（粗体），右侧小字「N 个站点」；标题行下有一条口线（分隔线）暗示文件夹口
+ * - 不再渲染副标题行（subtitle 字段仅保留在数据模型兼容老数据）
+ * - 底部图标排是主角：前 5 站大图标瓷砖（置顶优先 + 频率序）可点击直达、悬停放大，超出以「+N」收尾（点击开弹窗）
  * - 卡面其余区域点击打开组弹窗（GroupPanel）
  */
 export default function GroupStackCard({
@@ -21,10 +21,9 @@ export default function GroupStackCard({
   delay?: number;
 }) {
   const sorted = sortSites(group.sites);
-  const paperSites = sorted.slice(0, 2);
   const faceSites = sorted.slice(0, 5);
   const extra = group.sites.length - faceSites.length;
-  const subtitle = group.subtitle?.trim() ? group.subtitle.trim() : `${group.sites.length} 个站点`;
+  const tabColor = group.tabColor?.trim() ? group.tabColor.trim() : '';
 
   const openSite = (e: React.MouseEvent, site: SiteEntry) => {
     e.stopPropagation();
@@ -42,40 +41,45 @@ export default function GroupStackCard({
       role="button"
       aria-label={`${group.name} 编组`}
     >
-      {/* 右上露出的两张纸：靠前两站的真实 LOGO，可点击直达、悬停放大 */}
-      {paperSites.map((site, i) => (
-        <button
-          key={site.id ?? site.name}
-          type="button"
-          title={site.name}
-          data-paper-site={site.name}
-          onClick={(e) => openSite(e, site)}
-          className={`group/paper absolute top-[3px] w-[52px] h-[76px] rounded-[7px] bg-[#f4f4f6] border border-black/10 shadow-lg shadow-black/40 pt-[7px] flex justify-center transition-transform duration-200 hover:z-30 hover:scale-[1.07] ${
-            i === 0
-              ? 'right-[54px] -rotate-[5deg] z-[1] group-hover/card:-translate-y-[3px]'
-              : 'right-[15px] rotate-[4deg] z-[2] group-hover/card:-translate-y-[4px]'
-          }`}
-        >
-          <img
-            src={site.logo}
-            alt={site.name}
-            loading="lazy"
-            className={`w-[29px] h-[29px] object-contain transition-transform duration-200 group-hover/paper:scale-125 ${site.dead ? 'grayscale opacity-60' : ''}`}
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              if (!target.src.includes('dicebear')) target.src = siteLogoFallback(site.name);
-            }}
-          />
-        </button>
-      ))}
+      {/* 小角（标签凸起）：从卡身后探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边） */}
+      <div
+        data-tab-bump
+        className="absolute top-0 left-[18px] h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
+        style={{
+          backgroundColor: tabColor || '#26262e',
+          borderColor: tabColor || 'rgba(255,255,255,0.1)',
+        }}
+      />
 
-      {/* 文件夹身子：四角完整的圆角矩形（实色，不透出背后的纸） */}
-      <div className="absolute inset-x-0 bottom-0 top-[42px] z-10 rounded-[22px] bg-[#1e1e24] border border-white/10 shadow-xl shadow-black/30 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3 pb-3.5 flex flex-col overflow-hidden">
-        {/* 第二行：自定义副标题（未设置回落「N 个站点」） */}
-        <p className="text-[15px] font-semibold tracking-tight text-white/90 truncate pr-1">{subtitle}</p>
+      {/* 卡身：四角完整的圆角矩形，压住小角下半截，只留凸起在上沿左端 */}
+      <div className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] bg-[#1e1e24] border border-white/10 shadow-xl shadow-black/30 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden">
+        {/* 标题行：组图标瓷砖 + 组名；右侧小字「N 个站点」 */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-[30px] h-[30px] rounded-[9px] bg-white flex items-center justify-center overflow-hidden shrink-0">
+            {group.sites.length > 0 ? (
+              <img
+                src={groupIcon(group)}
+                alt={group.name}
+                loading="lazy"
+                className="w-[19px] h-[19px] object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                }}
+              />
+            ) : (
+              <span className="text-slate-400 text-[13px] font-bold">{group.name.charAt(0)}</span>
+            )}
+          </div>
+          <h3 className="flex-1 min-w-0 font-bold text-[15px] tracking-tight truncate">{group.name}</h3>
+          <span className="text-[11px] text-white/40 shrink-0">{group.sites.length} 个站点</span>
+        </div>
 
-        {/* 底部一排：前 5 站真 ICON，可点击直达；超出以 +N 收尾 */}
-        <div className="mt-auto pt-2 flex items-center gap-1.5">
+        {/* 口线：标题行下的一条分隔线，暗示文件夹的开口 */}
+        <div className="mt-3 h-px bg-white/[0.08] shrink-0" />
+
+        {/* 底部图标排（主角）：前 5 站大图标瓷砖，可点击直达；超出以 +N 收尾（点击冒泡开弹窗） */}
+        <div className="mt-auto pt-3 flex items-end gap-1.5">
           {faceSites.map((site) => (
             <button
               key={site.id ?? site.name}
@@ -83,37 +87,25 @@ export default function GroupStackCard({
               title={site.name}
               data-face-site={site.name}
               onClick={(e) => openSite(e, site)}
-              className="group/face shrink-0 rounded-xl hover:z-20"
+              className="group/face flex-1 max-w-[48px] rounded-[13px] hover:z-20"
             >
-              <span className="block transition-transform duration-150 group-hover/face:scale-110">
-                <SiteLogo logo={site.logo} name={site.name} size={34} imgSize={24} grayscale={site.dead} />
+              <span className="block w-full aspect-square rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
+                <img
+                  src={site.logo}
+                  alt={site.name}
+                  loading="lazy"
+                  className={`w-full h-full object-contain p-[16%] ${site.dead ? 'grayscale opacity-60' : ''}`}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (!target.src.includes('dicebear')) target.src = siteLogoFallback(site.name);
+                  }}
+                />
               </span>
             </button>
           ))}
-          {extra > 0 && <span className="text-xs font-semibold text-white/45 ml-0.5">+{extra}</span>}
+          {extra > 0 && <span className="text-[13px] font-semibold text-white/45 ml-1 pb-1">+{extra}</span>}
           {group.sites.length === 0 && <span className="text-[11px] text-white/35">点开添加第一个网站</span>}
         </div>
-      </div>
-
-      {/* 左上标签页：组图标 + 组名，与身子重叠衔接（身子左上角圆角在其下方完整露出） */}
-      <div className="absolute top-[8px] left-[12px] z-20 h-[38px] max-w-[58%] flex items-center gap-2 pl-2.5 pr-3.5 rounded-t-[14px] rounded-br-[16px] rounded-bl-[4px] bg-[#26262e] border border-white/10 border-b-0 shadow-md shadow-black/20">
-        <div className="w-[22px] h-[22px] rounded-md bg-white flex items-center justify-center overflow-hidden shrink-0">
-          {group.sites.length > 0 ? (
-            <img
-              src={groupIcon(group)}
-              alt={group.name}
-              loading="lazy"
-              className="w-[15px] h-[15px] object-contain"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-              }}
-            />
-          ) : (
-            <span className="text-slate-400 text-[11px] font-bold">{group.name.charAt(0)}</span>
-          )}
-        </div>
-        <h3 className="font-semibold text-[13px] tracking-tight truncate">{group.name}</h3>
       </div>
     </motion.div>
   );
