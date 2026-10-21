@@ -41,19 +41,15 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Scrollbar for widgets */
-.overflow-y-auto::-webkit-scrollbar {
-  width: 4px;
+/* Hide all scrollbars (page + components); scrolling itself stays functional */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-.overflow-y-auto::-webkit-scrollbar-track {
-  background: transparent;
-}
-.overflow-y-auto::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-}
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Wave animation for music player */

@@ -55,7 +55,10 @@ export default function App() {
       {/* Main Content */}
       {/* h-dvh 固定视口高度：让内部 overflow-y-auto 容器成为真正的滚动区，position: sticky 吸顶才有可依附的滚动容器 */}
       <div className="relative z-10 flex flex-col h-dvh w-full p-3 sm:p-4 md:p-6 gap-4 sm:gap-6 max-w-[1600px] mx-auto">
-        <Sidebar onPageChange={handlePageChange} currentPage={currentPage} />
+        {/* 主页的导航图标已并入 HomePage 吸顶栏左半（一行对齐）；资讯/导航页没有搜索栏，仍用独立的居中导航行 */}
+        {(currentPage === 'news' || currentPage === 'nav') && (
+          <Sidebar onPageChange={handlePageChange} currentPage={currentPage} />
+        )}
         <main className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto pb-20 sm:pb-6">
             <Suspense fallback={<div className="flex items-center justify-center h-full">
