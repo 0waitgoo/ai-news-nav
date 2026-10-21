@@ -1,13 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, AlertTriangle, Pencil } from 'lucide-react';
+import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, AlertTriangle, Pencil, LogIn, LogOut, ChevronDown } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { LocalStore } from '../../store/localStore';
 import {
+  beginOAuthState,
+  buildOAuthAuthorizeUrl,
+  consumeOAuthState,
+  ensureOAuthRepo,
+  exchangeOAuthCode,
+  fetchOAuthClientId,
   ghGetFile,
+  ghGetUser,
   ghPutFile,
   githubConfigComplete,
   loadGithubSyncMeta,
   maskToken,
+  OAUTH_BRANCH,
+  OAUTH_FILE_PATH,
   parseRepoInput,
   saveGithubSyncMeta,
   type GithubSyncConfig,
@@ -167,6 +176,25 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   const [ghMeta, setGhMeta] = useState<GithubSyncMeta>(loadGithubSyncMeta);
   const [ghStatus, setGhStatus] = useState<{ kind: GhStatusKind; text: string } | null>(null);
   const [ghEditing, setGhEditing] = useState(false);
+  /* GitHub 登录（默认入口）：client_id 是公开信息，从 /api/github-oauth?config=1 拿；
+   * undefined = 正在查，null = 服务端未配置（按钮置灰），string = 可登录 */
+  const [oauthClientId, setOauthClientId] = useState<string | null | undefined>(undefined);
+  /* 令牌方式收进折叠区作备用：已有可用的令牌配置时默认展开，免得老用户找不到原来的面板 */
+  const [patOpen, setPatOpen] = useState<boolean>(() => {
+    const m = loadGithubSyncMeta();
+    return m.authMode === 'pat' && githubConfigComplete(m);
+  });
+  const isOauthLoggedIn = ghMeta.authMode === 'oauth' && !!ghMeta.token;
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchOAuthClientId().then((id) => {
+      if (!cancelled) setOauthClientId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [formRepo, setFormRepo] = useState('');
   const [formBranch, setFormBranch] = useState('main');
   const [formPath, setFormPath] = useState('ainav-data.json');
@@ -322,11 +350,79 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     }
   };
 
-  // 页面加载时自动拉取一次（同步已开启且配置完整时）
+  /* ---- GitHub 登录（OAuth）：点按钮跳授权页，回跳站点根带 ?code&state ---- */
+  const startOAuthLogin = () => {
+    if (!oauthClientId) return;
+    const state = beginOAuthState();
+    window.location.href = buildOAuthAuthorizeUrl(oauthClientId, state);
+  };
+
+  /**
+   * OAuth 回跳处理：校验 state → 服务端换 token → 查账号 → 确保 ainav-data 仓库 →
+   * 写定同步配置（仓库/分支/文件固定）并开启同步、立即拉取一次。任一步失败都给红字状态。
+   */
+  const handleOAuthReturn = async (code: string, returnedState: string | null): Promise<void> => {
+    // 先把 URL 里的 code/state 清掉：避免刷新重复处理，授权码也不留在地址栏里
+    const url = new URL(window.location.href);
+    url.searchParams.delete('code');
+    url.searchParams.delete('state');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    setOpen(true);
+    const expected = consumeOAuthState();
+    if (!expected || !returnedState || returnedState !== expected) {
+      setGhStatus({ kind: 'error', text: 'GitHub 登录校验失败（state 不符），请重新登录' });
+      return;
+    }
+    setGhStatus({ kind: 'syncing', text: '正在完成 GitHub 登录…' });
+    const exchanged = await exchangeOAuthCode(code);
+    if ('error' in exchanged) {
+      setGhStatus({ kind: 'error', text: exchanged.error });
+      return;
+    }
+    const user = await ghGetUser(exchanged.token);
+    if ('error' in user) {
+      setGhStatus({ kind: 'error', text: user.error });
+      return;
+    }
+    const ensured = await ensureOAuthRepo(exchanged.token, user.login);
+    if ('error' in ensured) {
+      setGhStatus({ kind: 'error', text: ensured.error });
+      return;
+    }
+    updateGhMeta({
+      authMode: 'oauth',
+      oauthLogin: user.login,
+      owner: user.login,
+      repo: ensured.repo,
+      branch: OAUTH_BRANCH,
+      path: OAUTH_FILE_PATH,
+      token: exchanged.token,
+      enabled: true,
+      lastSha: null,
+      baseUpdatedAt: 0,
+      lastSyncedAt: null,
+    });
+    setGhStatus({ kind: 'ok', text: `已登录 GitHub（${user.login}），同步已开启` });
+    await pullFromGithub();
+  };
+
+  /** 退出登录：只清本机凭证与同步开关，本地数据与已同步的云端数据都不动 */
+  const logoutOAuth = () => {
+    updateGhMeta({ token: '', enabled: false, oauthLogin: '', lastSha: null, baseUpdatedAt: 0, lastSyncedAt: null });
+    setGhStatus(null);
+  };
+
+  // 页面加载：带 OAuth 回跳参数时先处理登录，否则同步已开启且配置完整时自动拉取一次
   const ghInitRef = useRef(false);
   useEffect(() => {
     if (ghInitRef.current) return;
     ghInitRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      void handleOAuthReturn(code, params.get('state'));
+      return;
+    }
     const m = ghMetaRef.current;
     if (m.enabled && githubConfigComplete(m)) void pullFromGithub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -365,12 +461,15 @@ export default function DataMenu({ store }: { store: LocalStore }) {
       setGhStatus({ kind: 'error', text: '仓库地址格式不对：填 owner/repo 或粘贴 GitHub 仓库链接' });
       return;
     }
-    const token = formToken.trim() || ghMetaRef.current.token;
+    // OAuth 模式下现存的 token 是登录令牌，不能当作 PAT 复用，令牌方式必须显式粘贴
+    const token = formToken.trim() || (ghMetaRef.current.authMode === 'pat' ? ghMetaRef.current.token : '');
     if (!token) {
       setGhStatus({ kind: 'error', text: '请填写访问令牌' });
       return;
     }
     updateGhMeta({
+      authMode: 'pat',
+      oauthLogin: '',
       owner: parsed.owner,
       repo: parsed.repo,
       branch: formBranch.trim() || 'main',
@@ -596,9 +695,107 @@ export default function DataMenu({ store }: { store: LocalStore }) {
               )}
             </div>
 
-            {/* ---- GitHub 同步（第十五轮）：数据同步到自己仓库的一个 JSON 文件，打开自动拉、变化自动推 ---- */}
+            {/* ---- GitHub 同步（第十五轮起）：数据同步到自己仓库的一个 JSON 文件，打开自动拉、变化自动推；
+                 默认入口是 GitHub 一键登录（OAuth，仓库固定 ainav-data），手填令牌收进折叠区作备用 ---- */}
             <div className="mt-1 border-t border-white/8 px-3 pt-2.5 pb-1">
               <p className="text-[10px] font-medium text-white/50 tracking-wide">GitHub 同步</p>
+              {isOauthLoggedIn ? (
+                <>
+                  <p className="mt-1.5 text-[11px] text-white/70 break-all">
+                    已登录 GitHub：<span className="text-white/90">{ghMeta.oauthLogin || ghMeta.owner}</span>
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-white/40 break-all">
+                    同步仓库（固定）：{ghMeta.owner}/{ghMeta.repo} · {ghMeta.branch} · {ghMeta.path}
+                  </p>
+                  <button
+                    onClick={toggleGhEnabled}
+                    className="mt-1 w-full flex items-center justify-between py-1.5 text-xs text-white/75"
+                  >
+                    <span>开启同步（打开自动拉取、变化自动推送）</span>
+                    <span className={`relative h-4.5 w-8 shrink-0 rounded-full transition-colors ${ghMeta.enabled ? 'bg-violet-500' : 'bg-white/15'}`}>
+                      <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all ${ghMeta.enabled ? 'left-4' : 'left-0.5'}`} />
+                    </span>
+                  </button>
+                  <div className="mt-0.5 -mx-3">
+                    <div className="flex">
+                      <button onClick={() => void pullFromGithub()} className={`${itemCls} w-auto flex-1`}>
+                        <Download size={14} className="text-white/45" /> 立即拉取
+                      </button>
+                      <button onClick={() => void pushToGithub()} className={`${itemCls} w-auto flex-1`}>
+                        <Upload size={14} className="text-white/45" /> 立即推送
+                      </button>
+                      <button onClick={logoutOAuth} className={`${itemCls} w-auto flex-1`}>
+                        <LogOut size={14} className="text-white/45" /> 退出登录
+                      </button>
+                    </div>
+                  </div>
+                  {ghStatus?.kind === 'missing' && (
+                    <button
+                      onClick={() => void pushToGithub()}
+                      className="mt-1 w-full px-3 py-2 rounded-xl bg-violet-500/80 text-white text-xs font-medium hover:bg-violet-500 transition-colors"
+                    >
+                      把本机数据首次推送上去
+                    </button>
+                  )}
+                  {ghStatus?.kind === 'conflict' && (
+                    <div className="mt-1 flex gap-2">
+                      <button
+                        onClick={() => void pullFromGithub({ forceApply: true })}
+                        className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/8 text-white/80 text-[11px] hover:bg-white/12 transition-colors"
+                      >
+                        以云端为准
+                      </button>
+                      <button
+                        onClick={() => void forcePushLocal()}
+                        className="flex-1 px-2.5 py-1.5 rounded-lg bg-violet-500/80 text-white text-[11px] font-medium hover:bg-violet-500 transition-colors"
+                      >
+                        以本地为准
+                      </button>
+                    </div>
+                  )}
+                  <p className={`pb-1 pt-1 text-[11px] leading-relaxed ${ghStatus ? ghStatusTextCls(ghStatus.kind) : 'text-white/40'}`}>
+                    {ghStatus
+                      ? ghStatus.text
+                      : ghMeta.lastSyncedAt
+                        ? `上次同步 · ${formatSavedTime(ghMeta.lastSyncedAt)}`
+                        : '未连接'}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={startOAuthLogin}
+                    disabled={!oauthClientId}
+                    className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-violet-500/80 text-white text-xs font-medium hover:bg-violet-500 transition-colors disabled:bg-white/10 disabled:text-white/35 disabled:cursor-not-allowed"
+                  >
+                    <LogIn size={14} /> 使用 GitHub 登录
+                  </button>
+                  {oauthClientId === null ? (
+                    <p className="mt-1 text-[10px] text-white/35 leading-relaxed">服务端未配置 GitHub 登录，可用下方令牌方式。</p>
+                  ) : oauthClientId === undefined ? (
+                    <p className="mt-1 text-[10px] text-white/35 leading-relaxed">正在检查 GitHub 登录配置…</p>
+                  ) : (
+                    <p className="mt-1 text-[10px] text-white/35 leading-relaxed">
+                      登录后自动在你的账号下创建私有仓库 ainav-data 并同步，不用填任何配置；每台设备登录一次即可。
+                    </p>
+                  )}
+                  {ghStatus && !patOpen && (
+                    <p className={`pt-1 text-[11px] leading-relaxed ${ghStatusTextCls(ghStatus.kind)}`}>
+                      {ghStatus.kind === 'error' || ghStatus.kind === 'conflict' ? (
+                        <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />
+                      ) : null}
+                      {ghStatus.text}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => setPatOpen((v) => !v)}
+                    className="mt-2 w-full flex items-center justify-between py-1 text-[11px] text-white/50 hover:text-white/75 transition-colors"
+                  >
+                    <span>使用令牌（备用）</span>
+                    <ChevronDown size={13} className={`transition-transform ${patOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {patOpen ? (
+                    <>
               {githubConfigComplete(ghMeta) && !ghEditing ? (
                 <>
                   <p className="mt-1.5 text-[11px] text-white/70 break-all">
@@ -745,6 +942,10 @@ export default function DataMenu({ store }: { store: LocalStore }) {
                       令牌只保存在这台设备的浏览器里，不会写入同步的数据；建议仓库设为私有。
                     </p>
                   </details>
+                </>
+              )}
+                    </>
+                  ) : null}
                 </>
               )}
             </div>
