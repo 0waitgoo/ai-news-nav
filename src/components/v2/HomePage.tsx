@@ -454,9 +454,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       {/* 吸顶栏（一行对齐）：与下方卡片网格同款 4 栏 grid——左半 2 栏放页面导航图标组（靠左），
           右半 2 栏放搜索框 +「数据」入口（算在右半内）；整条栏吸顶，滚动时停留在视口顶部。
           移动端为 2 栏 grid，左右各半，仍保持一行不换行。 */}
+      {/* 吸顶栏底已按用户要求全透明：各控件自带实色底，直接浮在页面背景之上 */}
       <div className="sticky top-0 z-50 -mt-1 pt-1 pb-2">
-        <div className="absolute inset-0 bg-[#0a0a10]/75 backdrop-blur-xl rounded-b-3xl border-b border-white/[0.06]" />
-        <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
           <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
             <BackgroundMenu store={store} />
             <TopNav onPageChange={onNavigate} currentPage="home" />
