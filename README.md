@@ -8,6 +8,8 @@
 
 另有音乐、壁纸等个性化小组件，整体采用 Bento 网格 + 深色氛围背景的仪表盘式界面。站点已部署上线并持续运行。
 
+**在线访问**：https://news.hiitun01.top
+
 ## 技术栈
 
 - React 19 + Vite 6 + TypeScript
