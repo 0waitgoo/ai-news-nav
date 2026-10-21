@@ -1,8 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder } from 'lucide-react';
 import type { GroupDisplay, NavGroup } from '../../data/groups';
-import { ALL_WIDGETS, clampColSpan, useLocalStore, type WidgetId } from '../../store/localStore';
+import {
+  ALL_WIDGETS,
+  clampColSpan,
+  groupCardKey,
+  resolveCardOrder,
+  useLocalStore,
+  widgetCardKey,
+  type WidgetId,
+} from '../../store/localStore';
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import NewsCard from './NewsCard';
@@ -14,13 +22,25 @@ import GroupPanel from './GroupPanel';
 import TrendingWidget from '../widgets/TrendingWidget';
 
 /**
- * V2 新主页（第三轮修订）
+ * V2 新主页（第三轮修订 + 第五轮拖拽排序）
  * - 无顶部标题栏：页面直接从吸顶搜索区开始，搜索区旁有低调的「数据」入口（导出/导入）
  * - 4 栏基准网格瀑布流（桌面 4 栏 / 手机 2 栏）
  * - B 型编组（display=list）：主页原地向下拉开 + 卡内滚动；C 型编组（display=stack）：点击弹窗看 ICON 瓷砖
  * - A 型原生组件可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地
+ * - 全部卡片（编组 + 原生组件）可按住拖拽排序：超过阈值才判定拖拽，普通点击不受影响；顺序存本地
  * - 全部编组与布局来自本地存储（方案三：本地优先），用户可增删改
  */
+
+/** 向上查找最近的可滚动祖先（拖拽到边缘时自动滚动用） */
+function findScrollAncestor(el: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = el.parentElement;
+  while (node && node !== document.body) {
+    const oy = window.getComputedStyle(node).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
 export default function HomePage({ onNavigate }: { onNavigate: (page: string) => void }) {
   const store = useLocalStore();
   const { groups, widgets, widgetLayouts } = store.data;
@@ -125,6 +145,265 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
       <GroupStackCard group={group} onOpen={(g) => setPanelGroupId(g.id)} delay={delay} />
     );
 
+  /* ---------- 主页卡片顺序（拖拽排序后存本地） ---------- */
+  // 默认顺序与此前硬编码的交错排版完全一致：B 组 → 任务 → C×1 → 资讯 → C×2 → 软件榜 → 其余 C → 热门话题
+  const defaultOrder = useMemo(() => {
+    const order: string[] = listGroups.map((g) => groupCardKey(g.id));
+    if (hasWidget('task')) order.push(widgetCardKey('task'));
+    if (stackA) order.push(groupCardKey(stackA.id));
+    if (hasWidget('news')) order.push(widgetCardKey('news'));
+    if (stackB) order.push(groupCardKey(stackB.id));
+    if (stackC) order.push(groupCardKey(stackC.id));
+    if (hasWidget('ranking')) order.push(widgetCardKey('ranking'));
+    for (const g of stackRest) order.push(groupCardKey(g.id));
+    if (hasWidget('trending')) order.push(widgetCardKey('trending'));
+    return order;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listGroups, stackA, stackB, stackC, stackRest, widgets]);
+
+  const baseOrder = useMemo(
+    () => resolveCardOrder(store.data.cardOrder, defaultOrder),
+    [store.data.cardOrder, defaultOrder],
+  );
+  const [previewOrder, setPreviewOrder] = useState<string[] | null>(null);
+  const displayOrder = previewOrder ?? baseOrder;
+
+  const itemByKey = useMemo(() => {
+    const map = new Map<string, { group?: NavGroup; widgetId?: WidgetId }>();
+    for (const g of groups) map.set(groupCardKey(g.id), { group: g });
+    for (const w of ALL_WIDGETS) {
+      if (widgets.includes(w.id)) map.set(widgetCardKey(w.id), { widgetId: w.id });
+    }
+    return map;
+  }, [groups, widgets]);
+
+  const cardSpanCls = (key: string) => {
+    const item = itemByKey.get(key);
+    if (!item) return 'col-span-1 row-span-1';
+    if (item.group) return groupWrapperCls(item.group);
+    return widgetCls(item.widgetId as WidgetId);
+  };
+
+  const renderCardItem = (key: string, index: number) => {
+    const item = itemByKey.get(key);
+    if (!item) return null;
+    const delay = Math.min(0.02 + index * 0.04, 0.4);
+    if (item.group) return renderGroup(item.group, delay);
+    switch (item.widgetId) {
+      case 'task':
+        return <TaskPlaceholderCard delay={delay} />;
+      case 'news':
+        return <NewsCard onNavigate={onNavigate} delay={delay} />;
+      case 'ranking':
+        return <RankingCard delay={delay} />;
+      case 'trending':
+        return <TrendingWidget />;
+      default:
+        return null;
+    }
+  };
+
+  /* ---------- 拖拽排序 ----------
+   * 指针按下后移动超过阈值才判定为拖拽：普通点击（开站点 / B 卡展开 / C 卡弹窗 / 右键菜单）完全不受影响；
+   * 拖拽中被拖卡片变为虚线占位、浮动快照跟随指针，其余卡片按预览顺序实时让位，松手才落盘。
+   * 表单控件与 data-nodrag 区域（B 卡展开的滚动列表）内按下不触发拖拽。 */
+  const DRAG_THRESHOLD = 8;
+  const wrapperRefs = useRef(new Map<string, HTMLDivElement>());
+  const pendingDragRef = useRef<{ key: string; pointerId: number; startX: number; startY: number } | null>(null);
+  const activeDragRef = useRef<{
+    key: string;
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+    lastX: number;
+    lastY: number;
+    scrollEl: HTMLElement | null;
+  } | null>(null);
+  const previewOrderRef = useRef<string[] | null>(null);
+  const baseOrderRef = useRef<string[]>(baseOrder);
+  baseOrderRef.current = baseOrder;
+  const storeRef = useRef(store);
+  storeRef.current = store;
+  const suppressClickRef = useRef(false);
+  const cloneRef = useRef<HTMLDivElement>(null);
+  const autoScrollRafRef = useRef(0);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [dragSnap, setDragSnap] = useState<{ html: string; w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    const positionClone = (x: number, y: number) => {
+      const d = activeDragRef.current;
+      if (d && cloneRef.current) {
+        cloneRef.current.style.transform = `translate(${x - d.offsetX}px, ${y - d.offsetY}px)`;
+      }
+    };
+
+    const updatePreviewTarget = (x: number, y: number) => {
+      const d = activeDragRef.current;
+      const order = previewOrderRef.current;
+      if (!d || !order) return;
+      let hit: { key: string; rect: DOMRect } | null = null;
+      wrapperRefs.current.forEach((el, key) => {
+        if (key === d.key) return;
+        const r = el.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = { key, rect: r };
+      });
+      if (!hit) return;
+      const targetIndex = order.indexOf(hit.key);
+      const from = order.indexOf(d.key);
+      if (targetIndex < 0 || from < 0) return;
+      // 阅读顺序判定落点在目标之前还是之后：先看纵向中心带，带内再看横向中心
+      const r = hit.rect;
+      const midY = r.top + r.height / 2;
+      let after: boolean;
+      if (y > midY + r.height * 0.25) after = true;
+      else if (y < midY - r.height * 0.25) after = false;
+      else after = x > r.left + r.width / 2;
+      const next = [...order];
+      next.splice(from, 1);
+      let to = targetIndex;
+      if (from < targetIndex) to -= 1;
+      if (after) to += 1;
+      to = Math.max(0, Math.min(next.length, to));
+      next.splice(to, 0, d.key);
+      if (next.join('|') !== order.join('|')) {
+        previewOrderRef.current = next;
+        setPreviewOrder(next);
+      }
+    };
+
+    const stopAutoScroll = () => cancelAnimationFrame(autoScrollRafRef.current);
+    const startAutoScroll = () => {
+      const step = () => {
+        const d = activeDragRef.current;
+        if (!d) return;
+        const el = d.scrollEl;
+        if (el) {
+          const r = el.getBoundingClientRect();
+          const EDGE = 72;
+          const SPEED = 14;
+          if (d.lastY < r.top + EDGE && el.scrollTop > 0) {
+            el.scrollBy(0, -SPEED);
+            updatePreviewTarget(d.lastX, d.lastY);
+          } else if (d.lastY > r.bottom - EDGE && el.scrollTop + el.clientHeight < el.scrollHeight) {
+            el.scrollBy(0, SPEED);
+            updatePreviewTarget(d.lastX, d.lastY);
+          }
+        }
+        autoScrollRafRef.current = requestAnimationFrame(step);
+      };
+      autoScrollRafRef.current = requestAnimationFrame(step);
+    };
+
+    const endDrag = (commit: boolean) => {
+      if (!activeDragRef.current) return;
+      activeDragRef.current = null;
+      pendingDragRef.current = null;
+      stopAutoScroll();
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      const finalOrder = previewOrderRef.current;
+      previewOrderRef.current = null;
+      setPreviewOrder(null);
+      setDragKey(null);
+      setDragSnap(null);
+      if (commit && finalOrder && finalOrder.join('|') !== baseOrderRef.current.join('|')) {
+        storeRef.current.setCardOrder(finalOrder);
+      }
+      // 拖拽松手后的那次 click 可能落在站点按钮上，吞掉避免误开站点 / 误触展开
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 250);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const pending = pendingDragRef.current;
+      if (!activeDragRef.current && pending && e.pointerId === pending.pointerId) {
+        if (Math.hypot(e.clientX - pending.startX, e.clientY - pending.startY) < DRAG_THRESHOLD) return;
+        const el = wrapperRefs.current.get(pending.key);
+        if (!el) {
+          pendingDragRef.current = null;
+          return;
+        }
+        const rect = el.getBoundingClientRect();
+        activeDragRef.current = {
+          key: pending.key,
+          pointerId: pending.pointerId,
+          offsetX: pending.startX - rect.left,
+          offsetY: pending.startY - rect.top,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          scrollEl: findScrollAncestor(el),
+        };
+        pendingDragRef.current = null;
+        const order = [...baseOrderRef.current];
+        previewOrderRef.current = order;
+        setPreviewOrder(order);
+        setDragKey(pending.key);
+        setDragSnap({ html: el.innerHTML, w: rect.width, h: rect.height });
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+        startAutoScroll();
+      }
+      const d = activeDragRef.current;
+      if (d && e.pointerId === d.pointerId) {
+        d.lastX = e.clientX;
+        d.lastY = e.clientY;
+        positionClone(e.clientX, e.clientY);
+        updatePreviewTarget(e.clientX, e.clientY);
+      }
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (pendingDragRef.current && e.pointerId === pendingDragRef.current.pointerId) pendingDragRef.current = null;
+      if (activeDragRef.current && e.pointerId === activeDragRef.current.pointerId) endDrag(true);
+    };
+    const onPointerCancel = (e: PointerEvent) => {
+      if (pendingDragRef.current && e.pointerId === pendingDragRef.current.pointerId) pendingDragRef.current = null;
+      if (activeDragRef.current && e.pointerId === activeDragRef.current.pointerId) endDrag(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeDragRef.current) endDrag(false);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('keydown', onKeyDown);
+      stopAutoScroll();
+    };
+  }, []);
+
+  // 浮动快照一挂载就先定位到抓起的位置，避免首帧闪到角落
+  useLayoutEffect(() => {
+    const d = activeDragRef.current;
+    if (dragSnap && d && cloneRef.current) {
+      cloneRef.current.style.transform = `translate(${d.lastX - d.offsetX}px, ${d.lastY - d.offsetY}px)`;
+    }
+  }, [dragSnap]);
+
+  const handleCardPointerDown = (e: React.PointerEvent, key: string) => {
+    if (e.button !== 0 || activeDragRef.current || pendingDragRef.current) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"], [data-nodrag]')) return;
+    suppressClickRef.current = false;
+    pendingDragRef.current = { key, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
+  };
+
+  const handleGridClickCapture = (e: React.SyntheticEvent) => {
+    if (suppressClickRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      suppressClickRef.current = false;
+    }
+  };
+
   const createGroup = () => {
     const name = newGroupName.trim();
     if (!name) return;
@@ -154,68 +433,37 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
         </div>
       </div>
 
-      {/* 瀑布流网格：4 栏（手机 2 栏），dense 流自动补齐 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-2 [grid-auto-flow:dense] auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]">
-        {/* B 型编组（列表式） */}
-        {listGroups.map((group, i) => (
-          <div key={group.id} id={`v2-group-${group.id}`} className={`${groupWrapperCls(group)} scroll-mt-20`}>
-            {renderGroup(group, 0.02 + i * 0.04)}
-          </div>
-        ))}
-
-        {/* A 型 · 今日任务占位（右键可改尺寸） */}
-        {hasWidget('task') && (
-          <div className={widgetCls('task')} onContextMenu={(e) => openWidgetMenu(e, 'task')}>
-            <TaskPlaceholderCard delay={0.06} />
-          </div>
-        )}
-
-        {/* C 型编组 ×1 */}
-        {stackA && (
-          <div id={`v2-group-${stackA.id}`} className={`${groupWrapperCls(stackA)} scroll-mt-20`}>
-            {renderGroup(stackA, 0.1)}
-          </div>
-        )}
-
-        {/* A 型 · AI 资讯（右键可改尺寸） */}
-        {hasWidget('news') && (
-          <div className={widgetCls('news')} onContextMenu={(e) => openWidgetMenu(e, 'news')}>
-            <NewsCard onNavigate={onNavigate} delay={0.14} />
-          </div>
-        )}
-
-        {/* C 型编组 ×2 */}
-        {stackB && (
-          <div id={`v2-group-${stackB.id}`} className={`${groupWrapperCls(stackB)} scroll-mt-20`}>
-            {renderGroup(stackB, 0.18)}
-          </div>
-        )}
-        {stackC && (
-          <div id={`v2-group-${stackC.id}`} className={`${groupWrapperCls(stackC)} scroll-mt-20`}>
-            {renderGroup(stackC, 0.22)}
-          </div>
-        )}
-
-        {/* A 型 · AI 软件榜（右键可改尺寸） */}
-        {hasWidget('ranking') && (
-          <div className={widgetCls('ranking')} onContextMenu={(e) => openWidgetMenu(e, 'ranking')}>
-            <RankingCard delay={0.26} />
-          </div>
-        )}
-
-        {/* 其余 C 型编组 */}
-        {stackRest.map((group, idx) => (
-          <div key={group.id} id={`v2-group-${group.id}`} className={`${groupWrapperCls(group)} scroll-mt-20`}>
-            {renderGroup(group, 0.3 + idx * 0.04)}
-          </div>
-        ))}
-
-        {/* A 型 · 热门话题（右键可改尺寸） */}
-        {hasWidget('trending') && (
-          <div className={widgetCls('trending')} onContextMenu={(e) => openWidgetMenu(e, 'trending')}>
-            <TrendingWidget />
-          </div>
-        )}
+      {/* 瀑布流网格：4 栏（手机 2 栏），dense 流自动补齐；卡片按 displayOrder 统一渲染，可拖拽排序 */}
+      <div
+        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-2 [grid-auto-flow:dense] auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]"
+        onClickCapture={handleGridClickCapture}
+        onDragStart={(e) => e.preventDefault()}
+      >
+        {displayOrder.map((key, i) => {
+          const item = itemByKey.get(key);
+          if (!item) return null;
+          const wid = item.widgetId;
+          return (
+            <div
+              key={key}
+              id={item.group ? `v2-group-${item.group.id}` : undefined}
+              ref={(el) => {
+                if (el) wrapperRefs.current.set(key, el);
+                else wrapperRefs.current.delete(key);
+              }}
+              data-card-key={key}
+              className={`${cardSpanCls(key)} scroll-mt-20 relative`}
+              style={{ touchAction: 'pan-y' }}
+              onPointerDown={(e) => handleCardPointerDown(e, key)}
+              onContextMenu={wid ? (e) => openWidgetMenu(e, wid) : undefined}
+            >
+              <div className={dragKey === key ? 'h-full invisible' : 'h-full'}>{renderCardItem(key, i)}</div>
+              {dragKey === key && (
+                <div className="absolute inset-0 z-10 rounded-[26px] border-2 border-dashed border-indigo-400/60 bg-indigo-500/10 pointer-events-none" />
+              )}
+            </div>
+          );
+        })}
 
         {/* 添加组件入口 */}
         <div className="col-span-1 row-span-1">
@@ -234,7 +482,21 @@ export default function HomePage({ onNavigate }: { onNavigate: (page: string) =>
         </div>
       </div>
 
-      <p className="text-center text-[11px] text-white/25 pt-8 pb-2">继续向下滚动 · 编组与组件都存在本机，增删改刷新不丢 · 原生组件可右键改尺寸</p>
+      <p className="text-center text-[11px] text-white/25 pt-8 pb-2">继续向下滚动 · 编组与组件都存在本机，增删改刷新不丢 · 卡片可按住拖动排序 · 原生组件可右键改尺寸</p>
+
+      {/* 拖拽中的浮动卡片快照：跟随指针，带抬升阴影 */}
+      {dragSnap && (
+        <div
+          ref={cloneRef}
+          className="fixed left-0 top-0 z-[95] pointer-events-none will-change-transform"
+          style={{ width: dragSnap.w, height: dragSnap.h }}
+        >
+          <div
+            className="w-full h-full rounded-[26px] overflow-hidden shadow-2xl shadow-black/80 ring-1 ring-white/25 opacity-95 scale-[1.02] [&>*]:h-full"
+            dangerouslySetInnerHTML={{ __html: dragSnap.html }}
+          />
+        </div>
+      )}
 
       {/* C 型编组弹窗（ICON 瓷砖） */}
       <GroupPanel group={panelGroup} store={store} onClose={() => setPanelGroupId(null)} onBecomeList={handleBecomeList} />

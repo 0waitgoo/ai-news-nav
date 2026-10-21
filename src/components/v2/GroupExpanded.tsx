@@ -242,8 +242,8 @@ export default function GroupExpandedBody({ group, store }: { group: NavGroup; s
         )}
       </div>
 
-      {/* 站点列表：卡内滚动 */}
-      <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
+      {/* 站点列表：卡内滚动（data-nodrag：此区域内按下拖动不触发整卡拖拽排序） */}
+      <div data-nodrag className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
         {sorted.length === 0 && !adding && (
           <p className="text-xs text-white/35 py-6 text-center">这个编组还没有网站，点下方「添加网站」加上第一个吧</p>
         )}
