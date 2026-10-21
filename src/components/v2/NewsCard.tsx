@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Newspaper, ChevronRight, RefreshCw } from 'lucide-react';
 import { fetchNews, type NewsItem } from '../../services/api';
+import type { WidgetTint } from '../../store/localStore';
 import { Card, CardIconBadge } from './Card';
 
 /** A 型 · AI 资讯卡：接现有新闻接口，露头条 + 热门榜，点击进资讯页 */
-export default function NewsCard({ onNavigate, delay = 0 }: { onNavigate: (page: string) => void; delay?: number }) {
+export default function NewsCard({
+  onNavigate,
+  delay = 0,
+  tint,
+}: {
+  onNavigate: (page: string) => void;
+  delay?: number;
+  /** 专属底色（第二十三轮，由 HomePage 按 widgetTints 分配传入） */
+  tint?: WidgetTint;
+}) {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,6 +50,8 @@ export default function NewsCard({ onNavigate, delay = 0 }: { onNavigate: (page:
       }
       onClick={() => onNavigate('news')}
       delay={delay}
+      tint={tint}
+      watermark={<Newspaper size={176} strokeWidth={1} />}
     >
       {loading ? (
         <div className="flex-1 flex items-center justify-center">

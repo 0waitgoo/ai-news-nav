@@ -3,6 +3,7 @@ import { Trophy, Star, Flame } from 'lucide-react';
 // 软件榜数据：由 GitHub Actions 每周自动更新的静态数据文件（数据管线保持不变）
 // @ts-ignore - JS 数据文件无类型声明
 import { softwareRankingData } from '../../../api/ranking-data.js';
+import type { WidgetTint } from '../../store/localStore';
 import { Card, CardIconBadge } from './Card';
 
 interface RankingEntry {
@@ -28,7 +29,14 @@ const rankStyle = (rank: number) => {
 };
 
 /** A 型 · AI 软件榜卡：使用 api/ranking-data.js 的每周自动更新数据 */
-export default function RankingCard({ delay = 0 }: { delay?: number }) {
+export default function RankingCard({
+  delay = 0,
+  tint,
+}: {
+  delay?: number;
+  /** 专属底色（第二十三轮，由 HomePage 按 widgetTints 分配传入） */
+  tint?: WidgetTint;
+}) {
   return (
     <Card
       title="AI 软件榜"
@@ -39,6 +47,8 @@ export default function RankingCard({ delay = 0 }: { delay?: number }) {
       }
       right={<span className="text-[10px] text-white/35">Product Hunt · 每周更新</span>}
       delay={delay}
+      tint={tint}
+      watermark={<Trophy size={176} strokeWidth={1} />}
     >
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col gap-1">
         {entries.map((item) => (

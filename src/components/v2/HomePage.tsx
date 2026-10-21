@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder, Unlink, Combine } from 'lucide-react';
+import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder, Unlink, Combine, Palette } from 'lucide-react';
 import { GROUP_NAME_MAX, clampGroupName, textCharCount, type GroupDisplay, type NavGroup } from '../../data/groups';
 import {
   ALL_WIDGETS,
@@ -9,9 +9,11 @@ import {
   comboCardKey,
   groupCardKey,
   groupLayoutOf,
+  pickWidgetTintIndex,
   resolveCardOrder,
   stackLayoutOf,
   widgetCardKey,
+  widgetTintOf,
   type CardFaceStyle,
   type ComboItem,
   type LocalStore,
@@ -225,9 +227,16 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     e.preventDefault();
     e.stopPropagation();
     const MENU_W = 208;
-    // 任务卡的菜单多一节「卡面样式」、组合卡多一项「拆分组合」，更高一些
+    // 任务卡的菜单多一节「卡面样式」、组合卡多一项「拆分组合」，更高一些；
+    // A 型组件还多一项「换个底色」（第二十三轮），再加一截
     const MENU_H =
-      target.kind === 'widget' && target.id === 'task' ? 292 : target.kind === 'combo' ? 244 : 196;
+      target.kind === 'widget'
+        ? target.id === 'task'
+          ? 338
+          : 242
+        : target.kind === 'combo'
+          ? 244
+          : 196;
     setSizeMenu({
       ...target,
       x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
@@ -443,6 +452,29 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [migration, anchorResolution, store.data.cardCols]);
 
+  /* ---------- 小组件专属底色补抽（第二十三轮）：
+     已显示的 A 型组件缺底色时随机抽一次（同屏尽量不重色），经 ensureWidgetTints 静默落盘；
+     抽过即固定——刷新、跨设备同步后都以落盘值为准，不再重抽 ---------- */
+  useEffect(() => {
+    const tints = store.data.widgetTints;
+    const used = new Set<number>();
+    for (const id of store.data.widgets) {
+      const v = tints[widgetCardKey(id)];
+      if (typeof v === 'number') used.add(v);
+    }
+    const patch: Record<string, number> = {};
+    for (const id of store.data.widgets) {
+      const key = widgetCardKey(id);
+      if (tints[key] === undefined) {
+        const idx = pickWidgetTintIndex(used);
+        used.add(idx);
+        patch[key] = idx;
+      }
+    }
+    if (Object.keys(patch).length > 0) store.ensureWidgetTints(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.data.widgets, store.data.widgetTints]);
+
   /** 渲染放置（视觉空间）：4 栏视口直接用存储锚点；2 栏视口两两合并（0,1→左、2,3→右，2 宽卡占满宽）。
    *  拖拽中相关卡的锚点先被 previewCols 覆盖。两个虚线入口块作为无锚点伪卡附在末尾（回落最矮栏）。 */
   const placements = useMemo(() => {
@@ -510,14 +542,17 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
             delay={delay}
             colSpan={widgetLayouts.task.colSpan}
             heightUnits={widgetLayouts.task.heightUnits}
+            tint={widgetTintOf(store.data.widgetTints, widgetCardKey('task'))}
           />
         );
       case 'news':
-        return <NewsCard onNavigate={onNavigate} delay={delay} />;
+        return (
+          <NewsCard onNavigate={onNavigate} delay={delay} tint={widgetTintOf(store.data.widgetTints, widgetCardKey('news'))} />
+        );
       case 'ranking':
-        return <RankingCard delay={delay} />;
+        return <RankingCard delay={delay} tint={widgetTintOf(store.data.widgetTints, widgetCardKey('ranking'))} />;
       case 'trending':
-        return <TrendingWidget />;
+        return <TrendingWidget tint={widgetTintOf(store.data.widgetTints, widgetCardKey('trending'))} />;
       default:
         return null;
     }
@@ -1196,6 +1231,29 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 );
               })}
             </div>
+            {/* A 型组件专属：换个底色（第二十三轮）——重抽一色（避开当前色与其余组件已用色）并落盘 */}
+            {sizeMenu.kind === 'widget' && (
+              <>
+                <div className="my-2.5 h-px bg-white/10" />
+                <button
+                  data-reroll-tint
+                  onClick={() => {
+                    const key = widgetCardKey(sizeMenu.id);
+                    // 排除全部已用色（含本卡当前色）：重抽必换色，且不与同屏其他组件撞色
+                    const exclude: number[] = [];
+                    for (const w of store.data.widgets) {
+                      const v = store.data.widgetTints[widgetCardKey(w)];
+                      if (typeof v === 'number') exclude.push(v);
+                    }
+                    store.setWidgetTint(key, pickWidgetTintIndex(exclude));
+                    setSizeMenu(null);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                >
+                  <Palette size={12} /> 换个底色
+                </button>
+              </>
+            )}
             {/* 组合卡专属：拆分组合（原位还原成左右两张普通 C 卡） */}
             {sizeMenu.kind === 'combo' && (
               <>

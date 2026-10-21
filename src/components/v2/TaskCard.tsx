@@ -11,8 +11,10 @@ import {
   widgetCardKey,
   type LocalStore,
   type TaskItem,
+  type WidgetTint,
 } from '../../store/localStore';
 import { PlansSection, TasksSection } from './TaskPanel';
+import WidgetTintLayer from './WidgetTint';
 
 /**
  * A 型 · 计划任务卡（第十八轮，替换原「今日任务」占位卡；第十九轮加待办分组）
@@ -36,6 +38,7 @@ export default function TaskCard({
   delay = 0,
   colSpan = 1,
   heightUnits = 1,
+  tint,
 }: {
   store: LocalStore;
   onOpen: () => void;
@@ -44,6 +47,8 @@ export default function TaskCard({
   colSpan?: 1 | 2;
   /** 右键布局高度：1 = 简洁卡面（点开弹窗），2 = 面板式布局（卡内直接操作） */
   heightUnits?: 1 | 2;
+  /** 专属底色（第二十三轮，由 HomePage 按 widgetTints 分配传入；1x/2x 两壳都生效） */
+  tint?: WidgetTint;
 }) {
   const { tasks, cardFaceStyles } = store.data;
   const face = cardFaceStyleOf(cardFaceStyles, widgetCardKey('task'));
@@ -101,6 +106,11 @@ export default function TaskCard({
   const focusTask = open[0];
   const restCount = Math.max(0, open.length - 1);
 
+  /** 专属底色层（第二十三轮）：1x/2x 两壳共用，内容以 relative 层级盖在其上 */
+  const tintLayer = tint ? (
+    <WidgetTintLayer tint={tint} icon={<ListTodo size={176} strokeWidth={1} />} />
+  ) : null;
+
   /* ---------- 高 2x：面板式布局（复用 TaskPanel 双列内容，核心交互卡内直接可用） ---------- */
   if (heightUnits === 2) {
     return (
@@ -112,6 +122,8 @@ export default function TaskCard({
         data-task-mode="full"
         className="glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
       >
+        {tintLayer}
+        <div className="relative flex flex-col flex-1 min-h-0">
         {/* 头部：标题 + 今日进度 + 「展开」入口（打开完整面板，复杂操作都在那里） */}
         <div className="flex items-center gap-2 mb-2.5 shrink-0">
           <div className="w-7 h-7 rounded-full bg-indigo-500/25 text-indigo-200 flex items-center justify-center">
@@ -141,6 +153,7 @@ export default function TaskCard({
             <PlansSection store={store} variant="card" />
           </div>
         </div>
+        </div>
       </motion.div>
     );
   }
@@ -156,6 +169,8 @@ export default function TaskCard({
       onClick={handleCardClick}
       className="glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors cursor-pointer"
     >
+      {tintLayer}
+      <div className="relative flex flex-col flex-1 min-h-0">
       {/* 头部：标题 + 今日进度 */}
       <div className="flex items-center gap-2 mb-2.5 shrink-0">
         <div className="w-7 h-7 rounded-full bg-indigo-500/25 text-indigo-200 flex items-center justify-center">
@@ -229,6 +244,7 @@ export default function TaskCard({
           )}
         </div>
       )}
+      </div>
     </motion.div>
   );
 }
