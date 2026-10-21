@@ -6,7 +6,7 @@ import { StackCardFrame, StackGroupIcon, StackSiteTiles } from './GroupStackCard
 /**
  * C 卡组合卡（第二十一轮）：两个文件夹式编组合并成一张卡，占一个网格位。
  * - 顶部左右双 tab 头：各显示该组的头图标（与普通 C 卡同规则）+ 组名；当前 tab 高亮、另一个变暗
- * - 文件夹小角颜色 = 当前 tab 组的 tabColor，切换 tab 即变色
+ * - 顶部两个文件夹小角：左块对齐左 tab、右块对齐右 tab，颜色各自 = 对应组的 tabColor，常驻不随 tab 切换变化（第三十三轮）
  * - 下方瓷砖区 = 当前 tab 组的站点，排版规则与普通 C 卡完全一致（StackSiteTiles，含第二十二轮 2x 五列网格）
  * - 点另一个 tab 标题 = 切换（activeGroupId 落盘持久化）；点瓷砖 = 打开站点；
  *   点卡身空白处（tab 头与瓷砖以外的区域）= 打开组合弹窗（ComboPanel）
@@ -41,6 +41,7 @@ export default function ComboCard({
   return (
     <StackCardFrame
       tabColor={active.tabColor ?? ''}
+      tabEars={[groups[0].tabColor ?? '', groups[1].tabColor ?? '']}
       onClick={() => onOpen(combo)}
       delay={delay}
       ariaLabel={`组合卡：${groups[0].name} 与 ${groups[1].name}`}

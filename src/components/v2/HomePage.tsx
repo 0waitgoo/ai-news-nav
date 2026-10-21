@@ -18,6 +18,7 @@ import {
   type WidgetId,
   type WidgetLayout,
 } from '../../store/localStore';
+import { placeInLanes, simulateDenseFlow, type LaneItemSpec } from './laneLayout';
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import BackgroundMenu from './BackgroundMenu';
@@ -41,7 +42,13 @@ import TrendingWidget from '../widgets/TrendingWidget';
  * - A 型原生组件与编组（B/C 型）可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地；C 型缺省 1 栏 × 1x
  * - 全部卡片（编组 + 原生组件）可按住拖拽排序：超过阈值才判定拖拽，普通点击不受影响；顺序存本地
  * - 全部编组与布局来自本地存储（方案三：本地优先），用户可增删改
+ * - 第三十四轮：排放改为按栏锚定（见 laneLayout.ts）——卡片钉在自己的栏里往下排，
+ *   空栏留空、不再自动往左边收；拖拽落点按指针所在栏 + 栏内插入位决定，只动被拖卡的锚点
  */
+
+/** 两个虚线入口块在放置计算里的伪 key（不算卡、无锚点，回落到最矮栏末尾） */
+const TILE_ADD_KEY = '__tile_add__';
+const TILE_NEW_KEY = '__tile_new__';
 
 /** 向上查找最近的可滚动祖先（拖拽到边缘时自动滚动用） */
 function findScrollAncestor(el: HTMLElement): HTMLElement | null {
@@ -55,6 +62,22 @@ function findScrollAncestor(el: HTMLElement): HTMLElement | null {
 }
 export default function HomePage({ onNavigate, store }: { onNavigate: (page: string) => void; store: LocalStore }) {
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
+  /* 视口栏数与现有网格断点一致：≥lg（1024px）为 4 栏，其下（含平板）为 2 栏。
+   * 数据始终按 4 栏锚点存；2 栏呈现时 4 个锚点栏两两合并（0,1→左、2,3→右），见 placements。 */
+  const [wideViewport, setWideViewport] = useState<boolean>(
+    () => typeof window === 'undefined' || window.innerWidth >= 1024,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setWideViewport(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  const visualCols: 2 | 4 = wideViewport ? 4 : 2;
+  const visualColsRef = useRef(visualCols);
+  visualColsRef.current = visualCols;
+  const gridRef = useRef<HTMLDivElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [panelGroupId, setPanelGroupId] = useState<string | null>(null);
   const [comboPanelId, setComboPanelId] = useState<string | null>(null);
@@ -242,14 +265,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     else store.setGroupLayout(sizeMenu.id, patch);
   };
 
-  const widgetCls = (id: WidgetId) => {
-    const layout = widgetLayouts[id];
-    // 宽度上限 2 栏：渲染侧再夹一次，存量异常值也不破版
-    const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
-    const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
-    return `${col} ${row}`;
-  };
-
   /* ---------- 编组展开 / 弹窗 ---------- */
   const toggleExpand = (group: NavGroup) => {
     setExpandedId((prev) => (prev === group.id ? null : group.id));
@@ -283,23 +298,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const handleComboBecomeList = (group: NavGroup) => {
     if (comboPanel) store.detachComboMemberAsList(comboPanel.id, group.id, baseOrderRef.current);
     setComboPanelId(null);
-  };
-
-  const groupWrapperCls = (group: NavGroup) => {
-    if (group.display !== 'list') {
-      // C 型编组同样按右键布局占格（缺省 1 栏 × 1x，老数据不破版）
-      const layout = stackLayoutOf(groupLayouts, group.id);
-      const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
-      const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
-      return `${col} ${row}`;
-    }
-    // 展开态沿用既有高度逻辑（2 栏 × 4 行），不被右键布局设置影响
-    if (expandedId === group.id) return 'col-span-2 row-span-4';
-    // 收起态按右键布局占格（宽度夹到 ≤2 栏；老数据回落默认 2 栏 × 2x）
-    const layout = groupLayoutOf(groupLayouts, group.id);
-    const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
-    const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
-    return `${col} ${row}`;
   };
 
   const renderGroup = (group: NavGroup, delay: number) =>
@@ -347,6 +345,14 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   );
   const [previewOrder, setPreviewOrder] = useState<string[] | null>(null);
   const displayOrder = previewOrder ?? baseOrder;
+  /** 拖拽中的预览锚点（存储空间，key → 栏）：普通拖拽只有被拖卡一项，
+   *  tab 拖出时含被拖组与另一组（另一组 = 组合原来的栏）。state 供渲染、ref 供拖拽逻辑同步读 */
+  const [previewCols, setPreviewCols] = useState<Record<string, number> | null>(null);
+  const previewColsRef = useRef<Record<string, number> | null>(null);
+  const setPreviewColsBoth = (v: Record<string, number> | null) => {
+    previewColsRef.current = v;
+    setPreviewCols(v);
+  };
 
   const itemByKey = useMemo(() => {
     const map = new Map<string, { group?: NavGroup; widgetId?: WidgetId; combo?: ComboItem }>();
@@ -358,18 +364,119 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     return map;
   }, [groups, widgets, validCombos]);
 
-  const cardSpanCls = (key: string) => {
+  /* ---------- 栏位布局（第三十四轮）：卡片占格只由（栏锚点 + 顺序 + 宽高）经 placeInLanes 算出，
+     渲染时用显式 gridColumn/gridRow 钉死，不再让浏览器 dense 流自动收拢 ---------- */
+  /** 卡片占位（存数据口径：右键布局的宽高，宽度渲染侧再夹一次；展开中的 B 卡不走这里） */
+  const storedSpecOf = (key: string): { span: 1 | 2; height: number } => {
     const item = itemByKey.get(key);
-    if (!item) return 'col-span-1 row-span-1';
-    if (item.group) return groupWrapperCls(item.group);
-    if (item.combo) {
-      // 组合卡占格同 C 卡：按 groupLayouts 的 combo key（缺省 1 栏 × 1x）
-      const layout = stackLayoutOf(groupLayouts, comboCardKey(item.combo.id));
-      const col = clampColSpan(layout.colSpan) === 2 ? 'col-span-2' : 'col-span-1';
-      const row = layout.heightUnits === 2 ? 'row-span-2' : 'row-span-1';
-      return `${col} ${row}`;
+    if (!item) return { span: 1, height: 1 };
+    if (item.group) {
+      const layout =
+        item.group.display === 'list'
+          ? groupLayoutOf(groupLayouts, item.group.id)
+          : stackLayoutOf(groupLayouts, item.group.id);
+      return { span: clampColSpan(layout.colSpan), height: layout.heightUnits };
     }
-    return widgetCls(item.widgetId as WidgetId);
+    if (item.combo) {
+      const layout = stackLayoutOf(groupLayouts, comboCardKey(item.combo.id));
+      return { span: clampColSpan(layout.colSpan), height: layout.heightUnits };
+    }
+    const layout = widgetLayouts[item.widgetId as WidgetId];
+    return { span: clampColSpan(layout.colSpan), height: layout.heightUnits };
+  };
+
+  /** 渲染口径占位：展开中的 B 卡沿用既有展开形态（2 栏 × 4 行），其余同 storedSpecOf */
+  const renderSpecOf = (key: string): { span: 1 | 2; height: number } => {
+    const item = itemByKey.get(key);
+    if (item?.group?.display === 'list' && expandedId === item.group.id) return { span: 2, height: 4 };
+    return storedSpecOf(key);
+  };
+
+  /** 存量迁移（cardCols 为空时）：复刻旧瀑布流 dense 放置算出每张卡的栏与阅读序，一次性生成锚点 */
+  const migration = useMemo(() => {
+    if (Object.keys(store.data.cardCols).length > 0 || baseOrder.length === 0) return null;
+    const keys = baseOrder.filter((k) => itemByKey.has(k));
+    if (keys.length === 0) return null;
+    const sim = simulateDenseFlow(
+      keys.map((k) => ({ key: k, ...storedSpecOf(k) })),
+      4,
+    );
+    const order = [...keys].sort((a, b) => {
+      const pa = sim.get(a)!;
+      const pb = sim.get(b)!;
+      return pa.row - pb.row || pa.col - pb.col;
+    });
+    const cols: Record<string, number> = {};
+    for (const k of keys) cols[k] = sim.get(k)!.col;
+    return { order, cols };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.data.cardCols, baseOrder, itemByKey, groupLayouts, widgetLayouts]);
+
+  /** 已存锚点的解析：缺失（新卡）由引擎回落最矮栏、超界（右键改宽后）夹取——结果即当前生效锚点 */
+  const anchorResolution = useMemo(() => {
+    const items = baseOrder
+      .filter((k) => itemByKey.has(k))
+      .map((k) => ({ key: k, ...storedSpecOf(k), anchor: store.data.cardCols[k] as number | undefined }));
+    return placeInLanes(items, 4);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseOrder, itemByKey, groupLayouts, widgetLayouts, store.data.cardCols]);
+
+  /** 当前生效的存储空间锚点（key → 栏）：迁移未落盘前先用迁移结果，否则用解析结果 */
+  const effectiveCols = useMemo(() => {
+    if (migration) return new Map<string, number>(Object.entries(migration.cols));
+    return anchorResolution.resolvedCols;
+  }, [migration, anchorResolution]);
+  const effectiveColsRef = useRef(effectiveCols);
+  effectiveColsRef.current = effectiveCols;
+
+  // 迁移/回落锚点静默落盘：与已存值无差异则不写（store 侧另有等值短路，双保险防循环）
+  useEffect(() => {
+    if (migration) {
+      store.applyCardMigration(migration.order, migration.cols);
+      return;
+    }
+    const diff: Record<string, number> = {};
+    anchorResolution.resolvedCols.forEach((col, key) => {
+      if (store.data.cardCols[key] !== col) diff[key] = col;
+    });
+    if (Object.keys(diff).length > 0) store.ensureCardCols(diff);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [migration, anchorResolution, store.data.cardCols]);
+
+  /** 渲染放置（视觉空间）：4 栏视口直接用存储锚点；2 栏视口两两合并（0,1→左、2,3→右，2 宽卡占满宽）。
+   *  拖拽中相关卡的锚点先被 previewCols 覆盖。两个虚线入口块作为无锚点伪卡附在末尾（回落最矮栏）。 */
+  const placements = useMemo(() => {
+    const specs: LaneItemSpec[] = [];
+    for (const key of displayOrder) {
+      if (!itemByKey.has(key)) continue;
+      const spec = renderSpecOf(key);
+      const stored = previewCols?.[key] ?? effectiveCols.get(key);
+      let anchor: number | undefined;
+      if (visualCols === 4) anchor = stored;
+      else if (spec.span === 2) anchor = 0;
+      else anchor = stored === undefined ? undefined : Math.floor(stored / 2);
+      specs.push({ key, span: spec.span, height: spec.height, anchor });
+    }
+    specs.push({ key: TILE_ADD_KEY, span: 1, height: 1, anchor: undefined });
+    specs.push({ key: TILE_NEW_KEY, span: 1, height: 1, anchor: undefined });
+    const result = placeInLanes(specs, visualCols);
+    return {
+      ...result,
+      spanOf: new Map(specs.map((s) => [s.key, s.span])),
+      heightOf: new Map(specs.map((s) => [s.key, s.height])),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayOrder, itemByKey, groupLayouts, widgetLayouts, expandedId, visualCols, previewCols, effectiveCols]);
+  const placementsRef = useRef(placements);
+  placementsRef.current = placements;
+
+  /** 虚线入口块的显式占格（与卡片同一套放置结果） */
+  const tileStyle = (tileKey: string): React.CSSProperties => {
+    const p = placements.pos.get(tileKey);
+    return {
+      gridColumn: `${(p?.col ?? 0) + 1} / span 1`,
+      gridRow: `${(p?.row ?? 0) + 1} / span 1`,
+    };
   };
 
   const renderCardItem = (key: string, index: number) => {
@@ -438,6 +545,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     lastX: number;
     lastY: number;
     scrollEl: HTMLElement | null;
+    /** 抓起时被拖卡的像素高度与视觉宽度（栏数）：落点判定按拖影中心/左缘对栏与插入位 */
+    rectH: number;
+    spanV: number;
     tabExtract?: { comboId: string; groupId: string };
     /** 拖拽激活瞬间各卡的矩形快照（合并目标兜底判定用：按压开始时指针所指的卡） */
     startRects?: Map<string, DOMRect>;
@@ -466,34 +576,56 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       }
     };
 
+    /* 落点判定（第三十四轮，栏位模型）：目标栏由拖影左缘在网格分栏中的位置决定，
+     * 插入位由拖影纵向中心与目标栏（被拖卡横向范围所跨的栏）内各卡中心的比较决定。
+     * 只改被拖卡的预览锚点与顺序——占位只出现在目标栏内，其他栏的卡锚点纹丝不动。 */
     const updatePreviewTarget = (x: number, y: number) => {
       const d = activeDragRef.current;
       const order = previewOrderRef.current;
-      if (!d || !order) return;
-      let hit: { key: string; rect: DOMRect } | null = null;
-      wrapperRefs.current.forEach((el, key) => {
-        if (key === d.key) return;
+      const grid = gridRef.current;
+      if (!d || !order || !grid) return;
+      const cols = visualColsRef.current;
+      const grect = grid.getBoundingClientRect();
+      const gap = parseFloat(window.getComputedStyle(grid).columnGap) || 12;
+      const colW = (grect.width - gap * (cols - 1)) / cols;
+      const span = d.spanV;
+      let vCol = Math.floor((x - d.offsetX - grect.left) / (colW + gap));
+      vCol = Math.max(0, Math.min(cols - span, vCol));
+      // 视觉栏 → 存储锚点：4 栏即本身；2 栏时 1 宽卡按「对子内偏移」（旧锚点 %2）还原，2 宽卡夹到合法范围
+      const prevCols = previewColsRef.current ?? {};
+      const oldStored = prevCols[d.key] ?? effectiveColsRef.current.get(d.key) ?? 0;
+      let sCol: number;
+      if (cols === 4) sCol = vCol;
+      else if (span === 2) sCol = Math.min(oldStored, 2);
+      else sCol = Math.max(0, Math.min(3, vCol * 2 + (oldStored % 2)));
+      if (prevCols[d.key] !== sCol) {
+        setPreviewColsBoth({ ...prevCols, [d.key]: sCol });
+      }
+      // 插入位：与被拖卡横向范围相交的卡中，第一张纵向中心在拖影中心之下的卡之前；都没有则排在同栏最后一张之后
+      const centerY = y - d.offsetY + d.rectH / 2;
+      let refKey: string | null = null;
+      let lastCand: string | null = null;
+      for (const k of order) {
+        if (k === d.key) continue;
+        const p = placementsRef.current.pos.get(k);
+        const ks = placementsRef.current.spanOf.get(k) ?? 1;
+        if (!p) continue;
+        if (p.col + ks - 1 < vCol || p.col > vCol + span - 1) continue;
+        lastCand = k;
+        const el = wrapperRefs.current.get(k);
+        if (!el) continue;
         const r = el.getBoundingClientRect();
-        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = { key, rect: r };
-      });
-      if (!hit) return;
-      const targetIndex = order.indexOf(hit.key);
-      const from = order.indexOf(d.key);
-      if (targetIndex < 0 || from < 0) return;
-      // 阅读顺序判定落点在目标之前还是之后：先看纵向中心带，带内再看横向中心
-      const r = hit.rect;
-      const midY = r.top + r.height / 2;
-      let after: boolean;
-      if (y > midY + r.height * 0.25) after = true;
-      else if (y < midY - r.height * 0.25) after = false;
-      else after = x > r.left + r.width / 2;
-      const next = [...order];
-      next.splice(from, 1);
-      let to = targetIndex;
-      if (from < targetIndex) to -= 1;
-      if (after) to += 1;
-      to = Math.max(0, Math.min(next.length, to));
-      next.splice(to, 0, d.key);
+        if (centerY < r.top + r.height / 2) {
+          refKey = k;
+          break;
+        }
+      }
+      const next = order.filter((k) => k !== d.key);
+      let to: number;
+      if (refKey) to = next.indexOf(refKey);
+      else if (lastCand) to = next.indexOf(lastCand) + 1;
+      else to = next.length;
+      next.splice(Math.max(0, to), 0, d.key);
       if (next.join('|') !== order.join('|')) {
         previewOrderRef.current = next;
         setPreviewOrder(next);
@@ -634,6 +766,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       document.body.style.userSelect = '';
       const finalOrder = previewOrderRef.current;
       previewOrderRef.current = null;
+      const finalCols = previewColsRef.current;
+      setPreviewColsBoth(null);
       setPreviewOrder(null);
       setDragKey(null);
       setDragSnap(null);
@@ -648,12 +782,20 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         }
       }
       if (!handled && commit && tabExtract && finalOrder) {
-        // tab 拖出落定：组合解散，被拖组按预览落点成独立卡（取消拖拽则不落盘、组合原样）
-        storeRef.current.extractComboGroup(tabExtract.comboId, tabExtract.groupId, finalOrder);
+        // tab 拖出落定：组合解散，被拖组按预览落点成独立卡（取消拖拽则不落盘、组合原样）；
+        // 两组锚点按预览给出的最终栏位一并落盘（被拖组 = 落点栏，另一组 = 组合原来的栏）
+        storeRef.current.extractComboGroup(tabExtract.comboId, tabExtract.groupId, finalOrder, finalCols ?? {});
         handled = true;
       }
-      if (!handled && commit && finalOrder && finalOrder.join('|') !== baseOrderRef.current.join('|')) {
-        storeRef.current.setCardOrder(finalOrder);
+      if (!handled && commit && finalOrder) {
+        // 普通拖拽落盘（第三十四轮）：顺序 + 被拖卡锚点一次写入；两者都没变则不写
+        const orderChanged = finalOrder.join('|') !== baseOrderRef.current.join('|');
+        const colsChanged = finalCols
+          ? Object.entries(finalCols).some(([k, v]) => storeRef.current.data.cardCols[k] !== v)
+          : false;
+        if (orderChanged || colsChanged) {
+          storeRef.current.setCardPlacement(finalOrder, finalCols ?? {});
+        }
       }
       // 拖拽松手后的那次 click 可能落在站点按钮上，吞掉避免误开站点 / 误触展开
       suppressClickRef.current = true;
@@ -677,6 +819,11 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         clearCharge();
         let dragEntityKey = pending.key;
         const order = [...baseOrderRef.current];
+        // 预览锚点初值（第三十四轮）：普通拖拽 = 被拖卡当前生效锚点；
+        // tab 拖出时被拖组与另一组都先落在组合原来的栏，拖动中再由指针改被拖组的锚点
+        let initialCols: Record<string, number> = {
+          [dragEntityKey]: effectiveColsRef.current.get(dragEntityKey) ?? 0,
+        };
         if (tab) {
           // tab 拖出：预览顺序里把组合条目拆成 [另一组, 被拖组]，此后与普通卡拖拽同路；
           // 拖影不用组合卡的 HTML，改由屏外渲染的该组普通 C 卡提供（见 tabSnap 渲染与布局副作用）
@@ -688,8 +835,11 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
             const ci = order.indexOf(comboCardKey(combo.id));
             if (ci >= 0) order.splice(ci, 1, ...pair);
             else order.push(...pair);
+            const comboCol = effectiveColsRef.current.get(comboCardKey(combo.id)) ?? 0;
+            initialCols = { [groupCardKey(otherId)]: comboCol, [dragEntityKey]: comboCol };
           }
         }
+        setPreviewColsBoth(initialCols);
         activeDragRef.current = {
           key: dragEntityKey,
           pointerId: pending.pointerId,
@@ -698,6 +848,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           lastX: e.clientX,
           lastY: e.clientY,
           scrollEl: findScrollAncestor(el),
+          rectH: rect.height,
+          spanV: placementsRef.current.spanOf.get(pending.key) ?? 1,
           tabExtract: tab,
         };
         if (!tab) {
@@ -844,10 +996,12 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         </div>
       </div>
 
-      {/* 瀑布流网格：4 栏（手机 2 栏），dense 流自动补齐；卡片按 displayOrder 统一渲染，可拖拽排序。
+      {/* 栏位网格（第三十四轮）：4 栏（手机 2 栏），每张卡的占格由 placements 显式给出
+          （gridColumn/gridRow 钉死），不走自动流——栏与栏互不挤占，空栏留空。
           顶部留白约 28–32px 级别（移动端略小），让第一行卡片与吸顶导航条明显隔开、有呼吸感 */}
       <div
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 sm:mt-7 lg:mt-8 [grid-auto-flow:dense] auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]"
+        ref={gridRef}
+        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 sm:mt-7 lg:mt-8 auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]"
         onClickCapture={handleGridClickCapture}
         onDragStart={(e) => e.preventDefault()}
       >
@@ -855,6 +1009,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           const item = itemByKey.get(key);
           if (!item) return null;
           const wid = item.widgetId;
+          const pos = placements.pos.get(key);
+          const span = placements.spanOf.get(key) ?? 1;
+          const heightUnits = placements.heightOf.get(key) ?? 1;
           return (
             <div
               key={key}
@@ -864,8 +1021,12 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 else wrapperRefs.current.delete(key);
               }}
               data-card-key={key}
-              className={`${cardSpanCls(key)} scroll-mt-20 relative`}
-              style={{ touchAction: 'pan-y' }}
+              className="scroll-mt-20 relative"
+              style={{
+                gridColumn: `${(pos?.col ?? 0) + 1} / span ${span}`,
+                gridRow: `${(pos?.row ?? 0) + 1} / span ${heightUnits}`,
+                touchAction: 'pan-y',
+              }}
               onPointerDown={(e) => handleCardPointerDown(e, key)}
               onContextMenu={
                 item.group
@@ -899,8 +1060,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           );
         })}
 
-        {/* 添加组件入口 */}
-        <div className="col-span-1 row-span-1">
+        {/* 添加组件入口（占格同样由 placements 决定：附在最矮栏末尾） */}
+        <div style={tileStyle(TILE_ADD_KEY)}>
           <button onClick={() => setShowWidgetPanel(true)} className={dashedTileCls}>
             <LayoutGrid size={18} />
             添加组件
@@ -908,7 +1069,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         </div>
 
         {/* 新建编组入口 */}
-        <div className="col-span-1 row-span-1">
+        <div style={tileStyle(TILE_NEW_KEY)}>
           <button onClick={() => setShowNewGroup(true)} className={dashedTileCls}>
             <FolderPlus size={18} />
             新建编组

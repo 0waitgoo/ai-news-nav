@@ -20,9 +20,28 @@ import { groupIcon, siteLogoFallback, sortSites, type NavGroup, type SiteEntry }
  * - 第二十一轮：卡框（StackCardFrame）与瓷砖区（StackSiteTiles）抽成共享组件，组合卡（ComboCard）复用同一套外观与排版规则
  */
 
+/** 组合卡专用小角：造型与普通 C 卡小角一致（圆角上沿 + clipPath 裁下 7px），按左右半区定位、宽度略收，两块之间留间隙 */
+function ComboTabBump({ color, side }: { color: string; side: 'left' | 'right' }) {
+  const c = color?.trim() ? color.trim() : '';
+  return (
+    <div
+      data-tab-bump
+      data-ear-side={side}
+      className="absolute top-0 h-[20px] w-[40%] max-w-[140px] rounded-t-[13px] border border-b-0 pointer-events-none"
+      style={{
+        backgroundColor: c || '#26262e',
+        borderColor: c || 'rgba(255,255,255,0.1)',
+        clipPath: 'inset(0 0 7px 0)',
+        ...(side === 'left' ? { left: 18 } : { left: 'calc(50% + 8px)' }),
+      }}
+    />
+  );
+}
+
 /** C 卡卡框：小角 + 半透明卡身。普通 C 卡与组合卡共用，children 渲染在卡身内（标题行/口线/瓷砖区由调用方组织） */
 export function StackCardFrame({
   tabColor,
+  tabEars,
   onClick,
   delay = 0,
   ariaLabel,
@@ -31,6 +50,8 @@ export function StackCardFrame({
 }: {
   /** 小角填充色（已解析：空字符串 = 默认同色灰） */
   tabColor: string;
+  /** 组合卡专用（第三十三轮）：左右两组各自的 tabColor，传入时渲染两个小角（各对齐一个 tab、颜色固定不随激活 tab 变），忽略 tabColor */
+  tabEars?: [string, string];
   onClick?: () => void;
   delay?: number;
   ariaLabel: string;
@@ -53,15 +74,22 @@ export function StackCardFrame({
     >
       {/* 小角（标签凸起）：从卡身后探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边）。
           clipPath 裁掉下 7px：卡身透明后，原先被卡身压住的小角下截会透出来，故只保留上沿以上的可见轮廓（与透明化前的外观一致） */}
-      <div
-        data-tab-bump
-        className="absolute top-0 left-[18px] h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
-        style={{
-          backgroundColor: color || '#26262e',
-          borderColor: color || 'rgba(255,255,255,0.1)',
-          clipPath: 'inset(0 0 7px 0)',
-        }}
-      />
+      {tabEars ? (
+        <>
+          <ComboTabBump color={tabEars[0]} side="left" />
+          <ComboTabBump color={tabEars[1]} side="right" />
+        </>
+      ) : (
+        <div
+          data-tab-bump
+          className="absolute top-0 left-[18px] h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
+          style={{
+            backgroundColor: color || '#26262e',
+            borderColor: color || 'rgba(255,255,255,0.1)',
+            clipPath: 'inset(0 0 7px 0)',
+          }}
+        />
+      )}
 
       {/* 卡身：四角完整的圆角矩形，底色为 B 卡同款半透明（.glass-panel 同数值 rgba(30,30,35,0.4) + blur(24px)，内联实现不动 index.css），
           悬停只提亮描边，不改变底色 */}
