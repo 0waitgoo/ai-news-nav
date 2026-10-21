@@ -22,6 +22,10 @@ export interface GithubSyncMeta extends GithubSyncConfig {
   /** 本地与云端最后一次达成一致时的数据 updatedAt；本地 updatedAt 大于它 = 有待推送变更 */
   baseUpdatedAt: number;
   lastSyncedAt: number | null;
+  /** 凭证来源（GitHub 登录轮）：'pat' = 手填细粒度令牌（备用）；'oauth' = GitHub 一键登录换来的令牌 */
+  authMode: 'pat' | 'oauth';
+  /** OAuth 登录的 GitHub 用户名（authMode='oauth' 时有值，仅本机展示用） */
+  oauthLogin: string;
 }
 
 const META_KEY = 'ainav-github-sync-v1';
@@ -36,6 +40,8 @@ export const DEFAULT_GITHUB_SYNC_META: GithubSyncMeta = {
   lastSha: null,
   baseUpdatedAt: 0,
   lastSyncedAt: null,
+  authMode: 'pat',
+  oauthLogin: '',
 };
 
 export function loadGithubSyncMeta(): GithubSyncMeta {
@@ -54,6 +60,8 @@ export function loadGithubSyncMeta(): GithubSyncMeta {
         lastSha: typeof p.lastSha === 'string' ? p.lastSha : null,
         baseUpdatedAt: typeof p.baseUpdatedAt === 'number' ? p.baseUpdatedAt : 0,
         lastSyncedAt: typeof p.lastSyncedAt === 'number' ? p.lastSyncedAt : null,
+        authMode: p.authMode === 'oauth' ? 'oauth' : 'pat',
+        oauthLogin: typeof p.oauthLogin === 'string' ? p.oauthLogin : '',
       };
     }
   } catch {
@@ -121,12 +129,16 @@ export function b64DecodeUtf8(b64: string): string {
 /* ---- GitHub Contents API ---- */
 const API_BASE = 'https://api.github.com';
 
-function ghHeaders(cfg: GithubSyncConfig): Record<string, string> {
+function tokenHeaders(token: string): Record<string, string> {
   return {
-    Authorization: `Bearer ${cfg.token}`,
+    Authorization: `Bearer ${token}`,
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
+}
+
+function ghHeaders(cfg: GithubSyncConfig): Record<string, string> {
+  return tokenHeaders(cfg.token);
 }
 
 function contentsUrl(cfg: GithubSyncConfig): string {
@@ -187,6 +199,143 @@ export async function ghGetFile(cfg: GithubSyncConfig): Promise<GhGetResult> {
   } catch {
     return { kind: 'error', message: '云端文件不是有效的 JSON 数据' };
   }
+}
+
+/* ---- GitHub OAuth 登录（默认同步入口；令牌方式保留作备用）----
+ * 流程：前端从 /api/github-oauth?config=1 拿公开 client_id → 跳 GitHub 授权页 →
+ * 回跳站点根带 ?code&state → 前端把 code 交给 /api/github-oauth 换 access_token
+ * （client_secret 只在服务端环境变量里，前端永远接触不到）。
+ * 换来的 token 与 PAT 存同一处本机独立存储（META_KEY），同样绝不进同步/导出 JSON。
+ * 登录后同步目标固定为登录账号下的私有仓库 ainav-data（见 OAUTH_* 常量）。 */
+
+export const OAUTH_REPO_NAME = 'ainav-data';
+export const OAUTH_BRANCH = 'main';
+export const OAUTH_FILE_PATH = 'ainav-data.json';
+const OAUTH_STATE_KEY = 'ainav-oauth-state';
+
+/** 生成并暂存 OAuth state（防 CSRF），返回要带去授权页的值 */
+export function beginOAuthState(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const state = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  try {
+    sessionStorage.setItem(OAUTH_STATE_KEY, state);
+  } catch {
+    // sessionStorage 不可用时回跳校验必然失败，会给出报错，不静默放行
+  }
+  return state;
+}
+
+/** 取出并清掉暂存的 state（一次性使用） */
+export function consumeOAuthState(): string | null {
+  try {
+    const v = sessionStorage.getItem(OAUTH_STATE_KEY);
+    sessionStorage.removeItem(OAUTH_STATE_KEY);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+/** 拼 GitHub 授权 URL：回调地址就是注册 OAuth App 时填的站点根，不另传 redirect_uri */
+export function buildOAuthAuthorizeUrl(clientId: string, state: string): string {
+  return `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&scope=repo&state=${encodeURIComponent(state)}`;
+}
+
+/** 从服务端拿公开配置（client_id）；拿不到/未配置一律 null */
+export async function fetchOAuthClientId(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/github-oauth?config=1');
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { clientId?: unknown } | null;
+    return typeof body?.clientId === 'string' && body.clientId ? body.clientId : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 用授权 code 向服务端换 access_token（secret 在服务端） */
+export async function exchangeOAuthCode(code: string): Promise<{ token: string } | { error: string }> {
+  let res: Response;
+  try {
+    res = await fetch('/api/github-oauth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+  } catch {
+    return { error: '网络错误，无法完成 GitHub 登录，请重试' };
+  }
+  const body = (await res.json().catch(() => null)) as { access_token?: unknown; error?: unknown } | null;
+  if (res.ok && typeof body?.access_token === 'string' && body.access_token) {
+    return { token: body.access_token };
+  }
+  if (body?.error === 'oauth_not_configured') {
+    return { error: '服务端未配置 GitHub 登录' };
+  }
+  return { error: 'GitHub 登录失败：授权码已失效或被拒绝，请重新登录' };
+}
+
+/** 用 token 查登录账号名 */
+export async function ghGetUser(token: string): Promise<{ login: string } | { error: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/user`, { headers: tokenHeaders(token) });
+  } catch {
+    return { error: '网络错误，无法连接 GitHub' };
+  }
+  if (!res.ok) return { error: httpErrorMessage(res.status) };
+  const body = (await res.json().catch(() => null)) as { login?: unknown } | null;
+  if (typeof body?.login !== 'string' || !body.login) {
+    return { error: 'GitHub 未返回账号信息，请重新登录' };
+  }
+  return { login: body.login };
+}
+
+/**
+ * 确保登录账号下有同步仓库 ainav-data：没有就创建为私有仓库；
+ * 已存在（无论私有与否）照常用。返回 { repo } 或错误文案。
+ */
+export async function ensureOAuthRepo(
+  token: string,
+  login: string,
+): Promise<{ repo: string } | { error: string }> {
+  const headers = tokenHeaders(token);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/repos/${encodeURIComponent(login)}/${OAUTH_REPO_NAME}`, { headers });
+  } catch {
+    return { error: '网络错误，无法连接 GitHub' };
+  }
+  if (res.ok) return { repo: OAUTH_REPO_NAME };
+  if (res.status !== 404) return { error: httpErrorMessage(res.status) };
+  // 仓库不存在 → 创建（私有）
+  let createRes: Response;
+  try {
+    createRes = await fetch(`${API_BASE}/user/repos`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: OAUTH_REPO_NAME,
+        private: true,
+        description: 'ai-news-nav 的同步数据（自动创建，请勿公开）',
+      }),
+    });
+  } catch {
+    return { error: '网络错误，创建同步仓库失败' };
+  }
+  if (createRes.ok) return { repo: OAUTH_REPO_NAME };
+  // 并发下可能刚被别处建好：再确认一次存在性
+  try {
+    const again = await fetch(`${API_BASE}/repos/${encodeURIComponent(login)}/${OAUTH_REPO_NAME}`, { headers });
+    if (again.ok) return { repo: OAUTH_REPO_NAME };
+  } catch {
+    // 忽略，统一报创建失败
+  }
+  if (createRes.status === 401 || createRes.status === 403) {
+    return { error: httpErrorMessage(createRes.status) };
+  }
+  return { error: `创建同步仓库失败（${createRes.status}），请稍后重试或改用令牌方式` };
 }
 
 export type GhPutResult = { kind: 'ok'; sha: string } | { kind: 'conflict' } | { kind: 'error'; message: string };
