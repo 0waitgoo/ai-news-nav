@@ -6,16 +6,23 @@ import { searchAll } from '../../utils/search';
 import { SiteLogo } from './Card';
 
 /**
- * 吸顶搜索：滚动时吸顶常驻。
- * 支持按站点名 / 编组名 / 别名 / 拼音首字母搜索，站点结果点击直达，编组结果点击打开 D 面板。
+ * 搜索（吸顶由 HomePage 的 sticky 容器负责，本组件只管搜索本身）。
+ * 数据来自本地存储的当前编组：支持站点名 / 编组名 / 别名 / 拼音首字母，
+ * 站点结果点击直达，编组结果点击原地展开该编组卡。
  */
-export default function StickySearch({ onOpenGroup }: { onOpenGroup: (group: NavGroup) => void }) {
+export default function StickySearch({
+  groups,
+  onOpenGroup,
+}: {
+  groups: NavGroup[];
+  onOpenGroup: (group: NavGroup) => void;
+}) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const results = useMemo(() => searchAll(query), [query]);
+  const results = useMemo(() => searchAll(query, groups), [query, groups]);
   const hasResults = results.sites.length > 0 || results.groups.length > 0;
 
   useEffect(() => {
@@ -57,7 +64,7 @@ export default function StickySearch({ onOpenGroup }: { onOpenGroup: (group: Nav
   };
 
   return (
-    <div ref={containerRef} className="sticky top-0 z-40 py-2 -mt-2">
+    <div ref={containerRef} className="relative flex-1 min-w-0">
       <div className="relative">
         <div className="flex items-center gap-3 h-12 sm:h-13 px-4 rounded-2xl bg-[#141419]/85 backdrop-blur-xl border border-white/10 shadow-lg shadow-black/30 focus-within:border-indigo-400/40 transition-colors">
           <Search size={18} className="text-white/40 shrink-0" />
@@ -119,7 +126,7 @@ export default function StickySearch({ onOpenGroup }: { onOpenGroup: (group: Nav
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium truncate">{group.name}</span>
-                        <span className="block text-[11px] text-white/40">{group.sites.length} 个站点 · 点击打开编组</span>
+                        <span className="block text-[11px] text-white/40">{group.sites.length} 个站点 · 点击展开编组</span>
                       </span>
                     </button>
                   ))}
