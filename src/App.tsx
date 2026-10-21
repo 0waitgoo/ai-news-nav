@@ -1,6 +1,6 @@
 import React, { useState, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
-import BentoGrid from './components/BentoGrid';
+import HomePage from './components/v2/HomePage';
 import DarkVeil from './components/DarkVeil';
 
 const NewsPage = React.lazy(() => import('./components/pages/NewsPage'));
@@ -17,13 +17,13 @@ export default function App() {
   const renderCurrentPage = () => {
     switch (currentPage) {
       case 'home':
-        return <BentoGrid onBgChange={setBgImage} onNavigate={handlePageChange} />;
+        return <HomePage onNavigate={handlePageChange} />;
       case 'news':
         return <NewsPage />;
       case 'nav':
         return <NavPage />;
       default:
-        return <BentoGrid onBgChange={setBgImage} onNavigate={handlePageChange} />;
+        return <HomePage onNavigate={handlePageChange} />;
     }
   };
 
