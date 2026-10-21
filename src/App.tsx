@@ -53,7 +53,8 @@ export default function App() {
       </div>
 
       {/* Main Content */}
-      <div className="relative z-10 flex flex-col min-h-screen w-full p-3 sm:p-4 md:p-6 gap-4 sm:gap-6 max-w-[1600px] mx-auto">
+      {/* h-dvh 固定视口高度：让内部 overflow-y-auto 容器成为真正的滚动区，position: sticky 吸顶才有可依附的滚动容器 */}
+      <div className="relative z-10 flex flex-col h-dvh w-full p-3 sm:p-4 md:p-6 gap-4 sm:gap-6 max-w-[1600px] mx-auto">
         <Sidebar onPageChange={handlePageChange} currentPage={currentPage} />
         <main className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto pb-20 sm:pb-6">

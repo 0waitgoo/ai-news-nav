@@ -10,6 +10,8 @@ body {
   background-color: #050505;
   color: #ffffff;
   overflow-x: hidden;
+  /* clip 不创建滚动容器，避免 overflow-x:hidden 破坏 position: sticky 吸顶 */
+  overflow-x: clip;
 }
 
 .glass-panel {
