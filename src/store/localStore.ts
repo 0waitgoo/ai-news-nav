@@ -112,29 +112,131 @@ export function stackLayoutOf(layouts: Record<string, WidgetLayout>, groupId: st
   return layouts[groupId] ?? DEFAULT_STACK_LAYOUT;
 }
 
-/* ---------- 计划任务小工具数据（第十八轮） ---------- */
+/* ---------- 计划任务小工具数据（第十八轮；第十九轮重构） ---------- */
 
-/** 短期待办：数组顺序即展示顺序 */
+/** 待办子任务：组内的一项 */
+export interface TaskChild {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+/**
+ * 短期待办：数组顺序即展示顺序。
+ * 第十九轮起顶层条目可带 children —— 只要 children 是数组（哪怕空）就是「组」：
+ * 组本身不单独勾选，完成态由子任务全勾推导（见 taskGroupDone）；普通待办 children 缺省。
+ */
 export interface TaskItem {
   id: string;
   title: string;
+  /** 普通待办的完成态；组忽略此字段（由子任务推导） */
   done: boolean;
   createdAt: number;
+  children?: TaskChild[];
 }
 
-/** 长期计划的一个步骤（里程碑） */
-export interface PlanStep {
-  id: string;
-  title: string;
-  done: boolean;
+/** 是否为组（children 为数组即是组，空组也算） */
+export const isTaskGroup = (t: TaskItem): boolean => Array.isArray(t.children);
+
+/** 组的子任务进度（非组返回 0/0） */
+export function taskChildProgress(t: TaskItem): { done: number; total: number } {
+  const kids = t.children ?? [];
+  return { done: kids.filter((c) => c.done).length, total: kids.length };
 }
 
-/** 长期计划：进度 = 已完成步骤数 / 总步骤数 */
+/** 组完成态：至少一个子任务且全部勾完（空组不算完成） */
+export const taskGroupDone = (t: TaskItem): boolean => {
+  if (!isTaskGroup(t)) return false;
+  const { done, total } = taskChildProgress(t);
+  return total > 0 && done === total;
+};
+
+/** 顶层条目是否算「已完成」：普通待办看 done，组看子任务全勾 */
+export const taskEntryDone = (t: TaskItem): boolean => (isTaskGroup(t) ? taskGroupDone(t) : t.done);
+
+/**
+ * 卡面/面板统一的待办计数口径（第十九轮）：把组按子任务摊平计数——
+ * 普通待办计 1，组计 children.length；分子同样摊平（组内已勾数）。
+ */
+export function taskFlatStats(tasks: TaskItem[]): { total: number; done: number } {
+  let total = 0;
+  let done = 0;
+  for (const t of tasks) {
+    if (isTaskGroup(t)) {
+      const p = taskChildProgress(t);
+      total += p.total;
+      done += p.done;
+    } else {
+      total += 1;
+      if (t.done) done += 1;
+    }
+  }
+  return { total, done };
+}
+
+/** 长期计划类型：次数型（执行了多少次） / 日期型（设一个完成时间） */
+export type PlanMode = 'count' | 'date';
+
+/**
+ * 长期计划（第十九轮重构；第十八轮的 steps「计划组」形态已废弃，存量在归一化时迁移为次数型）：
+ * - count：进度 = currentCount / targetCount，unit 为自由文本单位（次/节/笔…，默认「次」）
+ * - date：deadline 为目标完成日（YYYY-MM-DD），startDate 为创建日，时间进度 = 已流逝比例；done 为手动完成标记
+ */
 export interface PlanItem {
   id: string;
   title: string;
-  steps: PlanStep[];
+  mode: PlanMode;
+  targetCount?: number;
+  unit?: string;
+  currentCount?: number;
+  deadline?: string;
+  startDate?: string;
+  done?: boolean;
   createdAt: number;
+}
+
+/** 本地日期转 YYYY-MM-DD（按本地时区，不走 UTC 避免差一天） */
+export function toDateStr(d: Date): string {
+  const m = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+export const todayDateStr = (): string => toDateStr(new Date());
+
+const DATE_STR_RE = /^\d{4}-\d{2}-\d{2}$/;
+export const isDateStr = (s: unknown): s is string => typeof s === 'string' && DATE_STR_RE.test(s);
+
+/** 两个 YYYY-MM-DD 之间相差的整天数（b - a，可为负） */
+export function dateStrDiffDays(a: string, b: string): number {
+  const pa = a.split('-').map(Number);
+  const pb = b.split('-').map(Number);
+  const ta = Date.UTC(pa[0], pa[1] - 1, pa[2]);
+  const tb = Date.UTC(pb[0], pb[1] - 1, pb[2]);
+  return Math.round((tb - ta) / 86400000);
+}
+
+/** 「M月d日」展示用 */
+export function formatMonthDay(dateStr: string): string {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${m}月${d}日`;
+}
+
+/** 次数型进度 0~1（无目标时 0） */
+export function planCountRatio(p: PlanItem): number {
+  const target = p.targetCount ?? 0;
+  if (target <= 0) return 0;
+  return Math.min(1, (p.currentCount ?? 0) / target);
+}
+
+/** 日期型时间进度 0~1：startDate→deadline 已流逝比例（同日/过期夹到边界） */
+export function planDateRatio(p: PlanItem): number {
+  if (!isDateStr(p.deadline)) return 0;
+  const start = isDateStr(p.startDate) ? p.startDate : p.deadline;
+  const total = dateStrDiffDays(start, p.deadline);
+  if (total <= 0) return 1;
+  const elapsed = dateStrDiffDays(start, todayDateStr());
+  return Math.min(1, Math.max(0, elapsed / total));
 }
 
 /** 卡面样式（目前只有任务卡有双样式）：按卡片稳定 key 存，缺省列表式 */
@@ -144,45 +246,86 @@ export function cardFaceStyleOf(styles: Record<string, CardFaceStyle>, cardKey: 
   return styles[cardKey] === 'focus' ? 'focus' : 'list';
 }
 
-/** 归一化 tasks：老数据无此字段 / 元素残缺时逐项清洗，非法整体回落空数组（首次即空状态，不塞假数据） */
+/** 归一化 tasks：老数据无此字段 / 元素残缺时逐项清洗，非法整体回落空数组（首次即空状态，不塞假数据）。
+ *  children 是数组的元素按「组」保留（子任务逐项清洗），非数组一律不当组。 */
 function normalizeTasks(raw: unknown): TaskItem[] {
   if (!Array.isArray(raw)) return [];
   const out: TaskItem[] = [];
   for (const t of raw as Partial<TaskItem>[]) {
     if (!t || typeof t.title !== 'string' || !t.title) continue;
-    out.push({
+    const item: TaskItem = {
       id: typeof t.id === 'string' && t.id ? t.id : genId('t'),
       title: t.title,
       done: t.done === true,
       createdAt: typeof t.createdAt === 'number' ? t.createdAt : 0,
-    });
+    };
+    if (Array.isArray(t.children)) {
+      const kids: TaskChild[] = [];
+      for (const c of t.children as Partial<TaskChild>[]) {
+        if (!c || typeof c.title !== 'string' || !c.title) continue;
+        kids.push({
+          id: typeof c.id === 'string' && c.id ? c.id : genId('tc'),
+          title: c.title,
+          done: c.done === true,
+        });
+      }
+      item.children = kids;
+    }
+    out.push(item);
   }
   return out;
 }
 
-/** 归一化 plans：同 tasks 口径，步骤逐项清洗 */
+/**
+ * 归一化 plans（第十九轮）：
+ * - 新形态按 mode 清洗字段：count 需正整数目标（非法回落 1）与非负已执行数；date 需合法 deadline，
+ *   无合法 deadline 的 date 型回落次数型；startDate 非法时用创建日/今天兜底。
+ * - 存量迁移：第十八轮的 steps 形态（无 mode 且带 steps 数组）→ 次数型：
+ *   targetCount = steps 总数（0 步回落 1 防除零）、currentCount = 已勾数、unit 取「次」，迁移后不再保留 steps。
+ */
 function normalizePlans(raw: unknown): PlanItem[] {
   if (!Array.isArray(raw)) return [];
   const out: PlanItem[] = [];
-  for (const p of raw as Partial<PlanItem>[]) {
+  for (const p of raw as (Partial<PlanItem> & { steps?: unknown })[]) {
     if (!p || typeof p.title !== 'string' || !p.title) continue;
-    const steps: PlanStep[] = [];
-    if (Array.isArray(p.steps)) {
-      for (const s of p.steps as Partial<PlanStep>[]) {
-        if (!s || typeof s.title !== 'string' || !s.title) continue;
-        steps.push({
-          id: typeof s.id === 'string' && s.id ? s.id : genId('ps'),
-          title: s.title,
-          done: s.done === true,
-        });
-      }
-    }
-    out.push({
+    const base: PlanItem = {
       id: typeof p.id === 'string' && p.id ? p.id : genId('p'),
       title: p.title,
-      steps,
+      mode: 'count',
       createdAt: typeof p.createdAt === 'number' ? p.createdAt : 0,
-    });
+    };
+    const cleanCount = (v: unknown, fallback: number) =>
+      typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
+    const cleanCurrent = (v: unknown) =>
+      typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+    const cleanUnit = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 4) : '次');
+
+    if (p.mode === 'date' && isDateStr(p.deadline)) {
+      base.mode = 'date';
+      base.deadline = p.deadline;
+      base.startDate = isDateStr(p.startDate)
+        ? p.startDate
+        : base.createdAt > 0
+          ? toDateStr(new Date(base.createdAt))
+          : todayDateStr();
+      base.done = p.done === true;
+    } else if (p.mode === 'count' || p.mode === 'date') {
+      // 新形态次数型（date 型但 deadline 坏了也落这里，保证计划可用）
+      base.targetCount = cleanCount(p.targetCount, 1);
+      base.currentCount = cleanCurrent(p.currentCount);
+      base.unit = cleanUnit(p.unit);
+    } else if (Array.isArray(p.steps)) {
+      // —— 存量迁移：steps 式旧计划 → 次数型 ——
+      const steps = p.steps as { done?: unknown }[];
+      base.targetCount = Math.max(1, steps.length);
+      base.currentCount = steps.filter((s) => s && s.done === true).length;
+      base.unit = '次';
+    } else {
+      base.targetCount = cleanCount(p.targetCount, 1);
+      base.currentCount = cleanCurrent(p.currentCount);
+      base.unit = cleanUnit(p.unit);
+    }
+    out.push(base);
   }
   return out;
 }
@@ -634,7 +777,7 @@ export function useLocalStore() {
     [update],
   );
 
-  /* ---------- 计划任务小工具（第十八轮） ---------- */
+  /* ---------- 计划任务小工具（第十八轮；第十九轮：待办分组 + 计划两型） ---------- */
 
   const addTask = useCallback(
     (title: string) => {
@@ -648,17 +791,71 @@ export function useLocalStore() {
     [update],
   );
 
-  const toggleTask = useCallback(
-    (taskId: string) => {
+  /** 新建空组（children 为空数组即成组，之后往里加子任务） */
+  const addTaskGroup = useCallback(
+    (title: string) => {
+      const t = title.trim();
+      if (!t) return;
       update((d) => {
-        const task = d.tasks.find((t) => t.id === taskId);
-        if (task) task.done = !task.done;
+        d.tasks.push({ id: genId('t'), title: t, done: false, createdAt: Date.now(), children: [] });
         return d;
       });
     },
     [update],
   );
 
+  const addSubTask = useCallback(
+    (taskId: string, title: string) => {
+      const t = title.trim();
+      if (!t) return;
+      update((d) => {
+        const task = d.tasks.find((x) => x.id === taskId);
+        if (task && Array.isArray(task.children)) {
+          task.children.push({ id: genId('tc'), title: t, done: false });
+        }
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const toggleSubTask = useCallback(
+    (taskId: string, childId: string) => {
+      update((d) => {
+        const child = d.tasks.find((x) => x.id === taskId)?.children?.find((c) => c.id === childId);
+        if (child) child.done = !child.done;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const deleteSubTask = useCallback(
+    (taskId: string, childId: string) => {
+      update((d) => {
+        const task = d.tasks.find((x) => x.id === taskId);
+        if (task && Array.isArray(task.children)) {
+          task.children = task.children.filter((c) => c.id !== childId);
+        }
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 勾选普通待办；组没有独立勾选态，调用到组上时忽略（完成态由子任务推导） */
+  const toggleTask = useCallback(
+    (taskId: string) => {
+      update((d) => {
+        const task = d.tasks.find((t) => t.id === taskId);
+        if (task && !Array.isArray(task.children)) task.done = !task.done;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 改标题：普通待办与组共用（组改名也走这里） */
   const renameTask = useCallback(
     (taskId: string, title: string) => {
       const t = title.trim();
@@ -672,6 +869,7 @@ export function useLocalStore() {
     [update],
   );
 
+  /** 删除顶层条目：删组时连子任务一起删 */
   const deleteTask = useCallback(
     (taskId: string) => {
       update((d) => {
@@ -682,28 +880,85 @@ export function useLocalStore() {
     [update],
   );
 
+  /** 新建长期计划（第十九轮两型）：count 带目标数+单位；date 带目标日，startDate 记今天 */
   const addPlan = useCallback(
-    (title: string, stepTitles: string[]) => {
+    (title: string, opts: { mode: PlanMode; targetCount?: number; unit?: string; deadline?: string }) => {
       const t = title.trim();
       if (!t) return;
       update((d) => {
-        d.plans.push({
-          id: genId('p'),
-          title: t,
-          steps: stepTitles.map((s) => s.trim()).filter(Boolean).map((s) => ({ id: genId('ps'), title: s, done: false })),
-          createdAt: Date.now(),
-        });
+        if (opts.mode === 'date') {
+          if (!isDateStr(opts.deadline)) return d;
+          d.plans.push({
+            id: genId('p'),
+            title: t,
+            mode: 'date',
+            deadline: opts.deadline,
+            startDate: todayDateStr(),
+            done: false,
+            createdAt: Date.now(),
+          });
+        } else {
+          const target =
+            typeof opts.targetCount === 'number' && opts.targetCount > 0 ? Math.floor(opts.targetCount) : 10;
+          d.plans.push({
+            id: genId('p'),
+            title: t,
+            mode: 'count',
+            targetCount: target,
+            unit: (opts.unit ?? '').trim().slice(0, 4) || '次',
+            currentCount: 0,
+            createdAt: Date.now(),
+          });
+        }
         return d;
       });
     },
     [update],
   );
 
-  const togglePlanStep = useCallback(
-    (planId: string, stepId: string) => {
+  /** 编辑计划：按其当前类型改标题与目标（次数型的目标/单位、日期型的目标日） */
+  const updatePlan = useCallback(
+    (planId: string, patch: { title?: string; targetCount?: number; unit?: string; deadline?: string }) => {
       update((d) => {
-        const step = d.plans.find((p) => p.id === planId)?.steps.find((s) => s.id === stepId);
-        if (step) step.done = !step.done;
+        const plan = d.plans.find((p) => p.id === planId);
+        if (!plan) return d;
+        if (typeof patch.title === 'string' && patch.title.trim()) plan.title = patch.title.trim();
+        if (plan.mode === 'count') {
+          if (typeof patch.targetCount === 'number' && patch.targetCount > 0) {
+            plan.targetCount = Math.floor(patch.targetCount);
+          }
+          if (typeof patch.unit === 'string') plan.unit = patch.unit.trim().slice(0, 4) || '次';
+        } else if (isDateStr(patch.deadline)) {
+          plan.deadline = patch.deadline;
+        }
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 次数型 +1 / −1：夹在 0 与目标之间（到顶即满，−1 供纠错） */
+  const bumpPlanCount = useCallback(
+    (planId: string, delta: number) => {
+      update((d) => {
+        const plan = d.plans.find((p) => p.id === planId);
+        if (plan && plan.mode === 'count') {
+          const target = plan.targetCount ?? 0;
+          const next = (plan.currentCount ?? 0) + delta;
+          plan.currentCount = Math.max(0, target > 0 ? Math.min(target, next) : next);
+        }
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 日期型手动完成 / 取消完成 */
+  const setPlanDone = useCallback(
+    (planId: string, done: boolean) => {
+      update((d) => {
+        const plan = d.plans.find((p) => p.id === planId);
+        if (plan && plan.mode === 'date') plan.done = done;
         return d;
       });
     },
@@ -720,9 +975,9 @@ export function useLocalStore() {
     [update],
   );
 
-  /** AI 整理确认落库：勾选的待办标题与计划（标题+步骤）一次性写入，走同一次 update（同步只推一次） */
+  /** AI 整理确认落库：勾选的待办标题与次数型计划草稿一次性写入，走同一次 update（同步只推一次） */
   const addSplitResult = useCallback(
-    (todos: string[], planDrafts: { title: string; steps: string[] }[]) => {
+    (todos: string[], planDrafts: { title: string; targetCount: number; unit: string }[]) => {
       update((d) => {
         for (const title of todos) {
           const t = title.trim();
@@ -734,7 +989,10 @@ export function useLocalStore() {
           d.plans.push({
             id: genId('p'),
             title: t,
-            steps: draft.steps.map((s) => s.trim()).filter(Boolean).map((s) => ({ id: genId('ps'), title: s, done: false })),
+            mode: 'count',
+            targetCount: draft.targetCount > 0 ? Math.floor(draft.targetCount) : 10,
+            unit: (draft.unit ?? '').trim().slice(0, 4) || '次',
+            currentCount: 0,
             createdAt: Date.now(),
           });
         }
@@ -783,11 +1041,17 @@ export function useLocalStore() {
     setCardOrder,
     setBackground,
     addTask,
+    addTaskGroup,
+    addSubTask,
+    toggleSubTask,
+    deleteSubTask,
     toggleTask,
     renameTask,
     deleteTask,
     addPlan,
-    togglePlanStep,
+    updatePlan,
+    bumpPlanCount,
+    setPlanDone,
     deletePlan,
     addSplitResult,
     setCardFaceStyle,
