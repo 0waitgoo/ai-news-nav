@@ -4,12 +4,14 @@ import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder } from 'luc
 import type { GroupDisplay, NavGroup } from '../../data/groups';
 import {
   ALL_WIDGETS,
+  cardFaceStyleOf,
   clampColSpan,
   groupCardKey,
   groupLayoutOf,
   resolveCardOrder,
   stackLayoutOf,
   widgetCardKey,
+  type CardFaceStyle,
   type LocalStore,
   type WidgetId,
   type WidgetLayout,
@@ -20,7 +22,8 @@ import BackgroundMenu from './BackgroundMenu';
 import { TopNav } from '../Sidebar';
 import NewsCard from './NewsCard';
 import RankingCard from './RankingCard';
-import TaskPlaceholderCard from './TaskPlaceholderCard';
+import TaskCard from './TaskCard';
+import TaskPanel from './TaskPanel';
 import GroupListCard from './GroupListCard';
 import GroupStackCard from './GroupStackCard';
 import GroupPanel from './GroupPanel';
@@ -50,6 +53,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [panelGroupId, setPanelGroupId] = useState<string | null>(null);
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
   const [showWidgetPanel, setShowWidgetPanel] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -89,7 +93,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     e.preventDefault();
     e.stopPropagation();
     const MENU_W = 208;
-    const MENU_H = 196;
+    // 任务卡的菜单多一节「卡面样式」，更高一些
+    const MENU_H = target.kind === 'widget' && target.id === 'task' ? 292 : 196;
     setSizeMenu({
       ...target,
       x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
@@ -236,7 +241,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     if (item.group) return renderGroup(item.group, delay);
     switch (item.widgetId) {
       case 'task':
-        return <TaskPlaceholderCard delay={delay} />;
+        return <TaskCard store={store} onOpen={() => setShowTaskPanel(true)} delay={delay} />;
       case 'news':
         return <NewsCard onNavigate={onNavigate} delay={delay} />;
       case 'ranking':
@@ -560,6 +565,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       {/* C 型编组弹窗（ICON 瓷砖） */}
       <GroupPanel group={panelGroup} store={store} onClose={() => setPanelGroupId(null)} onBecomeList={handleBecomeList} />
 
+      {/* 计划任务面板（第十八轮） */}
+      <TaskPanel open={showTaskPanel} store={store} onClose={() => setShowTaskPanel(false)} />
+
       {/* 右键尺寸菜单（实色）：A 型组件与 B 型编组共用 */}
       <AnimatePresence>
         {sizeMenu && sizeMenuLayout && (
@@ -609,6 +617,35 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 );
               })}
             </div>
+            {/* 计划卡专属：卡面样式切换（列表式/焦点式，按卡片存 cardFaceStyles） */}
+            {sizeMenu.kind === 'widget' && sizeMenu.id === 'task' && (
+              <>
+                <p className="px-1 pt-2.5 pb-1 text-[10px] tracking-wider text-white/40 uppercase">卡面样式</p>
+                <div className="flex gap-1">
+                  {(
+                    [
+                      { id: 'list', label: '列表式' },
+                      { id: 'focus', label: '焦点式' },
+                    ] as { id: CardFaceStyle; label: string }[]
+                  ).map((s) => {
+                    const selected = cardFaceStyleOf(store.data.cardFaceStyles, widgetCardKey('task')) === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        data-face-style={s.id}
+                        onClick={() => store.setCardFaceStyle(widgetCardKey('task'), s.id)}
+                        className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs transition-colors ${
+                          selected ? 'bg-indigo-500/80 text-white font-semibold' : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                        }`}
+                      >
+                        {selected && <Check size={12} />}
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
