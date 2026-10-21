@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { findMappedLogo, navGroups, siteLogoFallback, type NavGroup, type SiteEntry } from '../data/groups';
+import {
+  findMappedLogo,
+  navGroups,
+  siteLogoFallback,
+  type GroupDisplay,
+  type NavGroup,
+  type SiteEntry,
+} from '../data/groups';
 
 /**
  * 本地数据层（方案三第一步：本地优先）
@@ -11,11 +18,26 @@ import { findMappedLogo, navGroups, siteLogoFallback, type NavGroup, type SiteEn
 
 export type WidgetId = 'task' | 'news' | 'ranking' | 'trending';
 
+/** A 型原生组件在网格中的占位：宽度跨栏数 + 高度单位（1X / 2X） */
+export interface WidgetLayout {
+  colSpan: 1 | 2 | 4;
+  heightUnits: 1 | 2;
+}
+
+export const DEFAULT_WIDGET_LAYOUTS: Record<WidgetId, WidgetLayout> = {
+  task: { colSpan: 1, heightUnits: 1 },
+  news: { colSpan: 2, heightUnits: 2 },
+  ranking: { colSpan: 2, heightUnits: 2 },
+  trending: { colSpan: 2, heightUnits: 1 },
+};
+
 export interface StoreData {
   version: 1;
   groups: NavGroup[];
   /** 当前显示的 A 型组件（按 ALL_WIDGETS 顺序渲染过滤） */
   widgets: WidgetId[];
+  /** 每个 A 型组件的网格占位（右键菜单可改），缺省走 DEFAULT_WIDGET_LAYOUTS */
+  widgetLayouts: Record<WidgetId, WidgetLayout>;
 }
 
 export const ALL_WIDGETS: { id: WidgetId; name: string; desc: string }[] = [
@@ -45,7 +67,22 @@ function seedData(): StoreData {
     version: 1,
     groups: ensureSiteIds(structuredClone(navGroups)),
     widgets: [...DEFAULT_WIDGETS],
+    widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
   };
+}
+
+/** 归一化 widgetLayouts：从默认值出发，仅采纳合法的已存值（旧数据无此字段时全走默认） */
+function normalizeWidgetLayouts(raw: unknown): Record<WidgetId, WidgetLayout> {
+  const layouts = structuredClone(DEFAULT_WIDGET_LAYOUTS);
+  if (raw && typeof raw === 'object') {
+    for (const w of ALL_WIDGETS) {
+      const l = (raw as Record<string, { colSpan?: unknown; heightUnits?: unknown } | undefined>)[w.id];
+      if (!l) continue;
+      if (l.colSpan === 1 || l.colSpan === 2 || l.colSpan === 4) layouts[w.id].colSpan = l.colSpan;
+      if (l.heightUnits === 1 || l.heightUnits === 2) layouts[w.id].heightUnits = l.heightUnits;
+    }
+  }
+  return layouts;
 }
 
 /** 校验任意来源（localStorage / 导入文件）的数据结构，合法则归一化返回，否则 null */
@@ -57,7 +94,18 @@ export function validateStoreData(raw: unknown): StoreData | null {
     if (!group || typeof group.id !== 'string' || typeof group.name !== 'string' || !Array.isArray(group.sites)) {
       return null;
     }
-    if (group.type !== 'list' && group.type !== 'stack') return null;
+    // 形态字段向后兼容：新字段 display 优先；旧数据只有 type 时迁移过来；
+    // 两者都缺时按种子呈现补默认（AI 对话 = list，其余 = stack）
+    const legacy = group as NavGroup & { type?: unknown };
+    if (legacy.display !== 'list' && legacy.display !== 'stack') {
+      legacy.display =
+        legacy.type === 'list' || legacy.type === 'stack'
+          ? legacy.type
+          : legacy.id === 'ai-chat'
+            ? 'list'
+            : 'stack';
+    }
+    delete legacy.type;
     for (const site of group.sites as SiteEntry[]) {
       if (!site || typeof site.name !== 'string' || typeof site.url !== 'string') return null;
       if (typeof site.description !== 'string') site.description = '';
@@ -68,7 +116,8 @@ export function validateStoreData(raw: unknown): StoreData | null {
   const widgets = Array.isArray(data.widgets)
     ? (data.widgets.filter((w) => ALL_WIDGETS.some((aw) => aw.id === w)) as WidgetId[])
     : [...DEFAULT_WIDGETS];
-  return { version: 1, groups: ensureSiteIds(data.groups as NavGroup[]), widgets };
+  const widgetLayouts = normalizeWidgetLayouts((data as { widgetLayouts?: unknown }).widgetLayouts);
+  return { version: 1, groups: ensureSiteIds(data.groups as NavGroup[]), widgets, widgetLayouts };
 }
 
 function loadInitial(): StoreData {
@@ -172,14 +221,36 @@ export function useLocalStore() {
     [update],
   );
 
-  const addGroup = useCallback((name: string): string => {
+  const addGroup = useCallback((name: string, display: GroupDisplay): string => {
     const id = genId('g');
     update((d) => {
-      d.groups.push({ id, name, type: 'stack', sites: [] });
+      d.groups.push({ id, name, display, sites: [] });
       return d;
     });
     return id;
   }, [update]);
+
+  const setGroupDisplay = useCallback(
+    (groupId: string, display: GroupDisplay) => {
+      update((d) => {
+        const group = d.groups.find((g) => g.id === groupId);
+        if (group) group.display = display;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  const setWidgetLayout = useCallback(
+    (widgetId: WidgetId, patch: Partial<WidgetLayout>) => {
+      update((d) => {
+        const cur = d.widgetLayouts[widgetId] ?? DEFAULT_WIDGET_LAYOUTS[widgetId];
+        d.widgetLayouts[widgetId] = { ...cur, ...patch };
+        return d;
+      });
+    },
+    [update],
+  );
 
   const renameGroup = useCallback(
     (groupId: string, name: string) => {
@@ -234,8 +305,10 @@ export function useLocalStore() {
     deleteSite,
     addGroup,
     renameGroup,
+    setGroupDisplay,
     deleteGroup,
     setWidgetVisible,
+    setWidgetLayout,
     importData,
     resetData,
   };
