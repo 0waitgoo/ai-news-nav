@@ -9,7 +9,12 @@ export interface SiteEntry {
   description: string;
   logo: string;
   needVpn?: boolean;
-  /** 搜索别名：命中别名可直达，如 ChatGPT 的「gpt」 */
+  /**
+   * 站点标签（第二十六轮）：行上小徽标的唯一文本来源，仅 1–4 个英文字母、大写（如 VPN、DEV）。
+   * 旧数据里 needVpn=true 的站点在归一化时迁移为 tag='VPN'；为空 = 不显示徽标。
+   */
+  tag?: string;
+  /** 搜索别名：命中别名可直达，如 ChatGPT 的「gpt」（表单已无编辑入口，数据保留继续供搜索） */
   aliases?: string[];
   /** 组内置顶，面板中排在最前 */
   pinned?: boolean;
@@ -21,6 +26,24 @@ export interface SiteEntry {
 
 /** 编组卡片形态：list = B 详细列表卡（原地展开）；stack = C 文件夹堆叠卡（点击弹窗） */
 export type GroupDisplay = 'list' | 'stack';
+
+/** 站点标签长度上限（第二十六轮） */
+export const SITE_TAG_MAX = 4;
+
+/** 编组名长度上限（第三十二轮）：所有组名输入框统一 maxLength + 计数；存量超长组名不强改数据、展示端省略号截断 */
+export const GROUP_NAME_MAX = 8;
+
+/** 按字符（码点）计数：中英都算 1 个，emoji 也算 1 个 */
+export const textCharCount = (s: string): number => Array.from(s).length;
+
+/** 按字符（码点）截断到上限：新建编组落盘前兜底，输入框 maxLength 之外的程序填充也不会存入超长组名 */
+export const clampGroupName = (name: string): string => Array.from(name).slice(0, GROUP_NAME_MAX).join('');
+
+/** 站点标签清洗：只留英文字母、转大写、最多 4 个；空/无合法字符 → ''（表示无标签） */
+export function cleanSiteTag(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, SITE_TAG_MAX);
+}
 
 /** 文件夹小角预设色（鲜明但不刺眼）：GroupPanel 里点选，卡面小角按色填充；空字符串 = 默认同色灰 */
 export const GROUP_TAB_COLORS: { name: string; value: string }[] = [
