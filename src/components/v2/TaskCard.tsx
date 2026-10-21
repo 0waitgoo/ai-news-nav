@@ -1,15 +1,27 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Check, ListTodo, Plus } from 'lucide-react';
-import { cardFaceStyleOf, widgetCardKey, type LocalStore, type TaskItem } from '../../store/localStore';
+import { Check, Layers, ListTodo, Plus } from 'lucide-react';
+import {
+  cardFaceStyleOf,
+  isTaskGroup,
+  taskChildProgress,
+  taskEntryDone,
+  taskFlatStats,
+  taskGroupDone,
+  widgetCardKey,
+  type LocalStore,
+  type TaskItem,
+} from '../../store/localStore';
 
 /**
- * A 型 · 计划任务卡（第十八轮，替换原「今日任务」占位卡）
+ * A 型 · 计划任务卡（第十八轮，替换原「今日任务」占位卡；第十九轮加待办分组）
  * 数据走 localStore 的 tasks/plans（本地优先，随导出/文件/GitHub 同步一起走）。
  * 卡面两样式（右键菜单切换，按卡片存 cardFaceStyles）：
  * - list 列表式（默认）：今日进度 x/y + 细进度线 + 前 3 条未完成待办（卡面可直接勾，勾完划线留影片刻后移出）+ 快速添加行
  * - focus 焦点式：只突出第一条未完成待办（大字）+「还有 N 件」+ 快速添加行
  * 点卡面（非控件区域）打开计划面板。
+ * 进度计数口径（第十九轮）：组按子任务摊平计数（见 localStore.taskFlatStats）。
+ * 组在卡面只算一个顶层条目、显示「组名 · n/m」、不展开子任务，点行进面板处理。
  */
 export default function TaskCard({
   store,
@@ -27,9 +39,9 @@ export default function TaskCard({
   const [justDone, setJustDone] = useState<Record<string, true>>({});
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
-  const total = tasks.length;
-  const doneCount = tasks.filter((t) => t.done).length;
-  const open = tasks.filter((t) => !t.done);
+  // 进度口径：组按子任务摊平（普通待办计 1，组计子任务数），见 taskFlatStats
+  const { total, done: doneCount } = taskFlatStats(tasks);
+  const open = tasks.filter((t) => !taskEntryDone(t));
   const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
   const handleToggle = (task: TaskItem) => {
@@ -58,11 +70,15 @@ export default function TaskCard({
     }
   };
 
-  // 列表式可见行：按数据顺序取前 3 条（未完成 + 正在留影的已完成）
+  // 列表式可见行：按数据顺序取前 3 个顶层条目（未完成的普通待办 + 正在留影的已完成 + 未全勾的组）
   const rows: TaskItem[] = [];
   for (const t of tasks) {
     if (rows.length >= 3) break;
-    if (!t.done || justDone[t.id]) rows.push(t);
+    if (isTaskGroup(t)) {
+      if (!taskGroupDone(t)) rows.push(t);
+    } else if (!t.done || justDone[t.id]) {
+      rows.push(t);
+    }
   }
 
   const submitDraft = () => {
@@ -109,21 +125,34 @@ export default function TaskCard({
           {rows.length === 0 ? (
             <p className="flex-1 flex items-center text-[13px] text-white/35">暂无待办，在下方添加第一件。</p>
           ) : (
-            rows.map((t) => (
-              <div key={t.id} className="flex items-center gap-2 py-1 min-w-0">
-                <button
-                  type="button"
-                  aria-label={t.done ? '取消完成' : '标记完成'}
-                  onClick={() => handleToggle(t)}
-                  className={`w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
-                    t.done ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/30 hover:border-indigo-300 text-transparent'
-                  }`}
-                >
-                  <Check size={12} strokeWidth={3} />
-                </button>
-                <span className={`text-[13px] truncate ${t.done ? 'line-through text-white/35' : 'text-white/85'}`}>{t.title}</span>
-              </div>
-            ))
+            rows.map((t) =>
+              isTaskGroup(t) ? (
+                // 组行：不给勾选框（点行进面板处理子任务），显示「组名 · n/m」
+                <div key={t.id} data-task-group-row className="flex items-center gap-2 py-1 min-w-0">
+                  <span className="w-[18px] h-[18px] rounded-[5px] bg-white/8 text-white/55 flex items-center justify-center shrink-0">
+                    <Layers size={11} />
+                  </span>
+                  <span className="text-[13px] truncate text-white/85">{t.title}</span>
+                  <span data-task-group-progress className="text-[11px] text-white/40 tabular-nums shrink-0">
+                    · {taskChildProgress(t).done}/{taskChildProgress(t).total}
+                  </span>
+                </div>
+              ) : (
+                <div key={t.id} className="flex items-center gap-2 py-1 min-w-0">
+                  <button
+                    type="button"
+                    aria-label={t.done ? '取消完成' : '标记完成'}
+                    onClick={() => handleToggle(t)}
+                    className={`w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
+                      t.done ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/30 hover:border-indigo-300 text-transparent'
+                    }`}
+                  >
+                    <Check size={12} strokeWidth={3} />
+                  </button>
+                  <span className={`text-[13px] truncate ${t.done ? 'line-through text-white/35' : 'text-white/85'}`}>{t.title}</span>
+                </div>
+              ),
+            )
           )}
         </div>
       ) : (
@@ -132,6 +161,11 @@ export default function TaskCard({
             <>
               <p className="text-[11px] tracking-wider text-white/40 uppercase mb-1.5">下一件事</p>
               <p data-task-focus-title className="text-xl font-semibold leading-snug line-clamp-3">{focusTask.title}</p>
+              {isTaskGroup(focusTask) && (
+                <p className="mt-1 text-xs text-white/45 tabular-nums">
+                  一组 {taskChildProgress(focusTask).total} 项 · 已完成 {taskChildProgress(focusTask).done}
+                </p>
+              )}
               <p className="mt-auto text-xs text-white/45">
                 {restCount > 0 ? `还有 ${restCount} 件` : '就这一件了'}
               </p>

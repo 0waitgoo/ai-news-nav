@@ -17,6 +17,7 @@ import GroupExpandedBody from './GroupExpanded';
  * 第十二轮头部调整：标题行 = 组名 +「· N 个站点」小字（原右上角「编组 · N 个站点」已删除）；
  * 展开态的组操作（改组名 / 删组 / 详细列表↔文件夹式切换）上移到标题行右侧，与组名同一行。
  * 第十六轮：收起态可见数按布局（栏数 × 高度行数）计算，溢出时卡底渐隐 +「还有 N 个站点」提示。
+ * 第二十轮：2 栏宽时收起态网格也统一 3 列（与展开态一致，用户明确不要收起时 2 列）；1 栏保持单列。
  */
 export default function GroupListCard({
   group,
@@ -31,14 +32,14 @@ export default function GroupListCard({
   expanded: boolean;
   onToggleExpand: (group: NavGroup) => void;
   store: LocalStore;
-  /** 收起态宽度（右键布局）：1 栏时站点改单列、显示 4 个；2 栏时 2 列、显示 8 个 */
+  /** 收起态宽度（右键布局）：1 栏时站点单列；2 栏时 3 列（第二十轮，与展开态统一） */
   colSpan?: 1 | 2;
   /** 收起态高度（右键布局）：2x 每列 4 行；1x 每列 2 行——实际可见数按此计算，溢出提示的 N 才准确 */
   heightUnits?: 1 | 2;
   delay?: number;
 }) {
   const sorted = sortSites(group.sites);
-  const cols = colSpan === 1 ? 1 : 2;
+  const cols = colSpan === 1 ? 1 : 3;
   const rowsPerCol = heightUnits === 2 ? 4 : 2;
   const visibleCount = cols * rowsPerCol;
   const rows = sorted.slice(0, visibleCount);
@@ -162,7 +163,7 @@ export default function GroupListCard({
         /* 收起态：只显示站点（无底部横线、无「展开全部」字样）；展开靠底部按钮，不靠整卡点击 */
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 overflow-hidden">
-          <div className={`grid gap-x-2 content-start ${colSpan === 1 ? 'grid-cols-1' : 'grid-cols-1 min-[480px]:grid-cols-2'}`}>
+          <div data-collapsed-grid className={`grid gap-x-2 content-start ${colSpan === 1 ? 'grid-cols-1' : 'grid-cols-1 min-[480px]:grid-cols-3'}`}>
             {rows.map((site) => (
               <button
                 key={site.id ?? site.name}
