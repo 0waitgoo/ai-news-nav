@@ -57,3 +57,117 @@ body {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }
 }
+
+/* ---------- 第四十二轮：白天/暗夜模式 + 编组卡底框透明度 ---------- */
+/* 变量：--group-card-rgb 随主题翻（暗夜 30 30 35 / 白天 255 255 255）；
+   --group-card-alpha 由 displayPrefs 应用到 <html> 行内样式（默认 0.4 = 改版前现状）；
+   --fade-rgb 是 C 卡图标区渐隐罩的底色（跟随卡底明暗）。 */
+:root {
+  --group-card-rgb: 30 30 35;
+  --group-card-alpha: 0.4;
+  --fade-rgb: 23 23 29;
+}
+[data-theme="light"] {
+  --group-card-rgb: 255 255 255;
+  --fade-rgb: 250 250 252;
+}
+
+/* 编组卡（B/C/组合卡）底框：磨砂底 + 描边，alpha 走变量（背景面板滑杆实时控制） */
+.group-card-panel {
+  background: rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.group-card-panel-hover:hover {
+  background: rgb(var(--group-card-rgb) / calc(var(--group-card-alpha, 0.4) + 0.1));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+[data-theme="light"] .group-card-panel { border-color: rgba(0, 0, 0, 0.09); }
+[data-theme="light"] .group-card-panel-hover:hover { border-color: rgba(0, 0, 0, 0.16); }
+
+/* 白天模式：页面基底与 A 型小组件的 glass 底翻浅 */
+[data-theme="light"] body { background-color: #eceef2; color: #17171c; }
+[data-theme="light"] .bg-black { background-color: transparent; }
+[data-theme="light"] .glass-panel {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .glass-panel-hover:hover {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(0, 0, 0, 0.13);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.25); }
+
+/* 白天模式：实色面板/菜单底（原 bg-[#17171d] / bg-[#1e1e26] / 顶栏控件 bg-[#141419]）翻白 */
+[data-theme="light"] .bg-\[\#17171d\] { background-color: #ffffff; }
+[data-theme="light"] .bg-\[\#17171d\]\/95 { background-color: rgba(255, 255, 255, 0.97); }
+[data-theme="light"] .bg-\[\#1e1e26\] { background-color: #ffffff; }
+[data-theme="light"] .bg-\[\#26262e\] { background-color: #e7e7ec; }
+[data-theme="light"] .bg-\[\#141419\]\/60 { background-color: rgba(255, 255, 255, 0.66); }
+[data-theme="light"] .bg-\[\#141419\]\/85 { background-color: rgba(255, 255, 255, 0.88); }
+
+/* 白天模式：白色系文字/底/描边工具类整体翻成黑色同档透明度（全站硬编码类的统一覆盖层） */
+[data-theme="light"] .text-white { color: rgb(18 18 22 / 1); }
+[data-theme="light"] .text-white\/90 { color: rgb(18 18 22 / 0.9); }
+[data-theme="light"] .text-white\/85 { color: rgb(18 18 22 / 0.85); }
+[data-theme="light"] .text-white\/80 { color: rgb(18 18 22 / 0.8); }
+[data-theme="light"] .text-white\/75 { color: rgb(18 18 22 / 0.75); }
+[data-theme="light"] .text-white\/70 { color: rgb(18 18 22 / 0.7); }
+[data-theme="light"] .text-white\/60 { color: rgb(18 18 22 / 0.6); }
+[data-theme="light"] .text-white\/55 { color: rgb(18 18 22 / 0.55); }
+[data-theme="light"] .text-white\/50 { color: rgb(18 18 22 / 0.5); }
+[data-theme="light"] .text-white\/45 { color: rgb(18 18 22 / 0.45); }
+[data-theme="light"] .text-white\/40 { color: rgb(18 18 22 / 0.4); }
+[data-theme="light"] .text-white\/35 { color: rgb(18 18 22 / 0.35); }
+[data-theme="light"] .text-white\/30 { color: rgb(18 18 22 / 0.3); }
+[data-theme="light"] .text-white\/25 { color: rgb(18 18 22 / 0.25); }
+[data-theme="light"] .text-white\/20 { color: rgb(18 18 22 / 0.2); }
+[data-theme="light"] .hover\:text-white:hover { color: rgb(18 18 22 / 1); }
+[data-theme="light"] .hover\:text-white\/85:hover { color: rgb(18 18 22 / 0.85); }
+[data-theme="light"] .hover\:text-white\/80:hover { color: rgb(18 18 22 / 0.8); }
+[data-theme="light"] .hover\:text-white\/75:hover { color: rgb(18 18 22 / 0.75); }
+[data-theme="light"] .hover\:text-white\/70:hover { color: rgb(18 18 22 / 0.7); }
+[data-theme="light"] .bg-white\/5 { background-color: rgb(0 0 0 / 0.05); }
+[data-theme="light"] .bg-white\/6 { background-color: rgb(0 0 0 / 0.06); }
+[data-theme="light"] .bg-white\/8 { background-color: rgb(0 0 0 / 0.08); }
+[data-theme="light"] .bg-white\/10 { background-color: rgb(0 0 0 / 0.1); }
+[data-theme="light"] .bg-white\/12 { background-color: rgb(0 0 0 / 0.12); }
+[data-theme="light"] .bg-white\/15 { background-color: rgb(0 0 0 / 0.15); }
+[data-theme="light"] .bg-white\/20 { background-color: rgb(0 0 0 / 0.2); }
+[data-theme="light"] .bg-white\/30 { background-color: rgb(0 0 0 / 0.3); }
+[data-theme="light"] .bg-white\/50 { background-color: rgb(0 0 0 / 0.5); }
+[data-theme="light"] .bg-white\/\[0\.03\] { background-color: rgb(0 0 0 / 0.03); }
+[data-theme="light"] .bg-white\/\[0\.04\] { background-color: rgb(0 0 0 / 0.04); }
+[data-theme="light"] .bg-white\/\[0\.05\] { background-color: rgb(0 0 0 / 0.05); }
+[data-theme="light"] .bg-white\/\[0\.06\] { background-color: rgb(0 0 0 / 0.06); }
+[data-theme="light"] .bg-white\/\[0\.07\] { background-color: rgb(0 0 0 / 0.07); }
+[data-theme="light"] .bg-white\/\[0\.08\] { background-color: rgb(0 0 0 / 0.08); }
+[data-theme="light"] .hover\:bg-white\/5:hover { background-color: rgb(0 0 0 / 0.05); }
+[data-theme="light"] .hover\:bg-white\/6:hover { background-color: rgb(0 0 0 / 0.06); }
+[data-theme="light"] .hover\:bg-white\/8:hover { background-color: rgb(0 0 0 / 0.08); }
+[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgb(0 0 0 / 0.1); }
+[data-theme="light"] .hover\:bg-white\/12:hover { background-color: rgb(0 0 0 / 0.12); }
+[data-theme="light"] .border-white\/5 { border-color: rgb(0 0 0 / 0.05); }
+[data-theme="light"] .border-white\/8 { border-color: rgb(0 0 0 / 0.08); }
+[data-theme="light"] .border-white\/10 { border-color: rgb(0 0 0 / 0.1); }
+[data-theme="light"] .border-white\/12 { border-color: rgb(0 0 0 / 0.12); }
+[data-theme="light"] .border-white\/15 { border-color: rgb(0 0 0 / 0.15); }
+[data-theme="light"] .border-white\/20 { border-color: rgb(0 0 0 / 0.2); }
+[data-theme="light"] .border-white\/25 { border-color: rgb(0 0 0 / 0.25); }
+[data-theme="light"] .border-white\/30 { border-color: rgb(0 0 0 / 0.3); }
+[data-theme="light"] .border-white\/35 { border-color: rgb(0 0 0 / 0.35); }
+[data-theme="light"] .border-white\/40 { border-color: rgb(0 0 0 / 0.4); }
+[data-theme="light"] .border-white\/\[0\.06\] { border-color: rgb(0 0 0 / 0.06); }
+[data-theme="light"] .border-white\/\[0\.07\] { border-color: rgb(0 0 0 / 0.07); }
+[data-theme="light"] .border-white\/\[0\.12\] { border-color: rgb(0 0 0 / 0.12); }
+[data-theme="light"] .border-white\/\[0\.18\] { border-color: rgb(0 0 0 / 0.18); }
+[data-theme="light"] .hover\:border-white\/15:hover { border-color: rgb(0 0 0 / 0.15); }
+[data-theme="light"] .hover\:border-white\/30:hover { border-color: rgb(0 0 0 / 0.3); }
+[data-theme="light"] .hover\:border-white\/35:hover { border-color: rgb(0 0 0 / 0.35); }
+
+/* 例外：彩色底按钮上的白字、深色渐变缩略图（背景预设预览）上的白字，在白天模式保持白色 */
+[data-theme="light"] .text-white[class*="bg-indigo-"],
+[data-theme="light"] .text-white[class*="bg-red-"],
+[data-theme="light"] .text-white[class*="bg-emerald-"] { color: #ffffff; }
+[data-theme="light"] .drop-shadow.text-white\/90 { color: rgba(255, 255, 255, 0.9); }
