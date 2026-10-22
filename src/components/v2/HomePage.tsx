@@ -40,7 +40,7 @@ import { GlassDefsHost } from './GlassSurface';
 /**
  * V2 新主页（第三轮修订 + 第五轮拖拽排序 + 第八轮顶栏一行对齐）
  * - 无顶部标题栏：页面直接从吸顶栏开始——同一行内左半（2 栏）放页面导航图标组、右半（2 栏）放搜索框 + 低调的「数据」入口（导出/导入），整条栏吸顶
- * - 4 栏基准网格瀑布流（桌面 4 栏 / 手机 2 栏）
+ * - 4 栏基准网格（桌面 4 栏 / 平板 2 栏 / 手机 1 栏单列，第六十六轮）
  * - B 型编组（display=list）：主页原地向下拉开 + 卡内滚动；C 型编组（display=stack）：点击弹窗看 ICON 瓷砖
  * - A 型原生组件与编组（B/C 型）可右键改尺寸（1/2 栏 × 1x/2x，宽度最多 2 栏），布局存本地；C 型缺省 1 栏 × 1x
  * - 全部卡片（编组 + 原生组件）可按住拖拽排序：超过阈值才判定拖拽，普通点击不受影响；顺序存本地
@@ -65,19 +65,24 @@ function findScrollAncestor(el: HTMLElement): HTMLElement | null {
 }
 export default function HomePage({ onNavigate, store }: { onNavigate: (page: string) => void; store: LocalStore }) {
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
-  /* 视口栏数与现有网格断点一致：≥lg（1024px）为 4 栏，其下（含平板）为 2 栏。
-   * 数据始终按 4 栏锚点存；2 栏呈现时 4 个锚点栏两两合并（0,1→左、2,3→右），见 placements。 */
-  const [wideViewport, setWideViewport] = useState<boolean>(
-    () => typeof window === 'undefined' || window.innerWidth >= 1024,
+  /* 视口三档（第六十六轮起）：≥lg（1024px）为 4 栏；640–1023（平板）为 2 栏；
+   * <640（手机）为 1 栏单列。数据始终按 4 栏锚点存；2 栏呈现时 4 个锚点栏两两合并
+   * （0,1→左、2,3→右），1 栏呈现时只按顺序纵向堆叠、锚点不参与（见 placements）。
+   * 此前只有两档：手机与平板同走 2 栏，390px 下 span-1 卡仅 177px 半屏宽——即用户
+   * 「卡片被挤在左侧约半屏窄列」的根因；高度又是固定行高（158px/行）与内容无关，
+   * 2x 组合卡内容不满时整段空白。手机单列 + 按内容估算行高一并在本轮解决。 */
+  const [viewportWidth, setViewportWidth] = useState<number>(
+    () => (typeof window === 'undefined' ? 1280 : window.innerWidth),
   );
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)');
-    const onChange = () => setWideViewport(mq.matches);
-    onChange();
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+    const onResize = () => setViewportWidth(window.innerWidth);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
-  const visualCols: 2 | 4 = wideViewport ? 4 : 2;
+  const wideViewport = viewportWidth >= 1024;
+  const phoneViewport = viewportWidth < 640;
+  const visualCols: 1 | 2 | 4 = wideViewport ? 4 : phoneViewport ? 1 : 2;
   const visualColsRef = useRef(visualCols);
   visualColsRef.current = visualCols;
   const gridRef = useRef<HTMLDivElement>(null);
@@ -397,7 +402,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         expanded={expandedId === group.id}
         onToggleExpand={toggleExpand}
         store={store}
-        colSpan={groupLayoutOf(groupLayouts, group.id).colSpan}
+        colSpan={phoneViewport ? 1 : groupLayoutOf(groupLayouts, group.id).colSpan}
         heightUnits={groupLayoutOf(groupLayouts, group.id).heightUnits}
         delay={delay}
       />
@@ -406,7 +411,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         group={group}
         onOpen={(g) => setPanelGroupId(g.id)}
         delay={delay}
-        colSpan={stackLayoutOf(groupLayouts, group.id).colSpan}
+        colSpan={phoneViewport ? 1 : stackLayoutOf(groupLayouts, group.id).colSpan}
         heightUnits={stackLayoutOf(groupLayouts, group.id).heightUnits}
       />
     );
@@ -556,9 +561,113 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.data.widgets, store.data.widgetTints]);
 
+  /* ---------- 手机单列高度估算（第六十六轮，呈现层专用、绝不落盘） ----------
+   * 1X/2X 是桌面行高语义（158–176px/行），手机单列若照搬固定行高，内容少的卡必然留大片
+   * 空白（用户实测的组合卡问题）。手机改按内容估算像素高，折算规则按卡型：
+   * - C 卡/组合卡：卡件高（小角 13 + 卡身内边距 + 标题/双 tab 头 + 口线）+ 瓷砖区；
+   *   瓷砖边长沿用第五十三轮同一公式（以卡身宽推导，手机全宽下 ≈60px，与桌面
+   *   「1 栏 2X」基准一致，满足既有"图标统一尺寸"规则）；1x 只一行、2x 按站点数
+   *   折行数全摆。组合卡头比普通 C 卡高（双 tab），单列全宽后每 tab 约 160px，
+   *   组名（上限 8 字）完整显示（配合 ComboCard 的 compactTabs 去截断）。
+   * - B 卡收起：手机按 1 列传参，可见行数 = 高度行数（1x 2 行 / 2x 4 行），按实测行高 52px 折算；
+   *   展开态给 600px 定高，展开体内部自带滚动区（GroupExpandedBody）。
+   * - 计划卡：1x 简洁卡面固定 172；2x 面板式按待办/计划条数估算并夹在 [320, 600]，
+   *   超出部分由卡内滚动区承接（TaskCard 2x 内容区本就 overflow-y-auto）。
+   * - 资讯/榜单：条数固定（资讯头条+4、榜单 6），2x 按内容全高、1x 与桌面同理只露一部分。
+   * - 话题卡：固定 8 条，手机内部网格 2 列 4 行，按全高给 344（其内部 grid 为 flex-1，
+   *   条数不足时行自动拉伸填满，不留白）。
+   * 估算宁可略高几像素：各卡内容区多为 flex-1，多余高度被内容区吸收，不形成可见空白；
+   * 略低则会被 overflow-hidden 截断内容，故统一带少量余量。 */
+  const phoneHeights = useMemo(() => {
+    if (!phoneViewport) return null;
+    const map = new Map<string, number>();
+    const cardW = viewportWidth - 24; // 内容列 px-3（<640 恒为 12×2）
+    const bodyW = cardW - 34; // C 卡卡身：边框 2 + px-4 32
+    const tile = Math.min(60.4, Math.max(20, (bodyW - 40) / 5));
+    const perRow = Math.max(1, Math.floor((bodyW + 10.5) / (tile + 10)));
+    const stackH = (n: number, hu: number): number => {
+      if (hu === 1) return Math.round(116 + tile);
+      if (n === 0) return 128;
+      return Math.round(94 + Math.ceil(n / perRow) * (tile + 10));
+    };
+    const comboH = (n: number, hu: number): number => {
+      if (hu === 1) return Math.round(108 + tile);
+      if (n === 0) return 150;
+      return Math.round(86 + Math.ceil(n / perRow) * (tile + 10));
+    };
+    itemByKey.forEach((item, key) => {
+      if (item.group) {
+        const g = item.group;
+        if (g.display === 'list') {
+          if (expandedId === g.id) {
+            map.set(key, 600);
+            return;
+          }
+          const lay = groupLayoutOf(groupLayouts, g.id);
+          const shown = Math.min(g.sites.length, lay.heightUnits === 2 ? 4 : 2);
+          map.set(key, shown > 0 ? 68 + shown * 52 : 88);
+          return;
+        }
+        const lay = stackLayoutOf(groupLayouts, g.id);
+        map.set(key, stackH(g.sites.length, lay.heightUnits));
+        return;
+      }
+      if (item.combo) {
+        const lay = stackLayoutOf(groupLayouts, comboCardKey(item.combo.id));
+        const active = groups.find((g) => g.id === item.combo!.activeGroupId) ?? groups.find((g) => g.id === item.combo!.groupIds[0]);
+        map.set(key, comboH(active?.sites.length ?? 0, lay.heightUnits));
+        return;
+      }
+      const lay = widgetLayouts[item.widgetId as WidgetId];
+      switch (item.widgetId) {
+        case 'task':
+          map.set(
+            key,
+            lay.heightUnits === 2
+              ? Math.min(600, Math.max(320, 250 + store.data.tasks.length * 40 + store.data.plans.length * 48))
+              : 172,
+          );
+          break;
+        case 'news':
+          map.set(key, lay.heightUnits === 2 ? 336 : 172);
+          break;
+        case 'ranking':
+          map.set(key, lay.heightUnits === 2 ? 376 : 172);
+          break;
+        case 'trending':
+          map.set(key, 344);
+          break;
+        default:
+          map.set(key, 172);
+      }
+    });
+    map.set(TILE_ADD_KEY, 132);
+    map.set(TILE_NEW_KEY, 132);
+    return map;
+  }, [phoneViewport, viewportWidth, itemByKey, groupLayouts, widgetLayouts, expandedId, groups, store.data.tasks, store.data.plans]);
+
   /** 渲染放置（视觉空间）：4 栏视口直接用存储锚点；2 栏视口两两合并（0,1→左、2,3→右，2 宽卡占满宽）。
    *  拖拽中相关卡的锚点先被 previewCols 覆盖。两个虚线入口块作为无锚点伪卡附在末尾（回落最矮栏）。 */
   const placements = useMemo(() => {
+    /* 手机单列（第六十六轮）：同一套 lane 引擎按 1 栏跑——span 全 1、锚点全 0，
+     * 只借它的确定性堆叠（顺序 = displayOrder，自上而下）；行高改由 phoneHeights
+     * 逐卡给出像素值，经 rowTemplate 交给网格容器。存储锚点/宽高语义完全不参与。 */
+    if (phoneViewport && phoneHeights) {
+      const specs: LaneItemSpec[] = [];
+      for (const key of displayOrder) {
+        if (!itemByKey.has(key)) continue;
+        specs.push({ key, span: 1, height: 1, anchor: 0 });
+      }
+      specs.push({ key: TILE_ADD_KEY, span: 1, height: 1, anchor: 0 });
+      specs.push({ key: TILE_NEW_KEY, span: 1, height: 1, anchor: 0 });
+      const result = placeInLanes(specs, 1);
+      return {
+        ...result,
+        spanOf: new Map<string, number>(specs.map((s) => [s.key, 1])),
+        heightOf: new Map<string, number>(specs.map((s) => [s.key, 1])),
+        rowTemplate: specs.map((s) => `${phoneHeights.get(s.key) ?? 168}px`).join(' '),
+      };
+    }
     const specs: LaneItemSpec[] = [];
     for (const key of displayOrder) {
       if (!itemByKey.has(key)) continue;
@@ -577,9 +686,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       ...result,
       spanOf: new Map(specs.map((s) => [s.key, s.span])),
       heightOf: new Map(specs.map((s) => [s.key, s.height])),
+      rowTemplate: undefined as string | undefined,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayOrder, itemByKey, groupLayouts, widgetLayouts, expandedId, visualCols, previewCols, effectiveCols]);
+  }, [displayOrder, itemByKey, groupLayouts, widgetLayouts, expandedId, visualCols, previewCols, effectiveCols, phoneViewport, phoneHeights]);
   const placementsRef = useRef(placements);
   placementsRef.current = placements;
 
@@ -609,8 +719,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           store={store}
           onOpen={(c) => setComboPanelId(c.id)}
           delay={delay}
-          colSpan={layout.colSpan}
+          colSpan={phoneViewport ? 1 : layout.colSpan}
           heightUnits={layout.heightUnits}
+          compactTabs={phoneViewport}
         />
       );
     }
@@ -621,7 +732,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
             store={store}
             onOpen={() => setShowTaskPanel(true)}
             delay={delay}
-            colSpan={widgetLayouts.task.colSpan}
+            colSpan={phoneViewport ? 1 : widgetLayouts.task.colSpan}
             heightUnits={widgetLayouts.task.heightUnits}
             tint={widgetTintOf(store.data.widgetTints, widgetCardKey('task'))}
           />
@@ -712,6 +823,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       const oldStored = prevCols[d.key] ?? effectiveColsRef.current.get(d.key) ?? 0;
       let sCol: number;
       if (cols === 4) sCol = vCol;
+      else if (cols === 1) sCol = oldStored; // 手机单列（第六十六轮）：锚点无意义，保持原值只落顺序
       else if (span === 2) sCol = Math.min(oldStored, 2);
       else sCol = Math.max(0, Math.min(3, vCol * 2 + (oldStored % 2)));
       if (prevCols[d.key] !== sCol) {
@@ -1119,12 +1231,18 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         </div>
       </div>
 
-      {/* 栏位网格（第三十四轮）：4 栏（手机 2 栏），每张卡的占格由 placements 显式给出
+      {/* 栏位网格（第三十四轮）：4 栏（平板 2 栏 / 手机 1 栏单列，第六十六轮），每张卡的占格由 placements 显式给出
           （gridColumn/gridRow 钉死），不走自动流——栏与栏互不挤占，空栏留空。
+          手机单列时行高由 placements.rowTemplate 逐卡按内容估算（见 phoneHeights），不用固定 auto-rows。
           顶部留白约 28–32px 级别（移动端略小），让第一行卡片与吸顶导航条明显隔开、有呼吸感 */}
       <div
         ref={gridRef}
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 sm:mt-7 lg:mt-8 auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]"
+        className={`grid gap-3 sm:gap-4 mt-6 sm:mt-7 lg:mt-8 ${
+          phoneViewport
+            ? 'grid-cols-1'
+            : 'grid-cols-2 lg:grid-cols-4 auto-rows-[158px] sm:auto-rows-[168px] lg:auto-rows-[176px]'
+        }`}
+        style={placements.rowTemplate ? { gridTemplateRows: placements.rowTemplate } : undefined}
         onClickCapture={handleGridClickCapture}
         onDragStart={(e) => e.preventDefault()}
       >

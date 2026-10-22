@@ -21,6 +21,7 @@ export default function ComboCard({
   delay = 0,
   colSpan = 1,
   heightUnits = 1,
+  compactTabs = false,
 }: {
   combo: ComboItem;
   /** 按 combo.groupIds 顺序解析出的两个组：[左, 右] */
@@ -30,6 +31,9 @@ export default function ComboCard({
   delay?: number;
   colSpan?: 1 | 2;
   heightUnits?: 1 | 2;
+  /** 手机单列（第六十六轮）：卡变全宽后 tab 名不再截断——去 truncate、字号略收、
+   * 图标略小，保证组名（上限 8 字）完整显示；桌面不传此项、外观零变化 */
+  compactTabs?: boolean;
 }) {
   const active = groups.find((g) => g.id === combo.activeGroupId) ?? groups[0];
 
@@ -74,12 +78,18 @@ export default function ComboCard({
                 <div
                   data-combo-tab={g.id}
                   data-combo-tab-active={isActive ? 'true' : 'false'}
-                  className={`flex-1 flex items-center gap-2 min-w-0 px-1.5 py-1 rounded-[10px] transition-all ${
-                    isActive ? 'bg-white/[0.07] opacity-100' : 'opacity-45'
-                  }`}
+                  className={`flex-1 flex items-center min-w-0 py-1 rounded-[10px] transition-all ${
+                    compactTabs ? 'gap-1.5 px-1' : 'gap-2 px-1.5'
+                  } ${isActive ? 'bg-white/[0.07] opacity-100' : 'opacity-45'}`}
                 >
-                  <StackGroupIcon group={g} size={26} />
-                  <span className="flex-1 min-w-0 font-bold text-[14px] tracking-tight truncate text-left">{g.name}</span>
+                  <StackGroupIcon group={g} size={compactTabs ? 22 : 26} />
+                  <span
+                    className={`flex-1 min-w-0 font-bold tracking-tight text-left ${
+                      compactTabs ? 'text-[13px] whitespace-nowrap' : 'text-[14px] truncate'
+                    }`}
+                  >
+                    {g.name}
+                  </span>
                 </div>
               </React.Fragment>
             );
