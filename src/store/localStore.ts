@@ -1399,11 +1399,14 @@ export function useLocalStore() {
     });
   }, [update]);
 
-  /** 拖拽合并成组（第五十四轮，与手动建组/加步骤同一套 update 落盘口径）：
-   * 把顶层条目 source 拖到 target 上松手时调用——target 是普通待办就地升为组（id/标题/位置不变），
-   * 是组则保持组长；source 为普通待办 → 它本身成为 target 的一条步骤（标题/完成态原样带入）；
-   * source 为组 → 它自己先成为一条步骤（完成态取组的推导完成态），其原步骤依次平铺追加在后，不做嵌套。
-   * 新步骤一律追加到 target 步骤末尾，source 从顶层移除；source===target 或任一不存在时忽略 */
+  /** 拖拽合并（第五十四轮落盘口径；第五十七轮按用户口径改命名/归属规则）：
+   * - 普通 × 普通：不再让目标就地升组——新建组自动命名「小组N」（N = 现有「小组k」组最大 k + 1，
+   *   没有则 1），新组落在 target 原来的位置，两条都成为它的子任务，顺序 [target, source]，
+   *   各自完成态原样带入（子任务 id 沿用原条目 id）。
+   * - 普通拖到组上：成为该组子任务追加末尾，组名不变（同第五十四轮）。
+   * - 组拖到普通上：普通成为该组子任务追加末尾，组名不变、组保持原位，普通从顶层消失。
+   * - 组 × 组：维持第五十四轮平铺——source 自身（完成态取推导值）+ 其子任务依次追加进 target，组名不变。
+   * source===target 或任一不存在时忽略 */
   const mergeTaskIntoGroup = useCallback(
     (sourceId: string, targetId: string) => {
       if (sourceId === targetId) return;
@@ -1411,14 +1414,45 @@ export function useLocalStore() {
         const source = d.tasks.find((t) => t.id === sourceId);
         const target = d.tasks.find((t) => t.id === targetId);
         if (!source || !target) return d;
-        if (!Array.isArray(target.children)) target.children = [];
-        const flat: TaskChild[] = [
-          { id: source.id, title: source.title, done: isTaskGroup(source) ? taskGroupDone(source) : source.done },
-        ];
-        if (isTaskGroup(source)) {
-          for (const c of source.children ?? []) flat.push({ id: c.id, title: c.title, done: c.done });
+        const sourceIsGroup = isTaskGroup(source);
+        const targetIsGroup = isTaskGroup(target);
+        if (!sourceIsGroup && !targetIsGroup) {
+          let maxSeq = 0;
+          for (const t of d.tasks) {
+            if (!isTaskGroup(t)) continue;
+            const m = /^小组(\d+)$/.exec(t.title);
+            if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10));
+          }
+          const newGroup: TaskItem = {
+            id: genId('t'),
+            title: `小组${maxSeq + 1}`,
+            done: false,
+            createdAt: target.createdAt,
+            children: [
+              { id: target.id, title: target.title, done: target.done },
+              { id: source.id, title: source.title, done: source.done },
+            ],
+          };
+          d.tasks = d.tasks.filter((t) => t.id !== sourceId);
+          const idx = d.tasks.findIndex((t) => t.id === targetId);
+          d.tasks.splice(idx, 1, newGroup);
+          return d;
         }
-        target.children.push(...flat);
+        if (!sourceIsGroup && targetIsGroup) {
+          target.children!.push({ id: source.id, title: source.title, done: source.done });
+          d.tasks = d.tasks.filter((t) => t.id !== sourceId);
+          return d;
+        }
+        if (sourceIsGroup && !targetIsGroup) {
+          source.children!.push({ id: target.id, title: target.title, done: target.done });
+          d.tasks = d.tasks.filter((t) => t.id !== targetId);
+          return d;
+        }
+        const flat: TaskChild[] = [
+          { id: source.id, title: source.title, done: taskGroupDone(source) },
+        ];
+        for (const c of source.children ?? []) flat.push({ id: c.id, title: c.title, done: c.done });
+        target.children!.push(...flat);
         d.tasks = d.tasks.filter((t) => t.id !== sourceId);
         return d;
       });
