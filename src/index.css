@@ -88,8 +88,19 @@ body {
   background: rgb(var(--group-card-rgb) / calc(var(--group-card-alpha, 0.4) + 0.1));
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
-[data-theme="light"] .group-card-panel { border-color: rgba(0, 0, 0, 0.09); }
+[data-theme="light"] :is(.group-card-panel, .card-glass-surface) { border-color: rgba(0, 0, 0, 0.09); }
 [data-theme="light"] .group-card-panel-hover:hover { border-color: rgba(0, 0, 0, 0.16); }
+
+/* 与编组卡卡面同源的表面（第五十五轮）：顶栏搜索框与「数据」按钮共用这套底——
+   同一底色变量（--group-card-rgb / --group-card-alpha，滑杆实时控制）+ 同款 24px 磨砂模糊，
+   三档外观下与卡面严格同步（暗夜深色半透明 / 白天白色 / 液态玻璃走文末 glass 覆盖）。
+   描边由各元素自己的 Tailwind 边框类负责，本类只管底色与模糊，避免压掉搜索框的 focus 高亮。
+   元素同时挂 .group-card-scope 时，白天模式的文字翻深规则（下节）一并生效，搜索文字/占位符不发虚。 */
+.card-glass-surface {
+  background: rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
 
 /* 白天模式：只翻编组卡内部的白色系文字/底/描边工具类（作用域严格限定为
    .group-card-panel / .group-card-scope 的后代）；卡外没有任何 light 覆盖。
@@ -166,3 +177,42 @@ body {
   border-color: rgb(0 0 0 / 0.3);
 }
 [data-theme="light"] :is(.group-card-panel, .group-card-scope) .bg-red-500\/15.text-red-300 { color: #dc2626; }
+
+/* 白天作用域内输入框占位符加深（第五十五轮）：搜索框改同源白底后，placeholder 的白色系
+   工具类在白底上会看不见，统一压成深灰（编组卡内输入框同理受益） */
+[data-theme="light"] :is(.group-card-panel, .group-card-scope) ::placeholder { color: rgb(18 18 22 / 0.38); opacity: 1; }
+
+/* ---------- 第五十五轮：液态玻璃模式（外观第三档 [data-theme="glass"]） ---------- */
+/* 路线：纯 CSS——backdrop-filter 的 blur+saturate 负责「背景透出来又被磨柔」，
+   分层渐变负责白色微染 tint 与左上镜面高光，inset 阴影负责明亮描边（液态玻璃的亮边），
+   最底下一层极轻的暗色衬底保住白字在亮照片/亮星云上的可读性（不做回实色）。
+   不引 React Bits GlassSurface 的 SVG 滤镜路线：满屏十几张卡各挂一份滤镜位移的
+   运行时与体积成本不合算，CSS 路线在四种背景上观感已达标且零新增依赖。
+   浓淡仍走 --group-card-alpha（与暗夜/白天同一滑杆）：tint/veil 都由它线性派生，
+   滑杆 0.4（默认）时 tint 高光端约 0.21、收尾端约 0.10、衬底约 0.15。
+   作用域与白天同口径：只命中编组卡卡面（.group-card-panel / [data-stack-body]）
+   与同源表面（.card-glass-surface：搜索框、数据按钮）；圆角不动（各卡自身圆角类）。 */
+[data-theme="glass"] :is(.group-card-panel, .card-glass-surface),
+[data-theme="glass"] [data-stack-body] {
+  background:
+    linear-gradient(155deg, rgb(255 255 255 / calc(0.1 + var(--group-card-alpha, 0.4) * 0.28)) 0%, rgb(255 255 255 / 0) 46%),
+    linear-gradient(165deg, rgb(255 255 255 / calc(0.05 + var(--group-card-alpha, 0.4) * 0.4)) 0%, rgb(255 255 255 / calc(0.02 + var(--group-card-alpha, 0.4) * 0.2)) 78%),
+    linear-gradient(rgb(9 9 16 / calc(0.09 + var(--group-card-alpha, 0.4) * 0.14)), rgb(9 9 16 / calc(0.09 + var(--group-card-alpha, 0.4) * 0.14))) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border-color: rgb(255 255 255 / 0.38) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.5),
+    inset 0 -1px 1px rgb(255 255 255 / 0.07),
+    inset 1px 0 0 rgb(255 255 255 / 0.1),
+    inset -1px 0 0 rgb(255 255 255 / 0.1);
+}
+[data-theme="glass"] .group-card-panel-hover:hover {
+  border-color: rgb(255 255 255 / 0.55) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.65),
+    inset 0 -1px 1px rgb(255 255 255 / 0.1),
+    inset 1px 0 0 rgb(255 255 255 / 0.16),
+    inset -1px 0 0 rgb(255 255 255 / 0.16);
+}
+[data-theme="glass"] .card-glass-surface:focus-within { border-color: rgb(255 255 255 / 0.6) !important; }
