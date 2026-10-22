@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, Check, ChevronDown, Minus, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Layers, Minus, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import {
   dateStrDiffDays,
   formatMonthDay,
@@ -32,6 +32,9 @@ import { splitTasksText, type SplitPlanDraft } from '../../utils/taskSplit';
  * - 第五十二轮（只动配色，功能/结构不动）：计划条目浮起（bg-white/10 + border-white/20）、
  *   进度轨道 white/20、计数提到 zinc-200、−/+ 钮做实（white/10 底）、待办区次级文字统一 zinc-300 档、
  *   复选框边框 white/50、输入 placeholder zinc-400；本节区与 TaskCard 共用，卡面同步生效
+ * - 第五十四轮：待办拖拽合并成组——在「未完成」列表里按住顶层待办行身（控件除外）拖动、
+ *   压到另一条顶层待办上松手即合并（手势与反馈沿用 useSiteDragSort 的两段式指针拖拽，
+ *   落盘走 store.mergeTaskIntoGroup）；已完成区条目不参与，手动建组入口不变
  */
 
 interface RowMenuState {
@@ -51,6 +54,166 @@ function rowMenuPosition(e: React.MouseEvent): { x: number; y: number } {
     x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
     y: Math.max(8, Math.min(e.clientY, window.innerHeight - MENU_H - 8)),
   };
+}
+
+/** 拖拽合并的起手阈值（px，与 useSiteDragSort 同值）：短距离移动只算点击，不误触 */
+const TASK_DRAG_THRESHOLD = 7;
+
+/**
+ * 待办拖拽合并手势（第五十四轮，沿用 useSiteDragSort 的 pending → active 两段式指针拖拽）：
+ * - 行身 pointerdown 只登记 pending；越过阈值才激活：源行半透明、标题浮层跟随指针、
+ *   指针压住的另一条顶层待办（[data-task-entry]，且必须在本 hook 的 listRef 容器内）以 indigo 高亮
+ * - 松手：有高亮目标且不是自己 → onMerge(sourceId, targetId)；落在空白/自己身上、Esc、pointercancel 一律取消复原
+ * - 勾选框、展开箭头、输入框、按钮等控件（button/input/form 等）不作起手点，原有点击/右键交互不受影响
+ */
+function useTaskMergeDrag(onMerge: (sourceId: string, targetId: string) => void) {
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [clone, setClone] = useState<{ title: string; isGroup: boolean; w: number } | null>(null);
+  const cloneRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const pendingRef = useRef<{
+    id: string;
+    title: string;
+    isGroup: boolean;
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const activeRef = useRef<{
+    id: string;
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+    lastX: number;
+    lastY: number;
+    overId: string | null;
+  } | null>(null);
+  const onMergeRef = useRef(onMerge);
+  onMergeRef.current = onMerge;
+
+  useEffect(() => {
+    const positionClone = (x: number, y: number) => {
+      const d = activeRef.current;
+      if (d && cloneRef.current) {
+        cloneRef.current.style.transform = `translate(${x - d.offsetX}px, ${y - d.offsetY}px)`;
+      }
+    };
+
+    const endDrag = (commit: boolean) => {
+      const d = activeRef.current;
+      pendingRef.current = null;
+      if (!d) return;
+      activeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      const targetId = d.overId;
+      setDragId(null);
+      setOverId(null);
+      setClone(null);
+      if (commit && targetId && targetId !== d.id) onMergeRef.current(d.id, targetId);
+    };
+
+    const updateOver = (x: number, y: number) => {
+      const d = activeRef.current;
+      if (!d) return;
+      const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-task-entry]');
+      const id = el && listRef.current?.contains(el) ? el.dataset.taskEntry : undefined;
+      const next = id && id !== d.id ? id : null;
+      if (next !== d.overId) {
+        d.overId = next;
+        setOverId(next);
+      }
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const pending = pendingRef.current;
+      if (!activeRef.current && pending && e.pointerId === pending.pointerId) {
+        if (Math.hypot(e.clientX - pending.startX, e.clientY - pending.startY) < TASK_DRAG_THRESHOLD) return;
+        const entryEl = listRef.current?.querySelector<HTMLElement>(`[data-task-entry="${pending.id}"]`);
+        if (!entryEl) {
+          pendingRef.current = null;
+          return;
+        }
+        // 快照基准：组取头部行（整块含子任务太高），普通待办取行本身
+        const gripEl = entryEl.querySelector<HTMLElement>('[data-task-grip]') ?? entryEl;
+        const rect = gripEl.getBoundingClientRect();
+        pendingRef.current = null;
+        activeRef.current = {
+          id: pending.id,
+          pointerId: pending.pointerId,
+          offsetX: pending.startX - rect.left,
+          offsetY: pending.startY - rect.top,
+          lastX: e.clientX,
+          lastY: e.clientY,
+          overId: null,
+        };
+        setDragId(pending.id);
+        setClone({ title: pending.title, isGroup: pending.isGroup, w: Math.max(rect.width, 120) });
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+      }
+      const d = activeRef.current;
+      if (d && e.pointerId === d.pointerId) {
+        d.lastX = e.clientX;
+        d.lastY = e.clientY;
+        positionClone(e.clientX, e.clientY);
+        updateOver(e.clientX, e.clientY);
+      }
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (pendingRef.current && e.pointerId === pendingRef.current.pointerId) pendingRef.current = null;
+      if (activeRef.current && e.pointerId === activeRef.current.pointerId) endDrag(true);
+    };
+    const onPointerCancel = (e: PointerEvent) => {
+      if (pendingRef.current && e.pointerId === pendingRef.current.pointerId) pendingRef.current = null;
+      if (activeRef.current && e.pointerId === activeRef.current.pointerId) endDrag(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeRef.current) endDrag(false);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('keydown', onKeyDown);
+      if (activeRef.current) {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+  }, []);
+
+  // 浮层挂载后先定位到抓起处，避免首帧闪到左上角（同 useSiteDragSort）
+  useEffect(() => {
+    const d = activeRef.current;
+    if (clone && d && cloneRef.current) {
+      cloneRef.current.style.transform = `translate(${d.lastX - d.offsetX}px, ${d.lastY - d.offsetY}px)`;
+    }
+  }, [clone]);
+
+  /** 挂在顶层待办行身（普通行根 / 组头部行）上：只负责记下起手，控件与右键不作起手点 */
+  const beginTaskDrag = (e: React.PointerEvent, task: TaskItem) => {
+    if (e.button !== 0 || pendingRef.current || activeRef.current) return;
+    const t = e.target as HTMLElement;
+    if (t.closest('button, input, textarea, select, a, form, [contenteditable="true"]')) return;
+    pendingRef.current = {
+      id: task.id,
+      title: task.title,
+      isGroup: isTaskGroup(task),
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+    };
+  };
+
+  return { dragId, overId, clone, cloneRef, listRef, beginTaskDrag };
 }
 
 export default function TaskPanel({ open, store, onClose }: { open: boolean; store: LocalStore; onClose: () => void }) {
@@ -188,11 +351,16 @@ export function TasksSection({
   const [newTask, setNewTask] = useState('');
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupName, setGroupName] = useState('');
+  /** 待办拖拽合并（第五十四轮）：手势状态在本节内管理，面板与 2x 卡面共用同一份 */
+  const drag = useTaskMergeDrag(store.mergeTaskIntoGroup);
 
   if (menuOpenRef) {
-    // doneMenu 也并入上报：面板 Esc 判断「有菜单开着就别关面板」对它同样成立
+    // doneMenu 也并入上报：面板 Esc 判断「有菜单开着就别关面板」对它同样成立；
+    // 拖拽中同理上报一个占位状态，让 Esc 只取消拖拽、不顺带关面板
     menuOpenRef.current =
-      menu ?? (doneMenu ? { ...doneMenu, kind: 'task', id: '__done_clear__', title: '' } : null);
+      menu ??
+      (doneMenu ? { ...doneMenu, kind: 'task', id: '__done_clear__', title: '' } : null) ??
+      (drag.dragId ? { x: 0, y: 0, kind: 'task', id: '__dragging__', title: '' } : null);
   }
 
   // 计数口径与卡面一致：组按子任务摊平（taskFlatStats）；顶层条目按完成态分未完成/已完成两区
@@ -258,8 +426,12 @@ export function TasksSection({
     />
   );
 
-  const taskRow = (task: TaskItem) =>
-    isTaskGroup(task) ? (
+  /** 顶层行渲染：inOpen=true 的行（仅「未完成」区）参与拖拽合并（第五十四轮）——
+   * 带 data-task-entry 落点标记与行身起手；已完成区行不带标记、不可拖 */
+  const taskRow = (task: TaskItem, inOpen: boolean) => {
+    const dragVisual: 'source' | 'over' | null =
+      drag.dragId === task.id ? 'source' : drag.overId === task.id ? 'over' : null;
+    return isTaskGroup(task) ? (
       <GroupBlock
         key={task.id}
         group={task}
@@ -270,13 +442,22 @@ export function TasksSection({
         onMenu={(e) => openMenu(e, 'taskGroup', task.id, task.title)}
         onChildMenu={(e, childId, childTitle) => openMenu(e, 'taskChild', childId, childTitle, task.id)}
         checkBtn={checkBtn}
+        entryId={inOpen ? task.id : undefined}
+        dragVisual={inOpen ? dragVisual : null}
+        onGripPointerDown={inOpen ? (e) => drag.beginTaskDrag(e, task) : undefined}
       />
     ) : (
       <div
         key={task.id}
         data-task-row
+        data-task-entry={inOpen ? task.id : undefined}
+        onPointerDown={inOpen ? (e) => drag.beginTaskDrag(e, task) : undefined}
         onContextMenu={(e) => openMenu(e, 'task', task.id, task.title)}
-        className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/[0.04] min-w-0"
+        className={`flex items-center gap-2.5 px-2 py-2 rounded-xl min-w-0 ${
+          dragVisual === 'over'
+            ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-400/60'
+            : 'hover:bg-white/[0.04]'
+        } ${dragVisual === 'source' ? 'opacity-40' : ''}`}
       >
         {checkBtn(task.done, () => store.toggleTask(task.id), task.done ? '取消完成' : '标记完成')}
         {editingTaskId === task.id ? (
@@ -288,6 +469,7 @@ export function TasksSection({
         )}
       </div>
     );
+  };
 
   return (
     <section>
@@ -295,9 +477,9 @@ export function TasksSection({
         <h4 className="text-sm font-semibold">待办</h4>
         <span className="text-[11px] text-zinc-300">未完成 {flatOpen}</span>
       </div>
-      <div data-nodrag>
+      <div data-nodrag ref={drag.listRef}>
         {tasks.length === 0 && <p className="text-[13px] text-zinc-300 px-2 py-3">暂无待办，在下方添加第一件。</p>}
-        {openEntries.map(taskRow)}
+        {openEntries.map((t) => taskRow(t, true))}
       </div>
       {doneEntries.length > 0 && (
         <div className="mt-1.5">
@@ -316,7 +498,7 @@ export function TasksSection({
             <ChevronDown size={13} className={`transition-transform ${showDone ? '' : '-rotate-90'}`} />
             已完成 {doneEntries.length} 项
           </button>
-          {showDone && <div data-nodrag>{doneEntries.map(taskRow)}</div>}
+          {showDone && <div data-nodrag>{doneEntries.map((t) => taskRow(t, false))}</div>}
         </div>
       )}
       <form
@@ -418,6 +600,25 @@ export function TasksSection({
           }}
         />
       )}
+
+      {/* 拖拽合并的跟随浮层（第五十四轮）：被拖条目的标题片，视觉语言同主页拖影（深底+亮环+抬升阴影） */}
+      {drag.clone && (
+        <div
+          ref={drag.cloneRef}
+          data-task-drag-clone
+          className="fixed left-0 top-0 z-[95] pointer-events-none will-change-transform"
+          style={{ width: drag.clone.w }}
+        >
+          <div className="flex items-center gap-2 rounded-xl bg-[#23232c] px-3 py-2 shadow-2xl shadow-black/70 ring-1 ring-white/25 opacity-95">
+            {drag.clone.isGroup ? (
+              <Layers size={13} className="text-zinc-300 shrink-0" />
+            ) : (
+              <span className="w-[18px] h-[18px] rounded-[5px] border border-white/50 shrink-0" />
+            )}
+            <span className="flex-1 min-w-0 truncate text-sm text-white/90">{drag.clone.title}</span>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -501,7 +702,9 @@ export function PlansSection({
   );
 }
 
-/** 组块：标题行（展开箭头 + 标题 + n/m）+ 子任务列表 + 组内添加行；全勾时标题划线 */
+/** 组块：标题行（展开箭头 + 标题 + n/m）+ 子任务列表 + 组内添加行；全勾时标题划线。
+ * 拖拽合并（第五十四轮）：entryId 存在时整块是落点（[data-task-entry]），头部行是起手区
+ * （[data-task-grip]，子任务行与组内添加表单不作起手）；dragVisual 渲染源行半透明/落点高亮 */
 const GroupBlock: React.FC<{
   group: TaskItem;
   store: LocalStore;
@@ -511,7 +714,10 @@ const GroupBlock: React.FC<{
   onMenu: (e: React.MouseEvent) => void;
   onChildMenu: (e: React.MouseEvent, childId: string, childTitle: string) => void;
   checkBtn: (done: boolean, onToggle: () => void, label: string) => React.ReactNode;
-}> = ({ group, store, startExpanded, editing, editor, onMenu, onChildMenu, checkBtn }) => {
+  entryId?: string;
+  dragVisual?: 'source' | 'over' | null;
+  onGripPointerDown?: (e: React.PointerEvent) => void;
+}> = ({ group, store, startExpanded, editing, editor, onMenu, onChildMenu, checkBtn, entryId, dragVisual, onGripPointerDown }) => {
   const [expanded, setExpanded] = useState(startExpanded);
   const [subDraft, setSubDraft] = useState('');
   const kids = group.children ?? [];
@@ -526,8 +732,15 @@ const GroupBlock: React.FC<{
   };
 
   return (
-    <div data-task-group className="rounded-xl hover:bg-white/[0.04] px-2 py-1.5" onContextMenu={onMenu}>
-      <div className="flex items-center gap-2 min-w-0">
+    <div
+      data-task-group
+      data-task-entry={entryId}
+      className={`rounded-xl px-2 py-1.5 ${
+        dragVisual === 'over' ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-400/60' : 'hover:bg-white/[0.04]'
+      } ${dragVisual === 'source' ? 'opacity-40' : ''}`}
+      onContextMenu={onMenu}
+    >
+      <div className="flex items-center gap-2 min-w-0" data-task-grip onPointerDown={onGripPointerDown}>
         <button
           type="button"
           aria-label={expanded ? '收起组' : '展开组'}
