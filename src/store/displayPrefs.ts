@@ -8,8 +8,12 @@ import { useEffect, useState } from 'react';
  * 白天模式的作用域（第五十一轮收窄）：只有编组卡（B/C/组合卡）卡面变白——
  * index.css 里 [data-theme="light"] 的覆盖全部限定在 .group-card-panel / .group-card-scope 后代内；
  * 页面背景、顶栏、面板/弹窗、A 型小组件不翻色，保持暗夜样式。
+ * 液态玻璃（第五十五轮，外观第三档 'glass'）：作用域与白天同口径——只换编组卡卡面
+ * （及同源的搜索框/数据按钮 .card-glass-surface）的材质为通透玻璃，文字仍走白色系；
+ * 底框透明度滑杆在三档下语义一致（玻璃档控制玻璃 tint 浓淡），且同时驱动 A 型小组件
+ * 的渐变 tint 强度（见 WidgetTint）。
  */
-export type DisplayTheme = 'dark' | 'light';
+export type DisplayTheme = 'dark' | 'light' | 'glass';
 
 export interface DisplayPrefs {
   theme: DisplayTheme;
@@ -25,7 +29,7 @@ function normalizePrefs(raw: unknown): DisplayPrefs {
   if (raw && typeof raw === 'object') {
     const p = raw as { theme?: unknown; groupCardAlpha?: unknown };
     return {
-      theme: p.theme === 'light' ? 'light' : 'dark',
+      theme: p.theme === 'light' ? 'light' : p.theme === 'glass' ? 'glass' : 'dark',
       groupCardAlpha:
         typeof p.groupCardAlpha === 'number' && Number.isFinite(p.groupCardAlpha)
           ? Math.min(1, Math.max(0, p.groupCardAlpha))
