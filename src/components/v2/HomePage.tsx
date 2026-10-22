@@ -36,6 +36,7 @@ import ComboCard from './ComboCard';
 import ComboPanel from './ComboPanel';
 import TrendingWidget from '../widgets/TrendingWidget';
 import { GlassDefsHost } from './GlassSurface';
+import useLongPressMenu from './useLongPressMenu';
 
 /**
  * V2 新主页（第三轮修订 + 第五轮拖拽排序 + 第八轮顶栏一行对齐）
@@ -64,6 +65,8 @@ function findScrollAncestor(el: HTMLElement): HTMLElement | null {
   return null;
 }
 export default function HomePage({ onNavigate, store }: { onNavigate: (page: string) => void; store: LocalStore }) {
+  /* 原位长按触发右键菜单（第七十轮）：合成 contextmenu 事件走既有三层右键路由 */
+  useLongPressMenu();
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
   /* 视口三档（第六十六轮起）：≥lg（1024px）为 4 栏；640–1023（平板）为 2 栏；
    * <640（手机）为 1 栏单列。数据始终按 4 栏锚点存；2 栏呈现时 4 个锚点栏两两合并

@@ -40,7 +40,7 @@ export default function GroupPanel({
   return (
     <AnimatePresence>
       {group && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6">
+        <div data-panel-root className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-6">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
