@@ -45,6 +45,11 @@ import { splitTasksText, type SplitPlanDraft } from '../../utils/taskSplit';
  *   建组入口、新建计划表单不再区分 variant，卡面（唯一的承载方）全功能；AI 整理改为卡面头部
  *   按钮切换卡内视图（AiView 仍在本文件）；待办/组/子任务的截断标题改为点击文字展开全文、
  *   再点收起（勾选框不触发，编辑仍走右键菜单；合并拖拽刚结束的那次点击由 wasJustDragged 守卫吞掉）
+ * - 第七十五轮：① 行内编辑「点外面 = 确认」——添加待办/子任务框失焦即提交（空草稿不落库）；
+ *   建组/新建计划/编辑计划表单按「焦点离开整个表单、且最近一次指针按下确在表单外」才确认
+ *   （见 useOutsidePressConfirm），标题编辑框原本就是失焦保存、不动；② 已完成区的组/项/
+ *   子任务行尾带垃圾桶（DoneTrashButton，两步确认，口径同行右键删除）；③ 待办/组/子任务
+ *   标题收起态改最多显示 2 行（line-clamp-2），点击仍展开全文
  */
 
 interface RowMenuState {
@@ -233,6 +238,40 @@ function useTaskMergeDrag(onMerge: (sourceId: string, targetId: string) => void)
 }
 
 /**
+ * 「点表单外 = 确认」的失焦判定（第七十五轮，多字段表单用）：表单根元素挂 ref 与 onBlur，
+ * consumeBlur(e) 返回 true 才按确认处理。判定 = 焦点确已离开整个表单（relatedTarget 不在
+ * 表单内），且最近一次指针按下确实落在表单外。两个附加条件缺一不可：
+ * - 键盘 Tab 移出焦点不算「点击外面」，不触发；
+ * - 点表单内按钮（切类型/取消/提交）在部分浏览器不移焦点、失焦的 relatedTarget 为空，
+ *   若只看 relatedTarget 会被误判成点外面——指针按下在表单内时标记为假，天然豁免。
+ */
+function useOutsidePressConfirm() {
+  const elRef = useRef<HTMLElement | null>(null);
+  const pressedOutsideRef = useRef(false);
+
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      pressedOutsideRef.current = !!elRef.current && !elRef.current.contains(e.target as Node);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, []);
+
+  const setEl = (el: HTMLElement | null) => {
+    elRef.current = el;
+  };
+
+  const consumeBlur = (e: React.FocusEvent): boolean => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return false;
+    if (!pressedOutsideRef.current) return false;
+    pressedOutsideRef.current = false;
+    return true;
+  };
+
+  return { setEl, consumeBlur };
+}
+
+/**
  * 待办列（第二十五轮抽成共享组件；第六十九轮起面板取消，只由 2x 计划卡卡面承载，全功能）：
  * 勾选/添加/建组/组展开勾子任务/已完成折叠/行右键编辑删除/拖拽合并都在卡面直接完成；
  * 标题截断时点击文字展开全文、再点收起（第六十九轮）
@@ -251,6 +290,8 @@ export function TasksSection({ store }: { store: LocalStore }) {
   /** 两个草稿的 ref 镜像（理由同 GroupBlock 第五十七轮注：回车显式提交 + 同步清零防重复） */
   const newTaskRef = useRef('');
   const groupNameRef = useRef('');
+  /** 建组表单的「点外面 = 确认」判定（第七十五轮） */
+  const groupConfirm = useOutsidePressConfirm();
   /** 待办拖拽合并（第五十四轮）：手势状态在本节内管理 */
   const drag = useTaskMergeDrag(store.mergeTaskIntoGroup);
   /** 标题展开全文的条目 id 集合（第六十九轮，点击文字切换；与编辑态互不干扰） */
@@ -370,6 +411,8 @@ export function TasksSection({ store }: { store: LocalStore }) {
         dragVisual={inOpen ? dragVisual : null}
         onGripPointerDown={inOpen ? (e) => drag.beginTaskDrag(e, task) : undefined}
         wasJustDragged={drag.wasJustDragged}
+        onDeleteSelf={inOpen ? undefined : () => store.deleteTask(task.id)}
+        onDeleteChild={inOpen ? undefined : (childId) => store.deleteSubTask(task.id, childId)}
       />
     ) : (
       <div
@@ -393,11 +436,14 @@ export function TasksSection({ store }: { store: LocalStore }) {
             onClick={() => toggleTitle(task.id)}
             title={expandedTitles.has(task.id) ? '点击收起' : '点击展开全文'}
             className={`flex-1 min-w-0 text-sm ${
-              expandedTitles.has(task.id) ? 'whitespace-normal break-words' : 'truncate'
+              expandedTitles.has(task.id) ? 'whitespace-normal break-words' : 'line-clamp-2 break-words'
             } ${task.done ? 'line-through text-white/35' : 'text-white/85'}`}
           >
             {task.title}
           </span>
+        )}
+        {!inOpen && editingTaskId !== task.id && (
+          <DoneTrashButton label={`删除已完成待办「${task.title}」`} onDelete={() => store.deleteTask(task.id)} />
         )}
       </div>
     );
@@ -445,6 +491,7 @@ export function TasksSection({ store }: { store: LocalStore }) {
           value={newTask}
           onChange={(e) => changeNewTask(e.target.value)}
           onKeyDown={enterToSubmit(submitNewTask)}
+          onBlur={submitNewTask}
           placeholder="添加待办，回车确认"
           data-task-add
           className="flex-1 min-w-0 bg-transparent text-sm py-1.5 outline-none placeholder:text-zinc-400"
@@ -453,10 +500,17 @@ export function TasksSection({ store }: { store: LocalStore }) {
       {/* 建组入口：组用来收纳一组相关的子任务（如一次采购清单）；第六十九轮起卡面直接提供（原仅面板） */}
       {showGroupForm ? (
           <form
+            ref={groupConfirm.setEl}
             className="mt-2 flex items-center gap-1.5"
             onSubmit={(e) => {
               e.preventDefault();
               submitGroup();
+            }}
+            onBlur={(e) => {
+              // 点表单外 = 确认（第七十五轮）：有组名就建组，空名直接收起（不产生空组）
+              if (!groupConfirm.consumeBlur(e)) return;
+              if (groupNameRef.current.trim()) submitGroup();
+              else setShowGroupForm(false);
             }}
           >
             <input
@@ -640,7 +694,10 @@ const GroupBlock: React.FC<{
   onGripPointerDown?: (e: React.PointerEvent) => void;
   /** 合并拖拽刚结束守卫（第六十九轮，理由同 TasksSection 的 toggleTitle） */
   wasJustDragged?: () => boolean;
-}> = ({ group, store, startExpanded, editing, editor, onMenu, onChildMenu, checkBtn, entryId, dragVisual, onGripPointerDown, wasJustDragged }) => {
+  /** 已完成区专用（第七十五轮）：组本身与子任务行尾的垃圾桶删除；仅 TasksSection 在已完成区传入 */
+  onDeleteSelf?: () => void;
+  onDeleteChild?: (childId: string) => void;
+}> = ({ group, store, startExpanded, editing, editor, onMenu, onChildMenu, checkBtn, entryId, dragVisual, onGripPointerDown, wasJustDragged, onDeleteSelf, onDeleteChild }) => {
   const [expanded, setExpanded] = useState(startExpanded);
   /** 组标题/子任务标题的点击展开全文（第六十九轮，点文字切换，与展开箭头的折叠子任务互不影响） */
   const [titleExpanded, setTitleExpanded] = useState(false);
@@ -697,7 +754,7 @@ const GroupBlock: React.FC<{
                 setTitleExpanded((v) => !v);
               }}
               className={`flex-1 min-w-0 text-sm font-medium ${
-                titleExpanded ? 'whitespace-normal break-words' : 'truncate'
+                titleExpanded ? 'whitespace-normal break-words' : 'line-clamp-2 break-words'
               } ${allDone ? 'line-through text-white/35' : 'text-white/90'}`}
             >
               {group.title}
@@ -705,6 +762,9 @@ const GroupBlock: React.FC<{
             <span data-group-progress className="text-[11px] text-zinc-300 tabular-nums shrink-0">
               {done}/{total}
             </span>
+            {onDeleteSelf && (
+              <DoneTrashButton label={`删除已完成组「${group.title}」`} onDelete={onDeleteSelf} />
+            )}
           </>
         )}
       </div>
@@ -736,11 +796,14 @@ const GroupBlock: React.FC<{
                   });
                 }}
                 className={`flex-1 min-w-0 text-[13px] ${
-                  expandedKids.has(child.id) ? 'whitespace-normal break-words' : 'truncate'
+                  expandedKids.has(child.id) ? 'whitespace-normal break-words' : 'line-clamp-2 break-words'
                 } ${child.done ? 'line-through text-white/35' : 'text-white/80'}`}
               >
                 {child.title}
               </span>
+              {onDeleteChild && (
+                <DoneTrashButton label={`删除已完成子任务「${child.title}」`} onDelete={() => onDeleteChild(child.id)} />
+              )}
             </div>
           ))}
           <form
@@ -762,6 +825,7 @@ const GroupBlock: React.FC<{
                   submitSub();
                 }
               }}
+              onBlur={submitSub}
               placeholder="添加子任务，回车确认"
               data-subtask-add
               className="flex-1 min-w-0 bg-transparent text-[13px] py-1 outline-none placeholder:text-zinc-400 border-b border-transparent focus:border-indigo-400/40 transition-colors"
@@ -886,6 +950,8 @@ function PlanCreateForm({ store, onClose }: { store: LocalStore; onClose: () => 
   const [unit, setUnit] = useState('次');
   const [deadline, setDeadline] = useState(todayDateStr());
   const today = todayDateStr();
+  /** 「点表单外 = 确认」判定（第七十五轮） */
+  const outsideConfirm = useOutsidePressConfirm();
 
   const canSubmit =
     title.trim().length > 0 && (mode === 'count' ? parseInt(target, 10) > 0 : deadline >= today);
@@ -914,7 +980,17 @@ function PlanCreateForm({ store, onClose }: { store: LocalStore; onClose: () => 
   );
 
   return (
-    <div className="mt-3 rounded-2xl border border-white/12 bg-white/[0.03] p-3" data-plan-form>
+    <div
+      ref={outsideConfirm.setEl}
+      className="mt-3 rounded-2xl border border-white/12 bg-white/[0.03] p-3"
+      data-plan-form
+      onBlur={(e) => {
+        // 点表单外 = 确认（第七十五轮）：可提交就添加并关闭；标题为空等无效状态直接收起不落库
+        if (!outsideConfirm.consumeBlur(e)) return;
+        if (canSubmit) submit();
+        else onClose();
+      }}
+    >
       <input
         value={title}
         autoFocus
@@ -990,6 +1066,8 @@ const PlanEditForm: React.FC<{ plan: PlanItem; store: LocalStore; onClose: () =>
   const [target, setTarget] = useState(String(plan.targetCount ?? 10));
   const [unit, setUnit] = useState(plan.unit ?? '次');
   const [deadline, setDeadline] = useState(plan.deadline ?? todayDateStr());
+  /** 「点表单外 = 确认」判定（第七十五轮，口径同新建表单） */
+  const outsideConfirm = useOutsidePressConfirm();
 
   const submit = () => {
     if (!title.trim()) return;
@@ -1003,7 +1081,17 @@ const PlanEditForm: React.FC<{ plan: PlanItem; store: LocalStore; onClose: () =>
   };
 
   return (
-    <div className="rounded-2xl border border-indigo-300/25 bg-indigo-500/[0.05] p-3" data-plan-edit-form>
+    <div
+      ref={outsideConfirm.setEl}
+      className="rounded-2xl border border-indigo-300/25 bg-indigo-500/[0.05] p-3"
+      data-plan-edit-form
+      onBlur={(e) => {
+        // 点表单外 = 确认（第七十五轮）：标题有效就保存关闭；标题被清空时直接收起不落库（同「保存」钮禁用口径）
+        if (!outsideConfirm.consumeBlur(e)) return;
+        if (title.trim()) submit();
+        else onClose();
+      }}
+    >
       <input value={title} autoFocus onChange={(e) => setTitle(e.target.value)} data-plan-edit-title className={planInputCls} />
       {plan.mode === 'count' ? (
         <div className="mt-2 flex items-center gap-2">
@@ -1059,6 +1147,58 @@ const PlanEditForm: React.FC<{ plan: PlanItem; store: LocalStore; onClose: () =>
     </div>
   );
 };
+
+/**
+ * 已完成行尾垃圾桶（第七十五轮）：已完成区里的组/普通待办/子任务行尾自动出现，
+ * 点一下删除该行。确认口径同行右键菜单删除——两步确认（垃圾桶 → 行内「确认删除/算了」），
+ * 不裸删；计数（x/y、n/m）随 store 更新自然刷新，按钮在计数之后、不挤占标题行
+ */
+function DoneTrashButton({ label, onDelete }: { label: string; onDelete: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  if (confirming) {
+    return (
+      <span className="flex items-center gap-1 shrink-0" data-done-trash-confirm>
+        <button
+          type="button"
+          data-done-trash-yes
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="px-2 py-1 rounded-md bg-red-500/80 hover:bg-red-500 text-white text-[11px] font-medium transition-colors"
+        >
+          确认删除
+        </button>
+        <button
+          type="button"
+          data-done-trash-no
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirming(false);
+          }}
+          className="px-2 py-1 rounded-md bg-white/8 hover:bg-white/12 text-white/70 text-[11px] transition-colors"
+        >
+          算了
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      data-done-trash
+      onClick={(e) => {
+        e.stopPropagation();
+        setConfirming(true);
+      }}
+      className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 text-white/35 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+    >
+      <Trash2 size={13} />
+    </button>
+  );
+}
 
 /** 「已完成」分组头右键菜单（第四十八轮）：与行菜单同壳同关闭范式，只一项「删除全部已完成项」 */
 function DoneClearMenu({

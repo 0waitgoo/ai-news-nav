@@ -31,6 +31,9 @@ import WidgetTintLayer from './WidgetTint';
  *   1x 卡面不再点开任何面板，只保留勾选与标题点开全文
  * - 标题截断改点击展开：待办行点文字展开全文、再点收起（1x/2x 同口径，勾选框不触发）
  * - 2x 内容区支持鼠标按住拖拽滚动（useCardDragScroll），与待办合并拖拽分领地共存（见其注释）
+ * 第七十五轮（收起态行数）：2x 标题与焦点式大标题收起态统一为最多 2 行（line-clamp-2，点击仍
+ * 展开全文）；1x 列表式行保留 1 行截断——1x 卡面固定只摆 3 行、高度预算仅够单行/行，改 2 行
+ * 任一行变高都会把最后一行挤出卡面（overflow-hidden 直接切掉），属刻意紧凑设计，展开全文不受影响
  */
 export default function TaskCard({
   store,
@@ -261,7 +264,7 @@ export default function TaskCard({
               <p
                 data-task-focus-title
                 onClick={() => setFocusExpanded((v) => !v)}
-                className={`text-xl font-semibold leading-snug ${focusExpanded ? '' : 'line-clamp-3'}`}
+                className={`text-xl font-semibold leading-snug ${focusExpanded ? '' : 'line-clamp-2'}`}
               >
                 {focusTask.title}
               </p>
