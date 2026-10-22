@@ -483,10 +483,16 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     return { span: clampColSpan(layout.colSpan), height: layout.heightUnits };
   };
 
-  /** 渲染口径占位：展开中的 B 卡沿用既有展开形态（2 栏 × 4 行），其余同 storedSpecOf */
+  /** 渲染口径占位：展开中的 B 卡只把高度切到展开高（4 行）、宽度保持存储口径，其余同 storedSpecOf。
+   * 第七十一轮修正：旧口径把展开卡强制改成 2 宽——锚在右栏的 1 宽卡被 placeInLanes 夹回
+   * 左邻栏、行位又取两栏栈高的较大者，展开瞬间整卡左移并下沉（用户实测「展开后自己到了下面」）。
+   * 宽度不动后，展开卡的（栏, 行）与收起态逐点一致：展开只长高，它之后同栏的卡顺移让位，
+   * 收起后全部几何精确复原。展开体站点的排布列数由 GroupExpandedBody 按卡宽自适应，与此处无关。 */
   const renderSpecOf = (key: string): { span: 1 | 2; height: number } => {
     const item = itemByKey.get(key);
-    if (item?.group?.display === 'list' && expandedId === item.group.id) return { span: 2, height: 4 };
+    if (item?.group?.display === 'list' && expandedId === item.group.id) {
+      return { span: storedSpecOf(key).span, height: 4 };
+    }
     return storedSpecOf(key);
   };
 
