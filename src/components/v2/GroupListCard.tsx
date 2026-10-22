@@ -5,6 +5,7 @@ import { GROUP_NAME_MAX, siteIconSrc, sortSites, textCharCount, type NavGroup } 
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import GroupExpandedBody, { SiteTagBadge } from './GroupExpanded';
+import { useGlassBackdrop } from './GlassSurface';
 
 /**
  * B 型 · 编组列表卡（收起态占格由右键布局决定：默认 2 栏 × 2x）
@@ -89,8 +90,14 @@ export default function GroupListCard({
     onToggleExpand(group);
   };
 
+  // 液态玻璃（第五十八轮）：玻璃档 + 浏览器支持 SVG backdrop 折射时，hook 注入 --glass-bg 变量
+  //并命令式直写 backdrop-filter:url() 真实折射，圆角与卡自身一致（28px）；其余情况走原有底色路径
+  const { ref: glassRef, style: glassStyle } = useGlassBackdrop<HTMLDivElement>(28);
+
   return (
     <motion.div
+      ref={glassRef}
+      style={glassStyle}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}

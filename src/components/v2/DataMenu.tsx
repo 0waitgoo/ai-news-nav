@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, AlertTriangle, LogIn, LogOut } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { LocalStore } from '../../store/localStore';
+import { useGlassBackdrop } from './GlassSurface';
 import {
   beginOAuthState,
   buildOAuthAuthorizeUrl,
@@ -46,6 +47,9 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 液态玻璃（第五十八轮）：数据按钮与搜索框同为 .card-glass-surface（圆角 16px），玻璃档走真实折射；
+  //白天口径同搜索框——不翻白（index.css 钉回暗夜深色值），故不挂 .group-card-scope
+  const { ref: glassRef, style: glassStyle } = useGlassBackdrop<HTMLButtonElement>(16);
 
   /* ---- 本地文件保存 ---- */
   const [supported] = useState(fsAccessSupported);
@@ -481,13 +485,15 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   return (
     <div ref={containerRef} className="relative shrink-0">
       <button
+        ref={glassRef}
+        style={glassStyle}
         onClick={() => {
           setOpen((v) => !v);
           setMessage(null);
           setConfirmReset(false);
         }}
         title="数据：导出 / 导入 / 恢复默认"
-        className="card-glass-surface group-card-scope h-12 sm:h-13 px-2.5 sm:px-3 rounded-2xl border border-white/[0.07] text-white/45 hover:text-white/85 hover:border-white/15 flex items-center gap-1.5 text-xs transition-colors"
+        className="card-glass-surface h-12 sm:h-13 px-2.5 sm:px-3 rounded-2xl border border-white/[0.07] text-white/45 hover:text-white/85 hover:border-white/15 flex items-center gap-1.5 text-xs transition-colors"
       >
         <Database size={15} />
         <span className="hidden sm:inline">数据</span>

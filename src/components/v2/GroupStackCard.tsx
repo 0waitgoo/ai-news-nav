@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { groupIcon, siteIconSrc, siteLogoFallback, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { useGlassBackdrop } from './GlassSurface';
 
 /**
  * C 型 · 编组堆叠卡（默认 1 栏 × 1X）——「极简文件夹」卡面（第十二轮，用户在第三轮线稿中选定方案四）
@@ -60,6 +61,9 @@ export function StackCardFrame({
   rootProps?: Record<string, string>;
 }) {
   const color = tabColor?.trim() ? tabColor.trim() : '';
+  // 液态玻璃（第五十八轮）：卡身圆角 22px，玻璃档且浏览器支持时 hook 注入 --glass-bg 并命令式
+  //直写 backdrop-filter:url() 真实折射（压过下方内联 blur）；不支持时走 index.css 的 CSS 回退玻璃
+  const { ref: glassRef, style: glassStyle } = useGlassBackdrop<HTMLDivElement>(22);
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -95,12 +99,14 @@ export function StackCardFrame({
           悬停只提亮描边，不改变底色 */}
       <div
         data-stack-body
+        ref={glassRef}
         style={{
           background: 'rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4))',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
           /* 第五十三轮：卡身作容器查询上下文，卡面瓷砖尺寸变量（--face-tile-size）里的 cqw 以卡宽为基准解析 */
           containerType: 'inline-size',
+          ...glassStyle,
         }}
         className="group-card-scope absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
       >

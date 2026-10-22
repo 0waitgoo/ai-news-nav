@@ -35,6 +35,7 @@ import GroupPanel from './GroupPanel';
 import ComboCard from './ComboCard';
 import ComboPanel from './ComboPanel';
 import TrendingWidget from '../widgets/TrendingWidget';
+import { GlassDefsHost } from './GlassSurface';
 
 /**
  * V2 新主页（第三轮修订 + 第五轮拖拽排序 + 第八轮顶栏一行对齐）
@@ -1094,6 +1095,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
 
   return (
     <div className="flex flex-col" onContextMenu={handleBlankContextMenu}>
+      {/* 液态玻璃共享滤镜定义（第五十八轮）：编组卡/搜索面按尺寸分桶注册的 SVG 折射滤镜宿主，无桶时不渲染 */}
+      <GlassDefsHost />
       {/* 吸顶栏（一行对齐）：与下方卡片网格同款 4 栏 grid——左半 2 栏放页面导航图标组（靠左），
           右半 2 栏放搜索框 +「数据」入口（算在右半内）；整条栏吸顶，滚动时停留在视口顶部。
           移动端为 2 栏 grid，左右各半，仍保持一行不换行。 */}
