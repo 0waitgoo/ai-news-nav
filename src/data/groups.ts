@@ -22,6 +22,16 @@ export interface SiteEntry {
   frequency: number;
   /** 失效标记：AI 扫描发现失效时只打标记，不自动删除 */
   dead?: boolean;
+  /**
+   * 图标来源（第四十九轮）：缺省/'auto' = 沿用 logo 字段的自动管线（内置图标库 → favicon → 字母兜底）；
+   * 'text' = 用 iconText（1–2 字符）生成字母图标；'upload' = 用 iconImage（前端压缩后的 data URL）。
+   * 所有渲染站点图标处统一经 siteIconSrc 解析，不要直接读 logo。
+   */
+  iconMode?: 'auto' | 'text' | 'upload';
+  /** iconMode='text' 时的图标文字（1–2 个字符，中英文均可） */
+  iconText?: string;
+  /** iconMode='upload' 时的图片 data URL（最长边 ≤128px 的方形小图，体积受控才允许随同步走） */
+  iconImage?: string;
 }
 
 /** 编组卡片形态：list = B 详细列表卡（原地展开）；stack = C 文件夹堆叠卡（点击弹窗） */
@@ -140,6 +150,34 @@ const logoFallback = (name: string) =>
 
 export const siteLogoFallback = logoFallback;
 
+/* ---------- 站点图标解析（第四十九轮）：全站唯一的图标来源判定 ---------- */
+
+/** 字母图标底色板：按文字哈希稳定取色（同一文字永远同色） */
+const LETTER_ICON_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
+
+/** 用 1–2 个字符生成字母图标（本地 SVG data URI，不依赖网络）：圆角底 + 白色粗体居中字 */
+export function letterIconDataUri(text: string): string {
+  const chars = [...text.trim()].slice(0, 2);
+  const label = chars.join('') || '?';
+  let hash = 0;
+  for (const ch of label) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
+  const bg = LETTER_ICON_COLORS[hash % LETTER_ICON_COLORS.length];
+  const fontSize = chars.length > 1 ? 34 : 44;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">` +
+    `<rect width="96" height="96" rx="20" fill="${bg}"/>` +
+    `<text x="48" y="50" dy="0.36em" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="${fontSize}" font-weight="700" fill="#ffffff">${label.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>` +
+    `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/** 站点图标最终来源：upload → iconImage；text → 字母图；auto/存量 → logo（自动管线产物） */
+export function siteIconSrc(site: SiteEntry): string {
+  if (site.iconMode === 'upload' && site.iconImage) return site.iconImage;
+  if (site.iconMode === 'text' && site.iconText?.trim()) return letterIconDataUri(site.iconText);
+  return site.logo;
+}
+
 export const navGroups: NavGroup[] = [
   {
     id: 'ai-chat',
@@ -250,12 +288,16 @@ export const navGroups: NavGroup[] = [
   },
 ];
 
-/** 组内排序：置顶在前，其余按频率从高到低 */
+/**
+ * 组内排序（第三十八轮改版）：置顶在前，区内按「存储数组顺序」——手动拖动排序的结果就存数组序。
+ * 此前的 frequency（点击量）排序退役：frequency 从未由点击行为更新过（只是种子里的静态值，
+ * 且种子数组本身已按 frequency 降序编排），改数组序后存量数据的显示顺序不变；
+ * frequency 字段保留在模型里仅作兼容，不再参与排序。
+ */
 export function sortSites(sites: SiteEntry[]): SiteEntry[] {
-  return [...sites].sort((a, b) => {
-    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
-    return b.frequency - a.frequency;
-  });
+  const pinned = sites.filter((s) => s.pinned);
+  const normal = sites.filter((s) => !s.pinned);
+  return [...pinned, ...normal];
 }
 
 export function pinnedCount(group: NavGroup): number {
@@ -269,5 +311,5 @@ export function deadCount(group: NavGroup): number {
 /** 编组图标：取组内频率最高站点的 logo */
 export function groupIcon(group: NavGroup): string {
   const sorted = sortSites(group.sites);
-  return sorted[0]?.logo ?? '';
+  return sorted[0] ? siteIconSrc(sorted[0]) : '';
 }
