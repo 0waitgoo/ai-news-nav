@@ -261,27 +261,35 @@ export interface WidgetTint {
   to: string;
 }
 
+/**
+ * 小组件底色色板（第四十轮按用户给的参考图整套更换，共 8 个双色渐变模板；
+ * id 与 name 即图上的命名，后续维护按名找色。存量 widgetTints 存的是索引，
+ * 换板后旧索引按新板重新解释（颜色整体换一遍是预期行为）；越界索引在归一化时取模兜底。
+ * 07 青岚漫野 / 08 冰屿青澜：原图印的色值有误印，按图面观感取近似值。
+ */
 export const WIDGET_TINTS: WidgetTint[] = [
-  { id: 'violet', name: '紫', from: '#8b5cf6', to: '#6d28d9' },
-  { id: 'blue', name: '蓝', from: '#3b82f6', to: '#1d4ed8' },
-  { id: 'cyan', name: '青', from: '#06b6d4', to: '#0e7490' },
-  { id: 'emerald', name: '绿', from: '#10b981', to: '#047857' },
-  { id: 'lime', name: '黄绿', from: '#a3e635', to: '#65a30d' },
-  { id: 'amber', name: '琥珀', from: '#f59e0b', to: '#b45309' },
-  { id: 'orange', name: '橙', from: '#fb923c', to: '#ea580c' },
-  { id: 'rose', name: '玫红', from: '#f43f5e', to: '#be123c' },
-  { id: 'pink', name: '粉', from: '#ec4899', to: '#be185d' },
+  { id: 'midnight-mirage', name: '午夜幻影 Midnight Mirage', from: '#4A53FF', to: '#ACFFFF' },
+  { id: 'twilight-haze', name: '暮霞绮梦 Twilight Haze', from: '#FF7BE1', to: '#FCE3BF' },
+  { id: 'mist-isle', name: '雾屿青岚 Mist Isle', from: '#72CDFF', to: '#BFFFCC' },
+  { id: 'serene-horizon', name: '赤霞绯梦 Serene Horizon', from: '#FF7374', to: '#FDB5E3' },
+  { id: 'crimson-dream', name: '星河垂落 Crimson Dream', from: '#AB74FF', to: '#67EAF9' },
+  { id: 'aurora-gold', name: '暖阳熔金 Aurora Gold', from: '#FF8867', to: '#FFFF96' },
+  { id: 'emerald-glow', name: '青岚漫野 Emerald Glow', from: '#2EEA8B', to: '#B9F73C' },
+  { id: 'ice-cyan', name: '冰屿青澜 Ice Cyan', from: '#43D9FF', to: '#5FFBCB' },
 ];
 
-/** 按卡片 key 读底色：未分配（老数据/尚未补抽）或索引非法时返回 undefined（渲染侧不叠底色） */
+/** 按卡片 key 读底色：未分配（老数据/尚未补抽）时返回 undefined（渲染侧不叠底色）；
+ * 索引越界（色板换代后存量数据可能出现）时取模回绕，永远有底色、不报错 */
 export function widgetTintOf(tints: Record<string, number>, cardKey: string): WidgetTint | undefined {
   const i = tints[cardKey];
-  return typeof i === 'number' && WIDGET_TINTS[i] ? WIDGET_TINTS[i] : undefined;
+  if (typeof i !== 'number' || !Number.isFinite(i)) return undefined;
+  const len = WIDGET_TINTS.length;
+  return WIDGET_TINTS[((Math.trunc(i) % len) + len) % len];
 }
 
 /**
  * 随机抽一个底色索引：优先避开 exclude 里已占用的色（同屏组件尽量各不相同），
- * 全部占用时退化为全色板随机（色板 9 色、组件至多 4 个，正常不会走到）。
+ * 全部占用时退化为全色板随机（色板 8 色、组件至多 4 个，正常不会走到）。
  */
 export function pickWidgetTintIndex(exclude: Iterable<number>): number {
   const used = new Set(exclude);
@@ -296,7 +304,10 @@ function normalizeWidgetTints(raw: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   if (raw && typeof raw === 'object') {
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < WIDGET_TINTS.length) out[k] = v;
+      if (typeof v === 'number' && Number.isInteger(v) && v >= 0) {
+        // 色板换代兜底（第四十轮）：旧色板有 9 色、新板 8 色，存量索引 8 取模回绕到 0，不丢底色
+        out[k] = v % WIDGET_TINTS.length;
+      }
     }
   }
   return out;
@@ -655,6 +666,26 @@ export function validateStoreData(raw: unknown): StoreData | null {
       if (typeof site.description !== 'string') site.description = '';
       if (typeof site.logo !== 'string' || !site.logo) site.logo = logoForSite(site.name, site.url);
       if (typeof site.frequency !== 'number') site.frequency = 0;
+      // 图标配置（第四十九轮）：只保留合法组合，脏数据（模式不对/图片不是 data URL/体积失控）整组丢弃回 auto
+      if (site.iconMode !== 'text' && site.iconMode !== 'upload') {
+        delete site.iconMode;
+        delete site.iconText;
+        delete site.iconImage;
+      } else if (site.iconMode === 'text') {
+        if (typeof site.iconText !== 'string' || ![...site.iconText.trim()].length) delete site.iconMode;
+        else site.iconText = [...site.iconText.trim()].slice(0, 2).join('');
+        delete site.iconImage;
+      } else {
+        if (
+          typeof site.iconImage !== 'string' ||
+          !site.iconImage.startsWith('data:image/') ||
+          site.iconImage.length > 262144
+        ) {
+          delete site.iconMode;
+          delete site.iconImage;
+        }
+        delete site.iconText;
+      }
     }
   }
   const widgets = Array.isArray(data.widgets)
@@ -721,6 +752,29 @@ export interface SiteDraft {
   pinned: boolean;
   /** 站点标签（第二十六轮）：空字符串 = 无标签，落盘前经 cleanSiteTag 清洗 */
   tag: string;
+  /** 图标来源（第四十九轮）：auto = 自动管线；text = iconText 字母图；upload = iconImage 上传图 */
+  iconMode: 'auto' | 'text' | 'upload';
+  iconText: string;
+  iconImage: string;
+  /** auto 模式下表单「重新检索」得到的新 logo（空 = 保存时按既有管线处理） */
+  autoLogo: string;
+}
+
+/** 图标配置落盘（第四十九轮）：auto 不留字段（行为与改版前一致）；text/upload 写对应字段、清另一个 */
+function applyDraftIcon(site: SiteEntry, draft: SiteDraft): void {
+  if (draft.iconMode === 'text' && [...draft.iconText.trim()].length) {
+    site.iconMode = 'text';
+    site.iconText = [...draft.iconText.trim()].slice(0, 2).join('');
+    delete site.iconImage;
+  } else if (draft.iconMode === 'upload' && draft.iconImage.startsWith('data:image/')) {
+    site.iconMode = 'upload';
+    site.iconImage = draft.iconImage;
+    delete site.iconText;
+  } else {
+    delete site.iconMode;
+    delete site.iconText;
+    delete site.iconImage;
+  }
 }
 
 export function useLocalStore() {
@@ -750,17 +804,19 @@ export function useLocalStore() {
         if (group) {
           const minFreq = group.sites.reduce((min, s) => Math.min(min, s.frequency), 0);
           const tag = cleanSiteTag(draft.tag);
-          group.sites.push({
+          const site: SiteEntry = {
             id: genId('s'),
             name: draft.name,
             url: draft.url,
             description: draft.description,
-            logo: logoForSite(draft.name, draft.url),
+            logo: draft.autoLogo || logoForSite(draft.name, draft.url),
             aliases: draft.aliases,
             pinned: draft.pinned,
             frequency: Math.min(0, minFreq) - 1,
             ...(tag ? { tag } : {}),
-          });
+          };
+          applyDraftIcon(site, draft);
+          group.sites.push(site);
         }
         return d;
       });
@@ -771,19 +827,65 @@ export function useLocalStore() {
   const updateSite = useCallback(
     (groupId: string, siteId: string, draft: SiteDraft) => {
       update((d) => {
-        const site = d.groups.find((g) => g.id === groupId)?.sites.find((s) => s.id === siteId);
-        if (site) {
+        const group = d.groups.find((g) => g.id === groupId);
+        const site = group?.sites.find((s) => s.id === siteId);
+        if (group && site) {
+          const wasPinned = !!site.pinned;
           site.name = draft.name;
           site.url = draft.url;
           site.description = draft.description;
           site.aliases = draft.aliases;
           site.pinned = draft.pinned;
-          site.logo = logoForSite(draft.name, draft.url);
+          // 图标（第四十九轮）：表单带回的 autoLogo 优先（「重新检索」或名称/网址变更时表单已重取）；
+          // 没带回则维持既有 logo，不再每次保存都无条件重算（图标已可手动管理）
+          site.logo = draft.autoLogo || site.logo || logoForSite(draft.name, draft.url);
+          applyDraftIcon(site, draft);
           // 标签：清洗后落盘，清空输入即移除标签（徽标随之消失）
           const tag = cleanSiteTag(draft.tag);
           if (tag) site.tag = tag;
           else delete site.tag;
+          /* 置顶状态变化时换区落位（第三十八轮，配合区内拖动排序的分区模型）：
+           * 新置顶 → 进置顶区末尾；取消置顶 → 进普通区开头。其余编辑不改变位置。 */
+          if (!!draft.pinned !== wasPinned) {
+            group.sites = group.sites.filter((s) => s !== site);
+            if (draft.pinned) {
+              const lastPinned = group.sites.map((s) => !!s.pinned).lastIndexOf(true);
+              group.sites.splice(lastPinned + 1, 0, site);
+            } else {
+              const pinnedTotal = group.sites.filter((s) => s.pinned).length;
+              group.sites.splice(pinnedTotal, 0, site);
+            }
+          }
         }
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /**
+   * 组内站点手动排序落盘（第三十八轮）：入参为完整的显示顺序（站点 id 数组，
+   * 已由拖动侧按置顶分区夹好）。存储数组即显示顺序（sortSites 只做置顶分区稳定划分），
+   * 这里再按 pinned 稳定分区一次兜底，保证任何调用方传错序也不会跨区；
+   * 未出现在入参里的站点按原相对顺序补在末尾，未知 id 忽略。
+   */
+  const reorderSites = useCallback(
+    (groupId: string, orderedIds: string[]) => {
+      update((d) => {
+        const group = d.groups.find((g) => g.id === groupId);
+        if (!group) return d;
+        const byId = new Map<string, SiteEntry>();
+        for (const s of group.sites) if (s.id) byId.set(s.id, s);
+        const picked: SiteEntry[] = [];
+        for (const id of orderedIds) {
+          const site = id ? byId.get(id) : undefined;
+          if (site) {
+            picked.push(site);
+            byId.delete(id);
+          }
+        }
+        const next = [...picked, ...group.sites.filter((s) => byId.has(s.id))];
+        group.sites = [...next.filter((s) => s.pinned), ...next.filter((s) => !s.pinned)];
         return d;
       });
     },
@@ -912,7 +1014,7 @@ export function useLocalStore() {
   /* ---------- C 卡组合（第二十一轮） ---------- */
 
   /**
-   * 合并两个文件夹式编组：拖拽 dragged 压住 target 满 2.5 秒松手时调用。
+   * 合并两个文件夹式编组：拖拽 dragged 充能满 2 秒后压住 target 松手时调用（第三十七轮时长口径）。
    * 组合落在 target 的位置；groupIds = [dragged, target]——被拖来的组放左 tab 且默认选中（与用户示意图一致）；
    * 组合尺寸继承 target 当前尺寸（存 groupLayouts 的 combo key；成员各自的布局条目不动，拆分时自然恢复）。
    */
@@ -1283,6 +1385,20 @@ export function useLocalStore() {
     [update],
   );
 
+  /** 清空全部已完成待办（第四十八轮，「已完成」分组头右键删除）：
+   * 顶层已完成条目（普通待办 done / 整组全勾）整条删除；未全勾的组保留结构，
+   * 只摘掉组内已勾的子项；未完成项与空组不动 */
+  const clearCompletedTasks = useCallback(() => {
+    update((d) => {
+      d.tasks = d.tasks
+        .filter((t) => !taskEntryDone(t))
+        .map((t) =>
+          Array.isArray(t.children) ? { ...t, children: t.children.filter((c) => !c.done) } : t,
+        );
+      return d;
+    });
+  }, [update]);
+
   /** 新建长期计划（第十九轮两型）：count 带目标数+单位；date 带目标日，startDate 记今天 */
   const addPlan = useCallback(
     (title: string, opts: { mode: PlanMode; targetCount?: number; unit?: string; deadline?: string }) => {
@@ -1432,6 +1548,7 @@ export function useLocalStore() {
     addSite,
     updateSite,
     deleteSite,
+    reorderSites,
     addGroup,
     renameGroup,
     setGroupSubtitle,
@@ -1462,6 +1579,7 @@ export function useLocalStore() {
     toggleTask,
     renameTask,
     deleteTask,
+    clearCompletedTasks,
     addPlan,
     updatePlan,
     bumpPlanCount,

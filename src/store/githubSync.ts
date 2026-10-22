@@ -1,7 +1,7 @@
 /**
- * GitHub 同步（第十五轮）：把完整数据 JSON 同步到用户自己的 GitHub 仓库文件。
+ * GitHub 同步（第十五轮；第五十轮起只保留 GitHub 登录）：把完整数据 JSON 同步到用户自己的 GitHub 仓库文件。
  * - 前端直连 api.github.com（Contents API），不经过任何中间服务器；
- * - 配置与令牌只存浏览器本地 localStorage 的独立 key（ainav-github-sync-v1），
+ * - 登录凭证只存浏览器本地 localStorage 的独立 key（ainav-github-sync-v1），
  *   **绝不写入同步的 JSON 内容、也绝不进导出 JSON**（同步内容就是 store.data 本身）；
  * - 冲突裁决靠数据里的 updatedAt：拉取时云端更新则覆盖本地；推送遇 sha 冲突先重新拉取，
  *   云端更新用云端、本地更新换新 sha 重试，仍失败交给用户手动裁决（见 DataMenu）。
@@ -22,7 +22,7 @@ export interface GithubSyncMeta extends GithubSyncConfig {
   /** 本地与云端最后一次达成一致时的数据 updatedAt；本地 updatedAt 大于它 = 有待推送变更 */
   baseUpdatedAt: number;
   lastSyncedAt: number | null;
-  /** 凭证来源（GitHub 登录轮）：'pat' = 手填细粒度令牌（备用）；'oauth' = GitHub 一键登录换来的令牌 */
+  /** 凭证来源：第五十轮起只剩 'oauth'（GitHub 一键登录）；'pat' 仅为旧本机存储的遗留值，加载时按未登录处理 */
   authMode: 'pat' | 'oauth';
   /** OAuth 登录的 GitHub 用户名（authMode='oauth' 时有值，仅本机展示用） */
   oauthLogin: string;
@@ -40,7 +40,7 @@ export const DEFAULT_GITHUB_SYNC_META: GithubSyncMeta = {
   lastSha: null,
   baseUpdatedAt: 0,
   lastSyncedAt: null,
-  authMode: 'pat',
+  authMode: 'oauth',
   oauthLogin: '',
 };
 
@@ -50,18 +50,21 @@ export function loadGithubSyncMeta(): GithubSyncMeta {
     if (raw) {
       const p = JSON.parse(raw) as Partial<GithubSyncMeta>;
       const str = (v: unknown, fallback: string) => (typeof v === 'string' && v.trim() ? v : fallback);
+      /* 第五十轮：令牌（PAT）方式已下线。本机若存有旧 PAT 配置（authMode 非 'oauth'），
+       * 一律按未登录处理：丢弃凭证、关同步、不报错，用户改走 GitHub 登录即可。 */
+      const isOauth = p.authMode === 'oauth';
       return {
-        enabled: p.enabled === true,
+        enabled: isOauth && p.enabled === true,
         owner: str(p.owner, ''),
         repo: str(p.repo, ''),
         branch: str(p.branch, 'main'),
         path: str(p.path, 'ainav-data.json'),
-        token: typeof p.token === 'string' ? p.token : '',
+        token: isOauth && typeof p.token === 'string' ? p.token : '',
         lastSha: typeof p.lastSha === 'string' ? p.lastSha : null,
         baseUpdatedAt: typeof p.baseUpdatedAt === 'number' ? p.baseUpdatedAt : 0,
         lastSyncedAt: typeof p.lastSyncedAt === 'number' ? p.lastSyncedAt : null,
-        authMode: p.authMode === 'oauth' ? 'oauth' : 'pat',
-        oauthLogin: typeof p.oauthLogin === 'string' ? p.oauthLogin : '',
+        authMode: 'oauth',
+        oauthLogin: isOauth && typeof p.oauthLogin === 'string' ? p.oauthLogin : '',
       };
     }
   } catch {
@@ -81,31 +84,6 @@ export function saveGithubSyncMeta(meta: GithubSyncMeta): void {
 /** 配置是否完整（能发起同步的最低要求） */
 export function githubConfigComplete(m: GithubSyncMeta): boolean {
   return Boolean(m.owner && m.repo && m.token);
-}
-
-/**
- * 解析用户粘贴的仓库地址：支持完整 URL（https://github.com/owner/repo，
- * 可带尾随路径如 /tree/main、.git 后缀）与 owner/repo 简写。解析不出返回 null。
- */
-export function parseRepoInput(input: string): { owner: string; repo: string } | null {
-  const s = input.trim();
-  if (!s) return null;
-  let rest = s;
-  const urlMatch = rest.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/(.+)$/i);
-  if (urlMatch) rest = urlMatch[1];
-  const parts = rest.split('/').filter(Boolean);
-  if (parts.length < 2) return null;
-  const owner = parts[0];
-  const repo = parts[1].replace(/\.git$/i, '');
-  if (!owner || !repo) return null;
-  if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(repo)) return null;
-  return { owner, repo };
-}
-
-/** 令牌掩码展示：只露尾 4 位，其余圆点 */
-export function maskToken(token: string): string {
-  if (!token) return '未设置';
-  return token.length > 4 ? `••••••${token.slice(-4)}` : '••••••';
 }
 
 /* ---- UTF-8 安全的 base64（数据含中文，不能直接 btoa） ---- */
@@ -160,8 +138,8 @@ export type GhGetResult =
   | { kind: 'error'; message: string };
 
 function httpErrorMessage(status: number): string {
-  if (status === 401) return '令牌无效或已过期，请检查令牌（401）';
-  if (status === 403) return 'GitHub 拒绝访问：令牌权限不足或触发限流（403）';
+  if (status === 401) return '登录状态无效或已过期，请重新登录（401）';
+  if (status === 403) return 'GitHub 拒绝访问：权限不足或触发限流（403）';
   return `GitHub 请求失败（${status}）`;
 }
 
@@ -179,7 +157,7 @@ export async function ghGetFile(cfg: GithubSyncConfig): Promise<GhGetResult> {
       const repoRes = await fetch(`${API_BASE}/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}`, {
         headers: ghHeaders(cfg),
       });
-      if (repoRes.status === 404) return { kind: 'error', message: '仓库不存在，或令牌没有访问该仓库的权限' };
+      if (repoRes.status === 404) return { kind: 'error', message: '仓库不存在或无权访问' };
       if (repoRes.status === 401) return { kind: 'error', message: httpErrorMessage(401) };
       if (!repoRes.ok) return { kind: 'error', message: httpErrorMessage(repoRes.status) };
     } catch {
@@ -201,7 +179,7 @@ export async function ghGetFile(cfg: GithubSyncConfig): Promise<GhGetResult> {
   }
 }
 
-/* ---- GitHub OAuth 登录（默认同步入口；令牌方式保留作备用）----
+/* ---- GitHub OAuth 登录（唯一的同步入口）----
  * 流程：前端从 /api/github-oauth?config=1 拿公开 client_id → 跳 GitHub 授权页 →
  * 回跳站点根带 ?code&state → 前端把 code 交给 /api/github-oauth 换 access_token
  * （client_secret 只在服务端环境变量里，前端永远接触不到）。
@@ -335,7 +313,7 @@ export async function ensureOAuthRepo(
   if (createRes.status === 401 || createRes.status === 403) {
     return { error: httpErrorMessage(createRes.status) };
   }
-  return { error: `创建同步仓库失败（${createRes.status}），请稍后重试或改用令牌方式` };
+  return { error: `创建同步仓库失败（${createRes.status}），请稍后重试` };
 }
 
 export type GhPutResult = { kind: 'ok'; sha: string } | { kind: 'conflict' } | { kind: 'error'; message: string };
