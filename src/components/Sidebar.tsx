@@ -49,9 +49,9 @@ function NavItem({ icon, active = false, onClick, isHome = false, label }: { ico
       aria-label={label}
       title={label}
       className={`p-2 sm:p-2.5 rounded-xl transition-all duration-300 flex items-center justify-center ${isHome
-        ? 'bg-gradient-to-br from-indigo-500/30 to-purple-500/30 text-white shadow-lg shadow-indigo-500/20 border border-indigo-400/30'
+        ? 'bg-gradient-to-br from-indigo-500/30 to-purple-500/30 text-white border border-indigo-400/30'
         : active
-        ? 'bg-white/15 text-white shadow-inner border border-white/10'
+        ? 'bg-white/15 text-white border border-white/10'
         : 'text-white/50 hover:text-white hover:bg-white/10'}`}
     >
       {icon}
