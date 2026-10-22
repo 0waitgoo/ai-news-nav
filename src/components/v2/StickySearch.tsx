@@ -74,7 +74,7 @@ export default function StickySearch({
             --glass-* 变量走真实折射）；白天**不**翻白——index.css 有专门规则把本面钉回暗夜深色值，
             故本面不再挂 .group-card-scope（白天翻深文字的作用域标记）。
             下拉面板是本 div 的兄弟节点，不在作用域内，保持实色不动 */}
-        <div ref={glassRef} style={glassStyle} className="card-glass-surface flex items-center gap-2 sm:gap-3 h-12 sm:h-13 px-3 sm:px-4 rounded-2xl border border-white/10 shadow-lg shadow-black/30 focus-within:border-indigo-400/40 transition-colors">
+        <div ref={glassRef} style={glassStyle} className="card-glass-surface flex items-center gap-2 sm:gap-3 h-12 sm:h-13 px-3 sm:px-4 rounded-2xl border border-white/10 focus-within:border-indigo-400/40 transition-colors">
           <Search size={18} className="text-white/40 shrink-0" />
           <input
             ref={inputRef}

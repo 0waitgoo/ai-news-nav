@@ -22,6 +22,8 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
   const displayPrefs = useDisplayPrefs();
   const alphaPct = Math.round(displayPrefs.groupCardAlpha * 100);
   const widgetAlphaPct = Math.round(displayPrefs.widgetAlpha * 100);
+  // 背景模糊（第六十二轮）：本地图片背景的模糊强度，同样只存本机
+  const bgBlurPct = Math.round(displayPrefs.bgBlur * 100);
 
   useEffect(() => {
     const onPointerDown = (e: MouseEvent) => {
@@ -101,8 +103,6 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
                 );
               })}
             </div>
-            {usingLocal && <p className="px-1 pt-2 text-[11px] text-white/40">正在使用本地图片；点选预设将切回预设背景。</p>}
-
             <div className="my-3 border-t border-white/[0.07]" />
 
             <p className="px-1 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">外观模式</p>
@@ -163,13 +163,25 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
               />
               <span className="text-[11px] text-white/60 w-9 text-right shrink-0">{widgetAlphaPct}%</span>
             </div>
-            <p className="px-1 pt-1 text-[11px] text-white/40 leading-relaxed">
-              两根滑杆各调各的：编组卡的只管列表 / 文件夹 / 组合卡底框（液态玻璃下也管玻璃浓淡）；小组件的只管资讯、话题、榜单、计划四张小组件的底色。外观与透明度只保存在这台设备上。
-            </p>
-
             <div className="my-3 border-t border-white/[0.07]" />
 
             <p className="px-1 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">本地图片</p>
+            {/* 背景模糊滑杆（第六十二轮）：只作用于本地图片背景之上的 backdrop 模糊，预设背景不受影响 */}
+            <p className="px-1 pb-1 text-[11px] text-white/60">背景模糊</p>
+            <div className="px-1 pb-2.5 flex items-center gap-2.5">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={bgBlurPct}
+                data-bg-blur-slider
+                onChange={(e) => setDisplayPrefs({ bgBlur: Number(e.target.value) / 100 })}
+                className="flex-1 accent-indigo-500 cursor-pointer"
+                aria-label="背景模糊"
+              />
+              <span className="text-[11px] text-white/60 w-9 text-right shrink-0">{bgBlurPct}%</span>
+            </div>
             <p className="px-1 pb-2.5 text-[11px] text-white/40 leading-relaxed">
               图片只保存在你这台设备的浏览器里，不会上传到任何服务器。
             </p>
