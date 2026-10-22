@@ -18,12 +18,13 @@ export default function App() {
   const background = store.data.background;
   const preset = backgroundPresetOf(background.presetId);
 
-  // 本机显示偏好（第四十二轮）：外观模式 + 编组卡底框透明度，写到 <html> 供样式层消费
+  // 本机显示偏好（第四十二轮）：外观模式 + 编组卡底框透明度，写到 <html> 供样式层消费。
+  // 白天模式的最终定义（第五十八轮收敛）：与暗夜完全相同、只有 B/C/组合卡卡面变白底深字——
+  // 背景层不因主题做任何区分渲染（旧版「白天压白遮罩洗浅背景」已撤除，见下方遮罩注释）。
   const displayPrefs = useDisplayPrefs();
   useEffect(() => {
     applyDisplayPrefs(displayPrefs);
   }, [displayPrefs]);
-  const light = displayPrefs.theme === 'light';
 
   // 本地背景图：kind='local' 时从 IndexedDB 读 Blob 生成 object URL；读不到（换设备导入等）回落预设
   const [localUrl, setLocalUrl] = useState<string | null>(null);
@@ -89,12 +90,14 @@ export default function App() {
             }`}
           />
         )}
-        {/* 遮罩：暗夜压黑保文字可读；白天改压白洗浅背景（预设/本地图都自动变浅，第四十二轮） */}
+        {/* 遮罩：三档外观一律压黑保文字可读。白天旧版曾改压白（bg-white/55）洗浅整个背景，
+            用户实测「整个页面被一层白雾罩住发灰发白」后于第五十八轮撤除——白天只让编组卡
+            卡面变白（index.css 作用域规则），背景层与暗夜像素级一致，不叠任何白色 veil */}
         <div
-          className={`absolute inset-0 ${light ? 'bg-white/55' : 'bg-black/50'} ${showLocalImage ? 'backdrop-blur-[6px]' : ''}`}
+          className={`absolute inset-0 bg-black/50 ${showLocalImage ? 'backdrop-blur-[6px]' : ''}`}
         ></div>
-        {/* DarkVeil Background（仅默认预设、仅暗夜：深色纹理与白天模式打架） */}
-        {!light && background.kind === 'preset' && background.presetId === 'violet' && (
+        {/* DarkVeil Background（仅默认预设：三档外观都在，背景层不随主题变的口径下与暗夜一致） */}
+        {background.kind === 'preset' && background.presetId === 'violet' && (
           <div className="absolute inset-0 z-1">
             <DarkVeil hueShift={0} noiseIntensity={0} scanlineIntensity={0} speed={1} scanlineFrequency={0} warpAmount={2} />
           </div>
