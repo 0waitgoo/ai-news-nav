@@ -29,7 +29,6 @@ import FileToolsCard from './FileToolsCard';
 import NewsCard from './NewsCard';
 import RankingCard from './RankingCard';
 import TaskCard from './TaskCard';
-import TaskPanel from './TaskPanel';
 import GroupListCard from './GroupListCard';
 import GroupStackCard, { StackGroupIcon } from './GroupStackCard';
 import GroupPanel from './GroupPanel';
@@ -90,7 +89,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [panelGroupId, setPanelGroupId] = useState<string | null>(null);
   const [comboPanelId, setComboPanelId] = useState<string | null>(null);
-  const [showTaskPanel, setShowTaskPanel] = useState(false);
   const [showWidgetPanel, setShowWidgetPanel] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
@@ -353,7 +351,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // 有弹窗/面板开着时 Esc 归它们自己处理，不抢
-      if (panelGroupId || comboPanelId || showTaskPanel || showWidgetPanel || showNewGroup) return;
+      if (panelGroupId || comboPanelId || showWidgetPanel || showNewGroup) return;
       setExpandedId(null);
     };
     document.addEventListener('pointerdown', onDocPointerDown);
@@ -364,7 +362,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       document.removeEventListener('click', onDocClickCapture, true);
       document.removeEventListener('keydown', onKey);
     };
-  }, [expandedId, panelGroupId, comboPanelId, showTaskPanel, showWidgetPanel, showNewGroup]);
+  }, [expandedId, panelGroupId, comboPanelId, showWidgetPanel, showNewGroup]);
 
   const scrollToGroup = (id: string) => {
     window.setTimeout(() => {
@@ -737,7 +735,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         return (
           <TaskCard
             store={store}
-            onOpen={() => setShowTaskPanel(true)}
             delay={delay}
             colSpan={phoneViewport ? 1 : widgetLayouts.task.colSpan}
             heightUnits={widgetLayouts.task.heightUnits}
@@ -1400,9 +1397,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         onClose={() => setComboPanelId(null)}
         onBecomeList={handleComboBecomeList}
       />
-
-      {/* 计划任务面板（第十八轮） */}
-      <TaskPanel open={showTaskPanel} store={store} onClose={() => setShowTaskPanel(false)} />
 
       {/* 右键尺寸菜单（实色）：A 型组件与 B 型编组共用 */}
       <AnimatePresence>
