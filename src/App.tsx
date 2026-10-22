@@ -11,6 +11,7 @@ import { applyDisplayPrefs, useDisplayPrefs } from './store/displayPrefs';
 
 const NewsPage = React.lazy(() => import('./components/pages/NewsPage'));
 const NavPage = React.lazy(() => import('./components/pages/NavPage'));
+const ToolsPage = React.lazy(() => import('./components/pages/ToolsPage'));
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -62,6 +63,8 @@ export default function App() {
         return <NewsPage />;
       case 'nav':
         return <NavPage />;
+      case 'tools':
+        return <ToolsPage />;
       default:
         return <HomePage onNavigate={handlePageChange} store={store} />;
     }
@@ -111,7 +114,7 @@ export default function App() {
         {/* 子页面顶栏与主页吸顶栏同款渲染（第四十三轮修漂移）：同样的 4 栏 grid 左半——
             背景按钮 + 导航图标组，位置/间距/高亮与主页完全一致，不再用旧的居中导航行；
             右半（搜索/数据）是主页专属，子页面留空占位保持左半位置不变 */}
-        {(currentPage === 'news' || currentPage === 'nav') && (
+        {(currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools') && (
           /* 不带主页那条的 -mt-1：主页吸顶栏在滚动容器内、边距折叠后净偏移与此处不同，
              实测去掉后三页图标组 Y 坐标一致（均为主页基准） */
           <div className="sticky top-0 z-50 pt-1 pb-2 shrink-0">
