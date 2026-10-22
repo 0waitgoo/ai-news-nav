@@ -282,3 +282,25 @@ body {
 @media (min-width: 768px) {
   .topbar-shade--home { height: 114px; }
 }
+
+/* ---------- 第七十轮：长按手势的移动端原生冲突修复 ----------
+ * iOS Safari 长按会选中文字（蓝选区+放大镜）并弹系统 callout 菜单，抢在自定义
+ * 右键菜单前面。卡片/小组件/弹窗/右键菜单这些交互区一律禁选字、禁 callout；
+ * 点按灰闪全局关掉。
+ * 红线：输入类元素（搜索框、添加待办、改名框等）显式恢复——人家还要选中/粘贴。
+ * user-select 会继承，故恢复规则写在同一作用域后；touch-callout 不继承，
+ * 恢复行只为保险（个别浏览器对表单控件的 callout 取祖先值）。 */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+:is([data-card-key], [data-panel-root], [data-site-menu], [data-size-menu], [data-blank-menu], [data-row-menu], [data-done-clear-menu]) {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+:is([data-card-key], [data-panel-root], [data-site-menu], [data-size-menu], [data-blank-menu], [data-row-menu], [data-done-clear-menu])
+  :is(input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]) {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
