@@ -1399,6 +1399,33 @@ export function useLocalStore() {
     });
   }, [update]);
 
+  /** 拖拽合并成组（第五十四轮，与手动建组/加步骤同一套 update 落盘口径）：
+   * 把顶层条目 source 拖到 target 上松手时调用——target 是普通待办就地升为组（id/标题/位置不变），
+   * 是组则保持组长；source 为普通待办 → 它本身成为 target 的一条步骤（标题/完成态原样带入）；
+   * source 为组 → 它自己先成为一条步骤（完成态取组的推导完成态），其原步骤依次平铺追加在后，不做嵌套。
+   * 新步骤一律追加到 target 步骤末尾，source 从顶层移除；source===target 或任一不存在时忽略 */
+  const mergeTaskIntoGroup = useCallback(
+    (sourceId: string, targetId: string) => {
+      if (sourceId === targetId) return;
+      update((d) => {
+        const source = d.tasks.find((t) => t.id === sourceId);
+        const target = d.tasks.find((t) => t.id === targetId);
+        if (!source || !target) return d;
+        if (!Array.isArray(target.children)) target.children = [];
+        const flat: TaskChild[] = [
+          { id: source.id, title: source.title, done: isTaskGroup(source) ? taskGroupDone(source) : source.done },
+        ];
+        if (isTaskGroup(source)) {
+          for (const c of source.children ?? []) flat.push({ id: c.id, title: c.title, done: c.done });
+        }
+        target.children.push(...flat);
+        d.tasks = d.tasks.filter((t) => t.id !== sourceId);
+        return d;
+      });
+    },
+    [update],
+  );
+
   /** 新建长期计划（第十九轮两型）：count 带目标数+单位；date 带目标日，startDate 记今天 */
   const addPlan = useCallback(
     (title: string, opts: { mode: PlanMode; targetCount?: number; unit?: string; deadline?: string }) => {
@@ -1580,6 +1607,7 @@ export function useLocalStore() {
     renameTask,
     deleteTask,
     clearCompletedTasks,
+    mergeTaskIntoGroup,
     addPlan,
     updatePlan,
     bumpPlanCount,
