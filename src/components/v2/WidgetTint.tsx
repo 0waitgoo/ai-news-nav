@@ -8,9 +8,10 @@ import { useDisplayPrefs } from '../../store/displayPrefs';
  * 整体绝对定位铺满卡片、pointer-events-none；卡片内容需以 relative 层级盖在其上。
  * data-widget-tint 记色板 id，供自测断言逐卡底色与持久化；
  * data-widget-watermark 记水印字符，供自测断言居中 Emoji 水印。
- * 第五十五轮：渐变 tint 的强度改由「底框透明度」滑杆（displayPrefs.groupCardAlpha）统一驱动——
- * strength = alpha / 0.45 并钳到 [0,1]：滑杆 0.4（默认）时约 0.89，与改版前观感大致相当；
- * 拉到低端 tint 趋近消失、高端（≥0.45）全强度。水印不透明度不随滑杆变（仍走 watermarkOpacity）。
+ * 第五十五轮：渐变 tint 的强度曾由「底框透明度」滑杆（displayPrefs.groupCardAlpha）耦合驱动。
+ * 第六十轮：滑杆拆分——tint 强度改吃独立字段 displayPrefs.widgetAlpha（背景面板「小组件底色
+ * 不透明度」滑杆），与编组卡滑杆彻底解耦；旧耦合公式只留在 displayPrefs 里作老用户迁移推导。
+ * 水印不透明度不随滑杆变（仍走 watermarkOpacity）。卡片与面板共用本组件，渲染口径一致。
  */
 export default function WidgetTintLayer({
   tint,
@@ -23,8 +24,8 @@ export default function WidgetTintLayer({
   /** 水印不透明度覆盖（第五十二轮：计划卡单独调低到 0.1，避免 2x 时水印压住长期计划区干扰阅读；其他组件不传 = 默认 0.16） */
   watermarkOpacity?: number;
 }) {
-  const { groupCardAlpha } = useDisplayPrefs();
-  const tintStrength = Math.min(1, Math.max(0, groupCardAlpha / 0.45));
+  const { widgetAlpha } = useDisplayPrefs();
+  const tintStrength = Math.min(1, Math.max(0, widgetAlpha));
   return (
     <div
       aria-hidden

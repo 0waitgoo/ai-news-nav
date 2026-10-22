@@ -17,9 +17,11 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const background = store.data.background;
   const usingLocal = background.kind === 'local';
-  // 本机显示偏好（第四十二轮）：外观模式 + 编组卡底框透明度，只存本机、不随数据同步
+  // 本机显示偏好（第四十二轮）：外观模式 + 透明度滑杆，只存本机、不随数据同步
+  // 第六十轮：滑杆拆成两根——编组卡底框透明度（groupCardAlpha）与小组件底色不透明度（widgetAlpha）
   const displayPrefs = useDisplayPrefs();
   const alphaPct = Math.round(displayPrefs.groupCardAlpha * 100);
+  const widgetAlphaPct = Math.round(displayPrefs.widgetAlpha * 100);
 
   useEffect(() => {
     const onPointerDown = (e: MouseEvent) => {
@@ -130,7 +132,8 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
               })}
             </div>
 
-            <p className="px-1 pt-3 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">底框透明度</p>
+            <p className="px-1 pt-3 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">透明度</p>
+            <p className="px-1 pb-1 text-[11px] text-white/60">编组卡底框透明度</p>
             <div className="px-1 flex items-center gap-2.5">
               <input
                 type="range"
@@ -145,8 +148,23 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
               />
               <span className="text-[11px] text-white/60 w-9 text-right shrink-0">{alphaPct}%</span>
             </div>
+            <p className="px-1 pt-2.5 pb-1 text-[11px] text-white/60">小组件底色不透明度</p>
+            <div className="px-1 flex items-center gap-2.5">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={widgetAlphaPct}
+                data-widget-alpha-slider
+                onChange={(e) => setDisplayPrefs({ widgetAlpha: Number(e.target.value) / 100 })}
+                className="flex-1 accent-indigo-500 cursor-pointer"
+                aria-label="小组件底色不透明度"
+              />
+              <span className="text-[11px] text-white/60 w-9 text-right shrink-0">{widgetAlphaPct}%</span>
+            </div>
             <p className="px-1 pt-1 text-[11px] text-white/40 leading-relaxed">
-              同时控制编组卡（列表 / 文件夹 / 组合卡）底框与小组件底色的浓淡。外观与透明度只保存在这台设备上。
+              两根滑杆各调各的：编组卡的只管列表 / 文件夹 / 组合卡底框（液态玻璃下也管玻璃浓淡）；小组件的只管资讯、话题、榜单、计划四张小组件的底色。外观与透明度只保存在这台设备上。
             </p>
 
             <div className="my-3 border-t border-white/[0.07]" />

@@ -35,6 +35,9 @@ import { useDisplayPrefs } from '../../store/displayPrefs';
  *  borderWidth 0.07 / redOffset 0 / greenOffset 10 / blueOffset 20 / saturation 1 /
  *  backgroundOpacity 0.1（此值是滑杆 40% 处的基准，随滑杆线性缩放，见 glassTintOpacity）。
  *  borderRadius 不用截图的 30px：由各宿主传入自身圆角（B 卡 28 / C 卡 22 / 搜索面 16）。
+ * 第六十轮（用户新口径）：三通道偏移统一改为 -50（redOffset / greenOffset / blueOffset
+ *  均为 -50），三通道位移 scale 因此同为 -230——各通道位移量一致，边缘不再有彩虹色差
+ *  条纹，只剩纯折射；其余参数一律不动。
  */
 export const GLASS_PARAMS = {
   distortionScale: -180,
@@ -43,9 +46,9 @@ export const GLASS_PARAMS = {
   brightness: 50,
   opacity: 0.93,
   borderWidth: 0.07,
-  redOffset: 0,
-  greenOffset: 10,
-  blueOffset: 20,
+  redOffset: -50,
+  greenOffset: -50,
+  blueOffset: -50,
   saturation: 1,
   backgroundOpacity: 0.1,
   mixBlendMode: 'difference',
