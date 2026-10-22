@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
  * 本机显示偏好（第四十二轮）：外观模式（暗夜/白天）+ 编组卡底框透明度。
  * 与背景设置同属「这台设备上的显示设置」家族，但按产品口径**不进 store.data**：
  * 不参与 JSON 导出/导入、不随 GitHub 同步走，换设备各设各的。故独立存一个 localStorage key。
- * 生效方式：App 把 theme 写到 <html data-theme>、把 alpha 写成 CSS 变量 --group-card-alpha，
- * 样式层（index.css 的 [data-theme="light"] 覆盖与 .group-card-panel）据此翻色/调透明度。
+ * 生效方式：App 把 theme 写到 <html data-theme>、把 alpha 写成 CSS 变量 --group-card-alpha。
+ * 白天模式的作用域（第五十一轮收窄）：只有编组卡（B/C/组合卡）卡面变白——
+ * index.css 里 [data-theme="light"] 的覆盖全部限定在 .group-card-panel / .group-card-scope 后代内；
+ * 页面背景、顶栏、面板/弹窗、A 型小组件不翻色，保持暗夜样式。
  */
 export type DisplayTheme = 'dark' | 'light';
 
@@ -42,7 +44,7 @@ export function loadDisplayPrefs(): DisplayPrefs {
   }
 }
 
-/** 把偏好应用到文档根：data-theme 供 CSS 覆盖层翻色，--group-card-alpha 供编组卡底色取 alpha */
+/** 把偏好应用到文档根：data-theme 供编组卡作用域内的 CSS 覆盖翻色，--group-card-alpha 供编组卡底色取 alpha */
 export function applyDisplayPrefs(prefs: DisplayPrefs): void {
   const root = document.documentElement;
   root.dataset.theme = prefs.theme;
