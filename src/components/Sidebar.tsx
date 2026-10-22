@@ -1,18 +1,14 @@
 import React from 'react';
-import { Home, Compass, Newspaper } from 'lucide-react';
+import { Home, Compass } from 'lucide-react';
 
 /**
- * 顶部页面导航（资讯 / 首页 / 导航三图标，含选中态）。
- * 主页吸顶栏的左半直接用 TopNav；资讯/导航页仍用 Sidebar 的居中行包装。
+ * 顶部页面导航（首页 / 导航两图标，含选中态）。
+ * 第四十三轮：资讯（报纸）图标从顶栏移除——资讯页降为 AI 资讯小组件的下级功能页，
+ * 入口只保留小组件内的「进入资讯页」；三页（主页/资讯/AI导航）共用同一套顶栏渲染，位置不再漂移。
  */
 export function TopNav({ onPageChange, currentPage }: { onPageChange: (page: string) => void; currentPage: string }) {
   return (
     <nav className="flex items-center gap-1.5 sm:gap-2">
-      <NavItem
-        icon={<Newspaper size={20} />}
-        active={currentPage === 'news'}
-        onClick={() => onPageChange('news')}
-      />
       <NavItem
         icon={<Home size={20} />}
         active={currentPage === 'home'}
