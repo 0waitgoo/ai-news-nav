@@ -14,8 +14,11 @@ import { useEffect, useState } from 'react';
  * （及同源的搜索框/数据按钮 .card-glass-surface）的材质；第五十八轮起改为 React Bits
  * GlassSurface 的真实折射移植（见 components/v2/GlassSurface.tsx），CSS 渐变版降为
  * 不支持 SVG backdrop 滤镜的浏览器上的回退层。文字仍走白色系；
- * 底框透明度滑杆在三档下语义一致（玻璃档控制玻璃 tint 浓淡），且同时驱动 A 型小组件
- * 的渐变 tint 强度（见 WidgetTint）。
+ * 编组卡底框透明度滑杆在三档下语义一致（玻璃档控制玻璃 tint 浓淡）。
+ * 第六十轮：透明度滑杆拆成两根——groupCardAlpha 只管编组卡（B/C/组合卡 + 搜索面 +
+ * 玻璃 tint）；新增 widgetAlpha 只管 A 型小组件的渐变 tint（见 WidgetTint），两者解耦。
+ * 迁移：旧存档没有 widgetAlpha 时，按第五十五轮旧耦合公式 strength = alpha / 0.45
+ * 由编组卡现值推导初值（钳 [0,1]），保证升级后小组件第一眼观感与升级前一致，此后独立保存。
  */
 export type DisplayTheme = 'dark' | 'light' | 'glass';
 
@@ -23,21 +26,44 @@ export interface DisplayPrefs {
   theme: DisplayTheme;
   /** 编组卡（B/C/组合卡）底框不透明度 0–1；默认 0.4 = 改版前的 rgba(30,30,35,0.4) */
   groupCardAlpha: number;
+  /** 小组件（资讯/话题/榜单/计划）底色 tint 不透明度 0–1（第六十轮新增，与编组卡滑杆解耦） */
+  widgetAlpha: number;
 }
 
 const STORAGE_KEY = 'ainav-display-prefs-v1';
 
-export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = { theme: 'dark', groupCardAlpha: 0.4 };
+/** 第五十五轮旧耦合公式：小组件 tint 强度 = 编组卡 alpha / 0.45 钳 [0,1]。
+ *  第六十轮起仅用于老用户迁移推导（见 normalizePrefs），运行时不再使用。 */
+export function legacyWidgetStrength(groupCardAlpha: number): number {
+  return Math.min(1, Math.max(0, groupCardAlpha / 0.45));
+}
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v));
+}
+
+export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
+  theme: 'dark',
+  groupCardAlpha: 0.4,
+  // 缺省种子用户从没动过滑杆：小组件初值按旧耦合公式由默认 0.4 推导（≈0.89），与拆分前观感一致
+  widgetAlpha: legacyWidgetStrength(0.4),
+};
 
 function normalizePrefs(raw: unknown): DisplayPrefs {
   if (raw && typeof raw === 'object') {
-    const p = raw as { theme?: unknown; groupCardAlpha?: unknown };
+    const p = raw as { theme?: unknown; groupCardAlpha?: unknown; widgetAlpha?: unknown };
+    const groupCardAlpha =
+      typeof p.groupCardAlpha === 'number' && Number.isFinite(p.groupCardAlpha)
+        ? clamp01(p.groupCardAlpha)
+        : DEFAULT_DISPLAY_PREFS.groupCardAlpha;
     return {
       theme: p.theme === 'light' ? 'light' : p.theme === 'glass' ? 'glass' : 'dark',
-      groupCardAlpha:
-        typeof p.groupCardAlpha === 'number' && Number.isFinite(p.groupCardAlpha)
-          ? Math.min(1, Math.max(0, p.groupCardAlpha))
-          : DEFAULT_DISPLAY_PREFS.groupCardAlpha,
+      groupCardAlpha,
+      // 第六十轮迁移：存档里已有合法 widgetAlpha 就用它；没有（老用户）则按旧耦合公式推导
+      widgetAlpha:
+        typeof p.widgetAlpha === 'number' && Number.isFinite(p.widgetAlpha)
+          ? clamp01(p.widgetAlpha)
+          : legacyWidgetStrength(groupCardAlpha),
     };
   }
   return { ...DEFAULT_DISPLAY_PREFS };
