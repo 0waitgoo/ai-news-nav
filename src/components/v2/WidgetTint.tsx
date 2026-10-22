@@ -11,10 +11,13 @@ import type { WidgetTint } from '../../store/localStore';
 export default function WidgetTintLayer({
   tint,
   emoji,
+  watermarkOpacity,
 }: {
   tint: WidgetTint;
   /** 水印字符：由各卡片按语义传入的 Emoji（如 📰 / 🔥 / 🏆 / 📋） */
   emoji: string;
+  /** 水印不透明度覆盖（第五十二轮：计划卡单独调低到 0.1，避免 2x 时水印压住长期计划区干扰阅读；其他组件不传 = 默认 0.16） */
+  watermarkOpacity?: number;
 }) {
   return (
     <div
@@ -35,7 +38,7 @@ export default function WidgetTintLayer({
           style={{
             fontSize: 'clamp(96px, 28cqw, 168px)',
             lineHeight: 1,
-            opacity: 0.16,
+            opacity: watermarkOpacity ?? 0.16,
             transform: 'rotate(-8deg)',
             fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
           }}

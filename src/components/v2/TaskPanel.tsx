@@ -29,6 +29,9 @@ import { splitTasksText, type SplitPlanDraft } from '../../utils/taskSplit';
  *   AI 只做拆分归类，不改动已有事项；拆分实现见 utils/taskSplit.ts（可替换为真 AI）
  * - 第二十五轮：待办/计划两列抽成 TasksSection / PlansSection 共享组件，本面板（variant='panel'）与
  *   2x 任务卡卡面（variant='card'，仅核心交互）共用同一套渲染逻辑；本面板行为不变
+ * - 第五十二轮（只动配色，功能/结构不动）：计划条目浮起（bg-white/10 + border-white/20）、
+ *   进度轨道 white/20、计数提到 zinc-200、−/+ 钮做实（white/10 底）、待办区次级文字统一 zinc-300 档、
+ *   复选框边框 white/50、输入 placeholder zinc-400；本节区与 TaskCard 共用，卡面同步生效
  */
 
 interface RowMenuState {
@@ -123,7 +126,7 @@ function PanelBody({
         ) : (
           <>
             <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>
-            <span className="text-xs text-white/40 tabular-nums">
+            <span className="text-xs text-zinc-300 tabular-nums">
               待办 {flatOpen} · 计划 {plans.length}
             </span>
             <button
@@ -233,7 +236,7 @@ export function TasksSection({
       aria-label={label}
       onClick={onToggle}
       className={`w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
-        done ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/30 hover:border-indigo-300 text-transparent'
+        done ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/50 hover:border-indigo-300 text-transparent'
       }`}
     >
       <Check size={12} strokeWidth={3} />
@@ -290,10 +293,10 @@ export function TasksSection({
     <section>
       <div className="flex items-baseline gap-2 mb-1.5">
         <h4 className="text-sm font-semibold">待办</h4>
-        <span className="text-[11px] text-white/40">未完成 {flatOpen}</span>
+        <span className="text-[11px] text-zinc-300">未完成 {flatOpen}</span>
       </div>
       <div data-nodrag>
-        {tasks.length === 0 && <p className="text-[13px] text-white/35 px-2 py-3">暂无待办，在下方添加第一件。</p>}
+        {tasks.length === 0 && <p className="text-[13px] text-zinc-300 px-2 py-3">暂无待办，在下方添加第一件。</p>}
         {openEntries.map(taskRow)}
       </div>
       {doneEntries.length > 0 && (
@@ -308,7 +311,7 @@ export function TasksSection({
               e.stopPropagation();
               setDoneMenu(rowMenuPosition(e));
             }}
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-white/45 hover:text-white/75 transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-zinc-300 hover:text-white transition-colors"
           >
             <ChevronDown size={13} className={`transition-transform ${showDone ? '' : '-rotate-90'}`} />
             已完成 {doneEntries.length} 项
@@ -317,19 +320,19 @@ export function TasksSection({
         </div>
       )}
       <form
-        className="mt-2.5 flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
+        className="mt-2.5 flex items-center gap-1.5 bg-white/[0.07] border border-white/20 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
         onSubmit={(e) => {
           e.preventDefault();
           submitNewTask();
         }}
       >
-        <Plus size={14} className="text-white/35 shrink-0" />
+        <Plus size={14} className="text-zinc-300 shrink-0" />
         <input
           value={newTask}
           onChange={(e) => setNewTask(e.target.value)}
           placeholder="添加待办，回车确认"
           data-task-add
-          className="flex-1 min-w-0 bg-transparent text-sm py-1.5 outline-none placeholder:text-white/30"
+          className="flex-1 min-w-0 bg-transparent text-sm py-1.5 outline-none placeholder:text-zinc-400"
         />
       </form>
       {/* 建组入口：组用来收纳一组相关的子任务（如一次采购清单）；仅完整面板提供，2x 卡面不放 */}
@@ -351,7 +354,7 @@ export function TasksSection({
               }}
               placeholder="组名，如 周末采购"
               data-group-name
-              className="flex-1 min-w-0 bg-white/5 border border-white/12 rounded-xl px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30"
+              className="flex-1 min-w-0 bg-white/5 border border-white/12 rounded-xl px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400/50 placeholder:text-zinc-400"
             />
             <button
               type="submit"
@@ -374,7 +377,7 @@ export function TasksSection({
             type="button"
             data-group-new
             onClick={() => setShowGroupForm(true)}
-            className="mt-2 w-full py-1.5 rounded-xl border border-dashed border-white/12 text-[11px] text-white/45 hover:text-white/80 hover:border-white/30 transition-colors"
+            className="mt-2 w-full py-1.5 rounded-xl border border-dashed border-white/20 text-[11px] text-zinc-300 hover:text-white hover:border-white/40 transition-colors"
           >
             + 建组（把几件相关的事收在一起）
           </button>
@@ -450,11 +453,11 @@ export function PlansSection({
     <section>
       <div className="flex items-baseline gap-2 mb-1.5">
         <h4 className="text-sm font-semibold">长期计划</h4>
-        <span className="text-[11px] text-white/40">{plans.length} 个</span>
+        <span className="text-[11px] text-zinc-300">{plans.length} 个</span>
       </div>
       <div className="flex flex-col gap-1.5" data-nodrag>
         {plans.length === 0 && !showPlanForm && (
-          <p className="text-[13px] text-white/35 px-2 py-3">
+          <p className="text-[13px] text-zinc-300 px-2 py-3">
             {variant === 'panel' ? '暂无长期计划，点下方「+ 新计划」添加。' : '暂无长期计划，展开面板添加。'}
           </p>
         )}
@@ -474,7 +477,7 @@ export function PlansSection({
             type="button"
             data-plan-new
             onClick={() => setShowPlanForm(true)}
-            className="mt-3 w-full py-2 rounded-xl border border-dashed border-white/15 text-xs text-white/50 hover:text-white/85 hover:border-white/35 transition-colors"
+            className="mt-3 w-full py-2 rounded-xl border border-dashed border-white/25 text-xs text-zinc-300 hover:text-white hover:border-white/45 transition-colors"
           >
             + 新计划
           </button>
@@ -530,7 +533,7 @@ const GroupBlock: React.FC<{
           aria-label={expanded ? '收起组' : '展开组'}
           data-group-toggle
           onClick={() => setExpanded((v) => !v)}
-          className="w-[18px] h-[18px] flex items-center justify-center shrink-0 text-white/50 hover:text-white transition-colors"
+          className="w-[18px] h-[18px] flex items-center justify-center shrink-0 text-zinc-300 hover:text-white transition-colors"
         >
           <ChevronDown size={14} className={`transition-transform ${expanded ? '' : '-rotate-90'}`} />
         </button>
@@ -545,7 +548,7 @@ const GroupBlock: React.FC<{
             >
               {group.title}
             </span>
-            <span data-group-progress className="text-[11px] text-white/45 tabular-nums shrink-0">
+            <span data-group-progress className="text-[11px] text-zinc-300 tabular-nums shrink-0">
               {done}/{total}
             </span>
           </>
@@ -554,7 +557,7 @@ const GroupBlock: React.FC<{
       {expanded && (
         <div className="mt-0.5 ml-[26px] flex flex-col">
           {kids.length === 0 && (
-            <p className="text-xs text-white/35 py-1.5">组里还没有子任务，在下方添加。</p>
+            <p className="text-xs text-zinc-300 py-1.5">组里还没有子任务，在下方添加。</p>
           )}
           {kids.map((child) => (
             <div
@@ -579,13 +582,13 @@ const GroupBlock: React.FC<{
               submitSub();
             }}
           >
-            <Plus size={13} className="text-white/30 shrink-0" />
+            <Plus size={13} className="text-zinc-400 shrink-0" />
             <input
               value={subDraft}
               onChange={(e) => setSubDraft(e.target.value)}
               placeholder="添加子任务，回车确认"
               data-subtask-add
-              className="flex-1 min-w-0 bg-transparent text-[13px] py-1 outline-none placeholder:text-white/25 border-b border-transparent focus:border-indigo-400/40 transition-colors"
+              className="flex-1 min-w-0 bg-transparent text-[13px] py-1 outline-none placeholder:text-zinc-400 border-b border-transparent focus:border-indigo-400/40 transition-colors"
             />
           </form>
         </div>
@@ -605,13 +608,13 @@ const PlanRow: React.FC<{
     const overdue = !plan.done && daysLeft < 0;
     const ratio = plan.done ? 1 : planDateRatio(plan);
     return (
-      <div data-plan-item data-plan-mode="date" className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2.5" onContextMenu={onContextMenu}>
+      <div data-plan-item data-plan-mode="date" className="rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5" onContextMenu={onContextMenu}>
         <div className="flex items-center gap-2">
           <span className={`flex-1 min-w-0 truncate text-sm font-medium ${plan.done ? 'line-through text-white/40' : 'text-white/90'}`}>
             {plan.title}
           </span>
           {plan.done ? (
-            <span className="flex items-center gap-1 text-[11px] text-indigo-300 shrink-0">
+            <span className="flex items-center gap-1 text-[11px] text-indigo-200 shrink-0">
               <Check size={12} /> 已完成
             </span>
           ) : (
@@ -619,7 +622,7 @@ const PlanRow: React.FC<{
               type="button"
               data-plan-finish
               onClick={() => store.setPlanDone(plan.id, true)}
-              className="text-[11px] px-2 py-1 rounded-md bg-white/6 text-white/60 hover:bg-indigo-500/70 hover:text-white transition-colors shrink-0"
+              className="text-[11px] px-2 py-1 rounded-md bg-white/10 text-zinc-200 hover:bg-indigo-500/70 hover:text-white transition-colors shrink-0"
             >
               完成
             </button>
@@ -627,21 +630,21 @@ const PlanRow: React.FC<{
         </div>
         <div className="mt-1 flex items-baseline gap-2 text-[11px]">
           {plan.done ? (
-            <span className="text-white/40">目标 {plan.deadline ? formatMonthDay(plan.deadline) : ''}</span>
+            <span className="text-zinc-400">目标 {plan.deadline ? formatMonthDay(plan.deadline) : ''}</span>
           ) : overdue ? (
-            <span data-plan-status className="text-red-300 font-medium">
+            <span data-plan-status className="text-red-200 font-medium">
               已逾期 {-daysLeft} 天
             </span>
           ) : (
-            <span data-plan-status className="text-white/55">
+            <span data-plan-status className="text-zinc-200">
               {daysLeft === 0 ? '今天到期' : `还剩 ${daysLeft} 天`}
             </span>
           )}
-          {!plan.done && plan.deadline && <span className="text-white/35">· 目标 {formatMonthDay(plan.deadline)}</span>}
+          {!plan.done && plan.deadline && <span className="text-zinc-400">· 目标 {formatMonthDay(plan.deadline)}</span>}
         </div>
-        <div className="mt-2 h-1 rounded-full bg-white/8 overflow-hidden">
+        <div className="mt-2 h-1 rounded-full bg-white/20 overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-300 ${overdue ? 'bg-red-400/80' : 'bg-indigo-400/90'}`}
+            className={`h-full rounded-full transition-all duration-300 ${overdue ? 'bg-red-400' : 'bg-indigo-400'}`}
             style={{ width: `${Math.round(ratio * 100)}%` }}
           />
         </div>
@@ -655,21 +658,21 @@ const PlanRow: React.FC<{
   const full = target > 0 && cur >= target;
   const ratio = planCountRatio(plan);
   const stepBtn =
-    'w-6 h-6 rounded-lg bg-white/6 text-white/60 hover:bg-white/12 hover:text-white disabled:opacity-30 disabled:hover:bg-white/6 flex items-center justify-center transition-colors shrink-0';
+    'w-6 h-6 rounded-lg bg-white/10 text-zinc-100 hover:bg-white/20 hover:text-white disabled:opacity-40 disabled:hover:bg-white/10 flex items-center justify-center transition-colors shrink-0';
   return (
-    <div data-plan-item data-plan-mode="count" className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2.5" onContextMenu={onContextMenu}>
+    <div data-plan-item data-plan-mode="count" className="rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5" onContextMenu={onContextMenu}>
       <div className="flex items-center gap-2">
         <span className={`flex-1 min-w-0 truncate text-sm font-medium ${full ? 'text-indigo-200' : 'text-white/90'}`}>
           {plan.title}
         </span>
-        <span data-plan-progress className="text-[11px] text-white/50 tabular-nums shrink-0">
+        <span data-plan-progress className="text-[11px] text-zinc-200 tabular-nums shrink-0">
           {cur}/{target} {unit}
         </span>
-        {full && <Check size={13} className="text-indigo-300 shrink-0" />}
+        {full && <Check size={13} className="text-indigo-200 shrink-0" />}
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <div className="flex-1 h-1 rounded-full bg-white/8 overflow-hidden">
-          <div className="h-full rounded-full bg-indigo-400/90 transition-all duration-300" style={{ width: `${Math.round(ratio * 100)}%` }} />
+        <div className="flex-1 h-1 rounded-full bg-white/20 overflow-hidden">
+          <div className="h-full rounded-full bg-indigo-400 transition-all duration-300" style={{ width: `${Math.round(ratio * 100)}%` }} />
         </div>
         <button
           type="button"
@@ -697,7 +700,7 @@ const PlanRow: React.FC<{
 };
 
 const planInputCls =
-  'w-full bg-white/5 border border-white/12 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30';
+  'w-full bg-white/5 border border-white/12 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-400/50 placeholder:text-zinc-400';
 
 /** 新建计划表单：标题 + 类型切换（按次数/按日期）+ 对应字段 */
 function PlanCreateForm({ store, onClose }: { store: LocalStore; onClose: () => void }) {
@@ -751,7 +754,7 @@ function PlanCreateForm({ store, onClose }: { store: LocalStore; onClose: () => 
       {mode === 'count' ? (
         <div className="mt-2 flex items-center gap-2">
           <label className="flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="text-[11px] text-white/45 shrink-0">目标</span>
+            <span className="text-[11px] text-zinc-300 shrink-0">目标</span>
             <input
               type="number"
               min={1}
@@ -767,12 +770,12 @@ function PlanCreateForm({ store, onClose }: { store: LocalStore; onClose: () => 
             maxLength={4}
             placeholder="次"
             data-plan-unit
-            className="w-16 bg-white/5 border border-white/12 rounded-xl px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30"
+            className="w-16 bg-white/5 border border-white/12 rounded-xl px-2.5 py-1.5 text-sm outline-none focus:border-indigo-400/50 placeholder:text-zinc-400"
           />
         </div>
       ) : (
         <label className="mt-2 flex items-center gap-2">
-          <span className="text-[11px] text-white/45 shrink-0">完成时间</span>
+          <span className="text-[11px] text-zinc-300 shrink-0">完成时间</span>
           <input
             type="date"
             min={today}
@@ -829,7 +832,7 @@ const PlanEditForm: React.FC<{ plan: PlanItem; store: LocalStore; onClose: () =>
       {plan.mode === 'count' ? (
         <div className="mt-2 flex items-center gap-2">
           <label className="flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="text-[11px] text-white/45 shrink-0">目标</span>
+            <span className="text-[11px] text-zinc-300 shrink-0">目标</span>
             <input
               type="number"
               min={1}
@@ -849,7 +852,7 @@ const PlanEditForm: React.FC<{ plan: PlanItem; store: LocalStore; onClose: () =>
         </div>
       ) : (
         <label className="mt-2 flex items-center gap-2">
-          <span className="text-[11px] text-white/45 shrink-0">完成时间</span>
+          <span className="text-[11px] text-zinc-300 shrink-0">完成时间</span>
           <input
             type="date"
             value={deadline}
@@ -1067,7 +1070,7 @@ function AiView({ store, onDone }: { store: LocalStore; onDone: () => void }) {
       aria-label={checked ? '不添加' : '添加'}
       onClick={onToggle}
       className={`w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
-        checked ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/30 hover:border-indigo-300 text-transparent'
+        checked ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/50 hover:border-indigo-300 text-transparent'
       }`}
     >
       <Check size={12} strokeWidth={3} />
@@ -1089,7 +1092,7 @@ function AiView({ store, onDone }: { store: LocalStore; onDone: () => void }) {
         rows={4}
         autoFocus
         data-ai-input
-        className="w-full bg-white/5 border border-white/12 rounded-2xl px-3.5 py-3 text-sm leading-relaxed outline-none focus:border-indigo-400/50 placeholder:text-white/30 resize-none"
+        className="w-full bg-white/5 border border-white/12 rounded-2xl px-3.5 py-3 text-sm leading-relaxed outline-none focus:border-indigo-400/50 placeholder:text-zinc-400 resize-none"
       />
       <div className="mt-3 flex items-center gap-3">
         <button
@@ -1101,18 +1104,18 @@ function AiView({ store, onDone }: { store: LocalStore; onDone: () => void }) {
         >
           <Sparkles size={14} /> 拆分
         </button>
-        <p className="text-[11px] text-white/35 leading-relaxed">AI 只做拆分归类，不改动已有事项（当前为本地规则拆分）</p>
+        <p className="text-[11px] text-zinc-400 leading-relaxed">AI 只做拆分归类，不改动已有事项（当前为本地规则拆分）</p>
       </div>
 
       {preview && (
         <div className="mt-4">
           {preview.todos.length === 0 && preview.plans.length === 0 ? (
-            <p className="text-sm text-white/40 py-2">没有拆出可添加的事项，换个说法再试试。</p>
+            <p className="text-sm text-zinc-300 py-2">没有拆出可添加的事项，换个说法再试试。</p>
           ) : (
             <>
               {preview.todos.length > 0 && (
                 <div className="mb-4">
-                  <p className="text-xs font-semibold text-white/60 mb-1.5">待办 · {preview.todos.length}</p>
+                  <p className="text-xs font-semibold text-zinc-300 mb-1.5">待办 · {preview.todos.length}</p>
                   <div className="flex flex-col">
                     {preview.todos.map((item, i) => (
                       <div key={i} data-ai-todo className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-white/[0.04]">
@@ -1137,7 +1140,7 @@ function AiView({ store, onDone }: { store: LocalStore; onDone: () => void }) {
               )}
               {preview.plans.length > 0 && (
                 <div className="mb-4">
-                  <p className="text-xs font-semibold text-white/60 mb-1.5">长期计划 · {preview.plans.length}</p>
+                  <p className="text-xs font-semibold text-zinc-300 mb-1.5">长期计划 · {preview.plans.length}</p>
                   <div className="flex flex-col">
                     {preview.plans.map((item, i) => (
                       <div key={i} data-ai-plan className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-white/[0.04]">
@@ -1147,7 +1150,7 @@ function AiView({ store, onDone }: { store: LocalStore; onDone: () => void }) {
                           onChange={(e) => patchPlan(i, { title: e.target.value })}
                           className="flex-1 min-w-0 bg-transparent text-sm py-1 outline-none border-b border-transparent focus:border-indigo-400/50 text-white/85"
                         />
-                        <span className="flex items-center gap-1 shrink-0 text-[11px] text-white/40">
+                        <span className="flex items-center gap-1 shrink-0 text-[11px] text-zinc-300">
                           目标
                           <input
                             type="number"

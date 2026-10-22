@@ -96,7 +96,7 @@ export function StackCardFrame({
       <div
         data-stack-body
         style={{ background: 'rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4))', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
-        className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
+        className="group-card-scope absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
       >
         {children}
       </div>

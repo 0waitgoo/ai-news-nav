@@ -106,8 +106,9 @@ export default function TaskCard({
   const focusTask = open[0];
   const restCount = Math.max(0, open.length - 1);
 
-  /** 专属底色层（第二十三轮）：1x/2x 两壳共用，内容以 relative 层级盖在其上 */
-  const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="📋" /> : null;
+  /** 专属底色层（第二十三轮）：1x/2x 两壳共用，内容以 relative 层级盖在其上；
+   * 水印单独调低（第五十二轮）：2x 时 📋 正压在长期计划区，0.16 会干扰阅读，降到 0.1 */
+  const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="📋" watermarkOpacity={0.1} /> : null;
 
   /* ---------- 高 2x：面板式布局（复用 TaskPanel 双列内容，核心交互卡内直接可用） ---------- */
   if (heightUnits === 2) {
@@ -124,24 +125,24 @@ export default function TaskCard({
         <div className="relative flex flex-col flex-1 min-h-0">
         {/* 头部：标题 + 今日进度 + 「展开」入口（打开完整面板，复杂操作都在那里） */}
         <div className="flex items-center gap-2 mb-2.5 shrink-0">
-          <div className="w-7 h-7 rounded-full bg-indigo-500/25 text-indigo-200 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-full bg-indigo-500/35 text-indigo-100 flex items-center justify-center">
             <ListTodo size={14} />
           </div>
           <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>
-          <span data-task-progress className="ml-auto text-xs text-white/45 tabular-nums">
+          <span data-task-progress className="ml-auto text-xs text-zinc-300 tabular-nums">
             {doneCount}/{total}
           </span>
           <button
             type="button"
             data-task-expand
             onClick={onOpen}
-            className="flex items-center gap-1 text-[11px] font-medium text-white/60 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
+            className="flex items-center gap-1 text-[11px] font-medium text-zinc-200 hover:text-white bg-white/10 hover:bg-white/[0.18] px-2.5 py-1.5 rounded-lg transition-colors shrink-0"
           >
             <Maximize2 size={12} /> 展开
           </button>
         </div>
-        <div className="h-1 rounded-full bg-white/8 overflow-hidden shrink-0 mb-3">
-          <div className="h-full rounded-full bg-indigo-400/90 transition-all duration-300" style={{ width: `${pct}%` }} />
+        <div className="h-1 rounded-full bg-white/20 overflow-hidden shrink-0 mb-3">
+          <div className="h-full rounded-full bg-indigo-400 transition-all duration-300" style={{ width: `${pct}%` }} />
         </div>
 
         {/* 双列内容与完整面板同一套组件（variant='card' 仅核心交互）；整区 data-nodrag：在卡内滚动/操作不触发卡片拖拽 */}
@@ -171,32 +172,32 @@ export default function TaskCard({
       <div className="relative flex flex-col flex-1 min-h-0">
       {/* 头部：标题 + 今日进度 */}
       <div className="flex items-center gap-2 mb-2.5 shrink-0">
-        <div className="w-7 h-7 rounded-full bg-indigo-500/25 text-indigo-200 flex items-center justify-center">
+        <div className="w-7 h-7 rounded-full bg-indigo-500/35 text-indigo-100 flex items-center justify-center">
           <ListTodo size={14} />
         </div>
         <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>
-        <span data-task-progress className="ml-auto text-xs text-white/45 tabular-nums">
+        <span data-task-progress className="ml-auto text-xs text-zinc-300 tabular-nums">
           {doneCount}/{total}
         </span>
       </div>
-      <div className="h-1 rounded-full bg-white/8 overflow-hidden shrink-0 mb-3">
-        <div className="h-full rounded-full bg-indigo-400/90 transition-all duration-300" style={{ width: `${pct}%` }} />
+      <div className="h-1 rounded-full bg-white/20 overflow-hidden shrink-0 mb-3">
+        <div className="h-full rounded-full bg-indigo-400 transition-all duration-300" style={{ width: `${pct}%` }} />
       </div>
 
       {face === 'list' ? (
         <div className="flex-1 min-h-0 flex flex-col gap-1">
           {rows.length === 0 ? (
-            <p className="flex-1 flex items-center text-[13px] text-white/35">暂无待办，点开面板添加第一件。</p>
+            <p className="flex-1 flex items-center text-[13px] text-zinc-300">暂无待办，点开面板添加第一件。</p>
           ) : (
             rows.map((t) =>
               isTaskGroup(t) ? (
                 // 组行：不给勾选框（点行进面板处理子任务），显示「组名 · n/m」
                 <div key={t.id} data-task-group-row className="flex items-center gap-2 py-1 min-w-0">
-                  <span className="w-[18px] h-[18px] rounded-[5px] bg-white/8 text-white/55 flex items-center justify-center shrink-0">
+                  <span className="w-[18px] h-[18px] rounded-[5px] bg-white/[0.12] text-zinc-200 flex items-center justify-center shrink-0">
                     <Layers size={11} />
                   </span>
                   <span className="text-[13px] truncate text-white/85">{t.title}</span>
-                  <span data-task-group-progress className="text-[11px] text-white/40 tabular-nums shrink-0">
+                  <span data-task-group-progress className="text-[11px] text-zinc-300 tabular-nums shrink-0">
                     · {taskChildProgress(t).done}/{taskChildProgress(t).total}
                   </span>
                 </div>
@@ -207,7 +208,7 @@ export default function TaskCard({
                     aria-label={t.done ? '取消完成' : '标记完成'}
                     onClick={() => handleToggle(t)}
                     className={`w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
-                      t.done ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/30 hover:border-indigo-300 text-transparent'
+                      t.done ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-white/50 hover:border-indigo-300 text-transparent'
                     }`}
                   >
                     <Check size={12} strokeWidth={3} />
@@ -222,22 +223,22 @@ export default function TaskCard({
         <div className="flex-1 min-h-0 flex flex-col">
           {focusTask ? (
             <>
-              <p className="text-[11px] tracking-wider text-white/40 uppercase mb-1.5">下一件事</p>
+              <p className="text-[11px] tracking-wider text-zinc-300 uppercase mb-1.5">下一件事</p>
               <p data-task-focus-title className="text-xl font-semibold leading-snug line-clamp-3">{focusTask.title}</p>
               {isTaskGroup(focusTask) && (
-                <p className="mt-1 text-xs text-white/45 tabular-nums">
+                <p className="mt-1 text-xs text-zinc-300 tabular-nums">
                   一组 {taskChildProgress(focusTask).total} 项 · 已完成 {taskChildProgress(focusTask).done}
                 </p>
               )}
-              <p className="mt-auto text-xs text-white/45">
+              <p className="mt-auto text-xs text-zinc-300">
                 {restCount > 0 ? `还有 ${restCount} 件` : '就这一件了'}
               </p>
             </>
           ) : (
             <>
-              <p className="text-[11px] tracking-wider text-white/40 uppercase mb-1.5">下一件事</p>
-              <p className="text-xl font-semibold leading-snug text-white/50">暂无待办</p>
-              <p className="mt-auto text-xs text-white/35">点开面板添加第一件。</p>
+              <p className="text-[11px] tracking-wider text-zinc-300 uppercase mb-1.5">下一件事</p>
+              <p className="text-xl font-semibold leading-snug text-zinc-200">暂无待办</p>
+              <p className="mt-auto text-xs text-zinc-400">点开面板添加第一件。</p>
             </>
           )}
         </div>
