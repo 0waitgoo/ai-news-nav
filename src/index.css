@@ -239,9 +239,9 @@ body {
      z-70~95，更在其上。
    - 高度：上伸 12px 盖住容器 -mt-1 缝与顶部留白，下延 30px 作渐隐带，盖住顶栏与
      首行卡片之间的留白区。
-   - 配方：深色 tint（与页面黑底同系，三档外观下页面底色都是深色——白天不翻背景、
-     玻璃档优先保遮挡，故一律深色）；下缘 30px 内用 mask 让 tint 与模糊一起线性
-     淡出，不留硬横线（r59 探针实证：mask 对 backdrop-filter 在 Chromium 生效）。
+   - 配方：第六十二轮起**无任何底色**（用户原话：顶栏底部那条黑删掉、只保留模糊）——
+     background 全透明，只靠 backdrop 模糊挡住透上来的内容、不再压黑；下缘 30px 内用
+     mask 让模糊线性淡出，不留硬横线（r59 探针实证：mask 对 backdrop-filter 在 Chromium 生效）。
    - backdrop 模糊不在本类里：样式表标准 backdrop-filter 会被 Lightning CSS 删剩
      -webkit- 形式、而单剩 -webkit- 在 Chromium 不生效（探针实证），故由
      TopBarShade 组件以行内样式直写（同第五十八轮 url() 滤镜的落点教训）。
@@ -251,10 +251,8 @@ body {
   inset: -12px 0 -30px 0;
   z-index: -1;
   pointer-events: none;
-  background: linear-gradient(to bottom,
-    rgb(3 3 7 / 0.84) 0,
-    rgb(3 3 7 / 0.8) calc(100% - 30px),
-    rgb(3 3 7 / 0) 100%);
+  /* 第六十二轮：去掉原深色 tint 渐变（rgb(3 3 7 / 0.84→0.8)），背景全透明、只留模糊 */
+  background: transparent;
   mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
 }

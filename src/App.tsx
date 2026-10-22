@@ -7,7 +7,7 @@ import BinaryOrbits from './components/BinaryOrbits';
 import DarkVeil from './components/DarkVeil';
 import { backgroundPresetOf, useLocalStore } from './store/localStore';
 import { loadBgImage } from './store/bgImageDb';
-import { applyDisplayPrefs, useDisplayPrefs } from './store/displayPrefs';
+import { applyDisplayPrefs, bgBlurPx, useDisplayPrefs } from './store/displayPrefs';
 
 const NewsPage = React.lazy(() => import('./components/pages/NewsPage'));
 const NavPage = React.lazy(() => import('./components/pages/NavPage'));
@@ -96,9 +96,22 @@ export default function App() {
         )}
         {/* 遮罩：三档外观一律压黑保文字可读。白天旧版曾改压白（bg-white/55）洗浅整个背景，
             用户实测「整个页面被一层白雾罩住发灰发白」后于第五十八轮撤除——白天只让编组卡
-            卡面变白（index.css 作用域规则），背景层与暗夜像素级一致，不叠任何白色 veil */}
+            卡面变白（index.css 作用域规则），背景层与暗夜像素级一致，不叠任何白色 veil。
+            本地图片背景时本层另带 backdrop 模糊把照片糊柔：第六十二轮起强度由背景面板
+            「背景模糊」滑杆控制（displayPrefs.bgBlur，默认 0.3 ↔ 6px = 此前写死值，0 时不加
+            模糊、图片原始清晰度）；行内直写与 TopBarShade 同理，绕开样式表 backdrop 坑。
+            压黑的 bg-black/50 本身不动。 */}
         <div
-          className={`absolute inset-0 bg-black/50 ${showLocalImage ? 'backdrop-blur-[6px]' : ''}`}
+          className="absolute inset-0 bg-black/50"
+          data-bg-veil
+          style={
+            showLocalImage && bgBlurPx(displayPrefs.bgBlur) > 0
+              ? {
+                  backdropFilter: `blur(${bgBlurPx(displayPrefs.bgBlur)}px)`,
+                  WebkitBackdropFilter: `blur(${bgBlurPx(displayPrefs.bgBlur)}px)`,
+                }
+              : undefined
+          }
         ></div>
         {/* DarkVeil Background（仅默认预设：三档外观都在，背景层不随主题变的口径下与暗夜一致） */}
         {background.kind === 'preset' && background.presetId === 'violet' && (
