@@ -94,9 +94,4 @@ React 19 + Vite 6 + TypeScript + Tailwind CSS 4；资讯接口为 Vercel Serverl
 
 由 [@0waitgoo](https://github.com/0waitgoo) 创建并维护。欢迎 Issue 与 Pull Request。
 
-本项目采用 [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)（署名—非商业性使用 4.0 国际）授权：
-
-- ✅ 可以：个人学习、研究与非商业使用、修改和再分发（需保留署名）
-- 🚫 不可以：**任何商业用途**——包括售卖、收费服务、集成进商业产品、用于营利性项目等
-
-完整法律文本见 [LICENSE](LICENSE)。
+本项目采用 [MIT](https://opensource.org/licenses/MIT) 授权：可以自由使用、复制、修改、合并、发布、分发、再授权及**商用**，只需保留版权与许可声明。完整法律文本见 [LICENSE](LICENSE)。
