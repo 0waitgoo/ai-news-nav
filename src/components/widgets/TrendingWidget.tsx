@@ -39,9 +39,7 @@ export default function TrendingWidget({
 
   const displayTrends = trends.length > 0 ? trends : defaultTrends;
 
-  const tintLayer = tint ? (
-    <WidgetTintLayer tint={tint} icon={<TrendingUp size={176} strokeWidth={1} />} />
-  ) : null;
+  const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="🔥" /> : null;
   const header = (
     <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0">
       <div className="flex items-center gap-2">
