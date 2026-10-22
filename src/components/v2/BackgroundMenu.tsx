@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, ImagePlus, Trash2, Check, Moon, Sun } from 'lucide-react';
+import { Image as ImageIcon, ImagePlus, Trash2, Check, Moon, Sun, Droplets } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BACKGROUND_PRESETS, type LocalStore } from '../../store/localStore';
 import { deleteBgImage, saveBgImage } from '../../store/bgImageDb';
@@ -104,11 +104,12 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
             <div className="my-3 border-t border-white/[0.07]" />
 
             <p className="px-1 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">外观模式</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               {(
                 [
                   { id: 'dark', label: '暗夜', Icon: Moon },
                   { id: 'light', label: '白天', Icon: Sun },
+                  { id: 'glass', label: '液态玻璃', Icon: Droplets },
                 ] as const
               ).map(({ id, label, Icon }) => {
                 const active = displayPrefs.theme === id;
@@ -117,14 +118,13 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
                     key={id}
                     data-theme-option={id}
                     onClick={() => setDisplayPrefs({ theme: id })}
-                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs transition-all ${
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs whitespace-nowrap transition-all ${
                       active
                         ? 'border-indigo-400/80 bg-white/8 text-white'
                         : 'border-white/10 text-white/55 hover:border-white/30 hover:text-white/85'
                     }`}
                   >
                     <Icon size={13} /> {label}
-                    {active && <Check size={12} className="text-indigo-400" />}
                   </button>
                 );
               })}
@@ -146,7 +146,7 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
               <span className="text-[11px] text-white/60 w-9 text-right shrink-0">{alphaPct}%</span>
             </div>
             <p className="px-1 pt-1 text-[11px] text-white/40 leading-relaxed">
-              控制编组卡（列表 / 文件夹 / 组合卡）底框的实心程度；小组件底色不受影响。外观与透明度只保存在这台设备上。
+              同时控制编组卡（列表 / 文件夹 / 组合卡）底框与小组件底色的浓淡。外观与透明度只保存在这台设备上。
             </p>
 
             <div className="my-3 border-t border-white/[0.07]" />

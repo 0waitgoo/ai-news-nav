@@ -87,6 +87,7 @@ export function SiteLogo({
       <img
         src={logo}
         alt={name}
+        draggable={false}
         loading="lazy"
         className={`object-contain ${grayscale ? 'grayscale opacity-60' : ''}`}
         style={{ width: imgSize, height: imgSize }}

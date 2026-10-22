@@ -66,7 +66,10 @@ export default function StickySearch({
   return (
     <div ref={containerRef} className="relative flex-1 min-w-0">
       <div className="relative">
-        <div className="flex items-center gap-2 sm:gap-3 h-12 sm:h-13 px-3 sm:px-4 rounded-2xl bg-[#141419]/85 backdrop-blur-xl border border-white/10 shadow-lg shadow-black/30 focus-within:border-indigo-400/40 transition-colors">
+        {/* 底色与 C 卡卡面同源（第五十五轮）：.card-glass-surface 走 --group-card-rgb/alpha + 同款磨砂，
+            三档外观与滑杆实时同步；.group-card-scope 让白天模式的文字翻深规则覆盖搜索文字/图标。
+            下拉面板是本 div 的兄弟节点，不在作用域内，保持实色不动 */}
+        <div className="card-glass-surface group-card-scope flex items-center gap-2 sm:gap-3 h-12 sm:h-13 px-3 sm:px-4 rounded-2xl border border-white/10 shadow-lg shadow-black/30 focus-within:border-indigo-400/40 transition-colors">
           <Search size={18} className="text-white/40 shrink-0" />
           <input
             ref={inputRef}

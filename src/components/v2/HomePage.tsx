@@ -186,6 +186,20 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     };
   }, [blankMenu]);
 
+  /** 页面菜单（新建组合/添加组件）的统一定位打开：React 空白处理器与原生兜底路由共用 */
+  const openBlankMenuAtRef = useRef((clientX: number, clientY: number) => {
+    void clientX;
+    void clientY;
+  });
+  openBlankMenuAtRef.current = (clientX: number, clientY: number) => {
+    const MENU_W = 208;
+    const MENU_H = 132;
+    setBlankMenu({
+      x: Math.max(8, Math.min(clientX, window.innerWidth - MENU_W - 8)),
+      y: Math.max(8, Math.min(clientY, window.innerHeight - MENU_H - 8)),
+    });
+  };
+
   /** 只在真正空白处触发：卡片（自有菜单）、弹窗/浮动层（.fixed）、吸顶导航条（.sticky）都跳过 */
   const handleBlankContextMenu = (e: React.MouseEvent) => {
     const t = e.target as HTMLElement;
@@ -193,13 +207,26 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     if (t.closest('.fixed')) return;
     if (t.closest('.sticky')) return;
     e.preventDefault();
-    const MENU_W = 208;
-    const MENU_H = 132;
-    setBlankMenu({
-      x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
-      y: Math.max(8, Math.min(e.clientY, window.innerHeight - MENU_H - 8)),
-    });
+    openBlankMenuAtRef.current(e.clientX, e.clientY);
   };
+
+  /* 全局右键统一路由（第五十五轮）：上面的 React 处理器只覆盖根 div 内的真空白；
+     站点图标（img）、顶栏、弹窗空白、页面边角等位置此前会漏出浏览器原生菜单。
+     这里在 document 冒泡末段兜底：既有处理器（站点/卡片/任务/菜单自身）都会先
+     preventDefault，defaultPrevented 的直接放行不干预；输入类元素保留原生菜单（粘贴）；
+     其余一律拦截并出页面菜单。监听在冒泡末段（document）触发，天然晚于 React 根处理器。 */
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent) => {
+      if (e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (!t || typeof t.closest !== 'function') return;
+      if (t.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]')) return;
+      e.preventDefault();
+      openBlankMenuAtRef.current(e.clientX, e.clientY);
+    };
+    document.addEventListener('contextmenu', onContextMenu);
+    return () => document.removeEventListener('contextmenu', onContextMenu);
+  }, []);
 
   const togglePickerGroup = (id: string) => {
     setPickerSelected((prev) => {
