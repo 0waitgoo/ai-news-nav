@@ -2,6 +2,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { TopNav } from './components/Sidebar';
 import BackgroundMenu from './components/v2/BackgroundMenu';
 import HomePage from './components/v2/HomePage';
+import TopBarShade from './components/v2/TopBarShade';
 import BinaryOrbits from './components/BinaryOrbits';
 import DarkVeil from './components/DarkVeil';
 import { backgroundPresetOf, useLocalStore } from './store/localStore';
@@ -114,6 +115,8 @@ export default function App() {
           /* 不带主页那条的 -mt-1：主页吸顶栏在滚动容器内、边距折叠后净偏移与此处不同，
              实测去掉后三页图标组 Y 坐标一致（均为主页基准） */
           <div className="sticky top-0 z-50 pt-1 pb-2 shrink-0">
+            {/* 遮挡带与主页顶栏同款（第五十九轮），样式见 index.css .topbar-shade */}
+            <TopBarShade />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
               <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
                 <BackgroundMenu store={store} />
