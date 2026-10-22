@@ -16,6 +16,8 @@ import { groupIcon, siteIconSrc, siteLogoFallback, sortSites, type NavGroup, typ
  * - 第二十一轮：卡框（StackCardFrame）与瓷砖区（StackSiteTiles）抽成共享组件，组合卡（ComboCard）复用同一套外观与排版规则
  * - 第五十三轮：卡面图标全形态统一尺寸与排布（见 FACE_TILE_SIZE 与 StackSiteTiles 注释）——
  *   取代第二十二轮「2x 网格撑满卡宽、瓷砖随卡宽放大」的旧规则
+ * - 第五十六轮：布局修正——高 1x 卡面只显示一行（按卡宽截断）；高 2x 改为从图标区左上角起排，
+ *   取消整块居中（见 StackSiteTiles 注释）
  */
 
 /** 组合卡专用小角：造型与普通 C 卡小角一致（圆角上沿 + clipPath 裁下 7px），按左右半区定位、宽度略收，两块之间留间隙 */
@@ -182,12 +184,45 @@ function SiteTile({ site }: { site: SiteEntry }) {
 }
 
 /**
- * C 卡底部瓷砖区（普通 C 卡与组合卡共用，第五十三轮最终口径）：
- * 全部形态（1/2 栏 × 1x/2x）共用同一套常量——图标尺寸（FACE_TILE_VARS 的 1栏2X 基准）
- * + 统一 gap 10px——做流式排布（flex-wrap）：全部站点从左往右排、排不下自动换行，
- * 每行能放几个由卡面实际宽度自然决定（1 栏自然约 5 个、2 栏自然约 10 个，都只是结果不是规则）；
- * 不写死任何每行个数、不设数量上限。每行居中、整块在图标区内垂直居中。
- * colSpan / heightUnits 仅保留签名兼容，排布不再按形态分支。
+ * 1x 卡面单行可容纳的瓷砖数（第五十六轮）：实测图标区宽度后按第五十三轮的同一套
+ * 尺寸/间距常量反推——瓷砖边长 t = min(60.4, (W − 40) / 5)、gap 10px（W = 图标区宽，
+ * 与卡身 content-box 同宽，即 cqw 公式里的基准宽），一行可容纳数 = floor((W + gap) / (t + gap))。
+ * +0.5px 容差抵消「5 个恰好排满」边界上的浮点误差。测不到宽度时不截断（返回 Infinity）。
+ */
+function useRowFitCount(zoneRef: React.RefObject<HTMLDivElement | null>, enabled: boolean) {
+  const [count, setCount] = React.useState<number>(Number.POSITIVE_INFINITY);
+  React.useEffect(() => {
+    if (!enabled) {
+      setCount(Number.POSITIVE_INFINITY);
+      return;
+    }
+    const el = zoneRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      if (!w) return;
+      const tile = Math.min(60.4, (w - 40) / 5);
+      const n = Math.max(1, Math.floor((w + 10 + 0.5) / (tile + 10)));
+      setCount(n);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [zoneRef, enabled]);
+  return count;
+}
+
+/**
+ * C 卡底部瓷砖区（普通 C 卡与组合卡共用，第五十三轮尺寸口径 + 第五十六轮布局修正）：
+ * 全部形态共用同一套常量——图标尺寸（FACE_TILE_VARS 的 1栏2X 基准）+ 统一 gap 10px，
+ * 排布按高度分两型（用户第五十六轮拍板）：
+ * - 高 1x：卡面只显示**一行**——按卡宽可容纳数截断（见 useRowFitCount），超出的站点
+ *   不在卡面出现（弹窗里照常可见）；这一行在图标区内垂直居中、整行水平居中（沿用旧口径）。
+ * - 高 2x：流式网格**从图标区左上角开始布局**——第一行顶着图标区顶部、每行从左边缘
+ *   逐个排、逐行向下，全部站点都摆出来（排不下自动换行，每行个数由卡宽决定）；
+ *   取消第五十三轮的整块横向/纵向居中（居中会让上方留大块空白、末行单个图标跑到中间）。
+ * colSpan 仅保留签名兼容，排布不按宽度分支（两栏同理：1x 一行截断、2x 左上起排）。
  */
 export function StackSiteTiles({
   group,
@@ -195,26 +230,45 @@ export function StackSiteTiles({
   heightUnits = 1,
 }: {
   group: NavGroup;
-  /** 仅签名兼容：排布已全形态统一（第五十三轮），不再按宽高分支 */
+  /** 仅签名兼容：排布只按高度分支（第五十六轮），宽度只影响每行可容纳数 */
   colSpan?: 1 | 2;
   heightUnits?: 1 | 2;
 }) {
   const sorted = sortSites(group.sites);
+  const zoneRef = React.useRef<HTMLDivElement | null>(null);
+  const fitCount = useRowFitCount(zoneRef, heightUnits === 1);
+  const visible = heightUnits === 1 ? sorted.slice(0, fitCount) : sorted;
   return (
     <div
+      ref={zoneRef}
       data-tiles-zone
       style={FACE_TILE_VARS}
-      className="flex-1 min-h-0 flex items-center justify-center pt-3 relative"
+      className={`flex-1 min-h-0 flex pt-3 relative ${
+        /* 1x：补 pb-3 与 pt-3 对称，单行在整个图标区（含内边距）内真正垂直居中 */
+        heightUnits === 1 ? 'items-center justify-center pb-3' : 'items-start justify-start'
+      }`}
     >
       {group.sites.length === 0 ? (
         <span className="text-[11px] text-white/35">点开添加第一个网站</span>
+      ) : heightUnits === 1 ? (
+        <div
+          data-tiles-flow
+          className="w-full flex flex-nowrap items-center justify-center overflow-hidden"
+          style={{ gap: 'var(--face-tile-gap)' }}
+        >
+          {visible.map((site) => (
+            <React.Fragment key={site.id ?? site.name}>
+              <SiteTile site={site} />
+            </React.Fragment>
+          ))}
+        </div>
       ) : (
         <div
           data-tiles-flow
-          className="w-full flex flex-wrap items-center justify-center"
+          className="w-full flex flex-wrap items-start justify-start content-start"
           style={{ gap: 'var(--face-tile-gap)' }}
         >
-          {sorted.map((site) => (
+          {visible.map((site) => (
             <React.Fragment key={site.id ?? site.name}>
               <SiteTile site={site} />
             </React.Fragment>
