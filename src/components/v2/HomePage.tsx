@@ -279,6 +279,59 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     setExpandedId((prev) => (prev === group.id ? null : group.id));
   };
 
+  /* ---------- 点卡外自动收起（第四十一轮） ----------
+   * 展开是单卡模型（expandedId 同时只指一张）：document 捕获阶段监听 click，
+   * 点击落在展开卡之外就收起。选捕获阶段的两个原因：
+   * ① 站点行/瓷砖的 onClick 带 stopPropagation——冒泡监听收不到那次 click，
+   *    「点其他卡站点 → 本卡收起、链接照常打开」会失效；捕获在目标处理前先到，不受影响。
+   * ② 同一次 click 分发内目标在分发开始时已锁定：这里先收 A 引发的布局重排，
+   *    不会让随后到达目标的 toggle/链接失效（pointerdown 判定则会因重排让 click 打偏，已实测）。
+   * 两道拖拽守卫：整卡拖拽松手的 click 由 suppressClickRef 标记（拖拽收尾统一置位 250ms）；
+   * 站点拖动等「从卡内按下」的手势由 pressInsideAt 记录按下点——本次手势的 click 一律不收，
+   * 满足「起点在卡内、落点在卡外也不收」。只认左键 click（button 0），右键菜单不触发。
+   * 不收的区域：展开卡内部、一切浮层（.fixed：GroupPanel/ComboPanel/任务面板/各类右键菜单等）、
+   * 顶栏（.sticky：搜索下拉与背景/数据菜单的 absolute 面板都在顶栏 DOM 内）。
+   * 点另一张 B 卡的「展开」：捕获先收 A，同次 click 到达按钮后 toggle（函数式更新）在
+   * 已收起状态上打开 B，净效果 = 收 A 开 B（单卡模型不会双开）。 */
+  const expandedIdRef = useRef<string | null>(null);
+  expandedIdRef.current = expandedId;
+  const pressInsideAtRef = useRef(0);
+  useEffect(() => {
+    if (!expandedId) return;
+    const onDocPointerDown = (e: MouseEvent) => {
+      const id = expandedIdRef.current;
+      const wrap = id ? document.getElementById(`v2-group-${id}`) : null;
+      pressInsideAtRef.current = wrap && e.target instanceof Node && wrap.contains(e.target) ? performance.now() : 0;
+    };
+    const onDocClickCapture = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const id = expandedIdRef.current;
+      if (!id) return;
+      const t = e.target as HTMLElement;
+      if (!t || typeof t.closest !== 'function') return;
+      const wrap = document.getElementById(`v2-group-${id}`);
+      if (wrap && wrap.contains(t)) return;
+      if (t.closest('.fixed, .sticky, [data-site-menu], [data-size-menu]')) return;
+      if (suppressClickRef.current) return;
+      if (pressInsideAtRef.current > 0 && performance.now() - pressInsideAtRef.current < 1200) return;
+      setExpandedId(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // 有弹窗/面板开着时 Esc 归它们自己处理，不抢
+      if (panelGroupId || comboPanelId || showTaskPanel || showWidgetPanel || showNewGroup) return;
+      setExpandedId(null);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    document.addEventListener('click', onDocClickCapture, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown);
+      document.removeEventListener('click', onDocClickCapture, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [expandedId, panelGroupId, comboPanelId, showTaskPanel, showWidgetPanel, showNewGroup]);
+
   const scrollToGroup = (id: string) => {
     window.setTimeout(() => {
       document.getElementById(`v2-group-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -588,7 +641,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     startRects?: Map<string, DOMRect>;
   } | null>(null);
   const previewOrderRef = useRef<string[] | null>(null);
-  /** 拖拽合并充能（第二十一轮修订）：拖动满 3 秒点亮「可合并」；chargeTimer 推进度 */
+  /** 拖拽合并充能（第二十一轮修订，第三十七轮改 2 秒）：拖动满 2 秒点亮「可合并文件夹」；chargeTimer 推进度 */
   const chargeRef = useRef<{ startAt: number; ready: boolean } | null>(null);
   const chargeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 充能完成后指针压住的合并目标卡 key（松手即合并） */
@@ -668,12 +721,12 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     };
 
     /* ---------- 拖拽合并（第二十一轮，含手势修订） ----------
-     * 合并：拖动一张可合并的 stack 卡（不在组合中）持续满 3 秒 → 充能完成进入「可合并」状态，
-     * 拖影上有充能进度提示（条 + 文案，满 3 秒点亮「可合并」）；此后拖影压到任意其他可合并
+     * 合并：拖动一张可合并的 stack 卡（不在组合中）持续满 2 秒（第三十七轮由 3 秒改短）→ 充能完成进入「可合并」状态，
+     * 拖影上有充能进度提示（条 + 文案，满 2 秒点亮「可合并文件夹」）；此后拖影压到任意其他可合并
      * stack 卡上立即在目标卡显示合并提示，松手即合并；压到不可合并目标/空白松手 = 普通排序。
-     * 未满 3 秒松手全程只是普通排序。充能靠真实时间：指针静止时没有 pointermove，
+     * 未满 2 秒松手全程只是普通排序。充能靠真实时间：指针静止时没有 pointermove，
      * 用 60ms 定时器推进度，并在点亮瞬间复核悬停目标（指针可能早已压在目标上）。 */
-    const CHARGE_MS = 3000;
+    const CHARGE_MS = 2000;
     const groupIdFromKey = (key: string) => (key.startsWith('group:') ? key.slice('group:'.length) : null);
 
     const clearCharge = () => {
@@ -1077,14 +1130,14 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
               {dragKey === key && (
                 <div className="absolute inset-0 z-10 rounded-[26px] border-2 border-dashed border-indigo-400/60 bg-indigo-500/10 pointer-events-none" />
               )}
-              {/* 合并提示（第二十一轮修订）：充能完成后拖影压住的目标卡——描边高亮 + 「松开合并」，出现即松手合并 */}
+              {/* 合并提示（第二十一轮修订）：充能完成后拖影压住的目标卡——描边高亮 + 「松开合并文件夹」，出现即松手合并 */}
               {dragKey && mergeUi && mergeUi.targetKey === key && (
                 <div
                   data-merge-hint="ready"
                   className="absolute inset-0 z-20 rounded-[26px] border-2 border-indigo-400 bg-indigo-500/15 pointer-events-none flex flex-col items-center justify-end overflow-hidden"
                 >
                   <div className="m-2 w-[calc(100%-16px)] rounded-xl bg-[#17171d]/95 border border-white/15 px-3 py-2">
-                    <p className="text-[11px] font-medium text-white/85 text-center">松开合并为组合卡</p>
+                    <p className="text-[11px] font-medium text-white/85 text-center">松开合并文件夹</p>
                     <div className="mt-1.5 h-1 rounded-full bg-white/10 overflow-hidden">
                       <div data-merge-progress className="h-full bg-indigo-400" style={{ width: '100%' }} />
                     </div>
@@ -1126,14 +1179,14 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
               className="w-full h-full rounded-[26px] overflow-hidden shadow-2xl shadow-black/80 ring-1 ring-white/25 opacity-95 scale-[1.02] [&>*]:h-full"
               dangerouslySetInnerHTML={{ __html: dragSnap.html }}
             />
-            {/* 合并充能提示（第二十一轮修订）：拖影底部进度条，满 3 秒点亮「可合并」 */}
+            {/* 合并充能提示（第二十一轮修订，第三十七轮改 2 秒）：拖影底部进度条，满 2 秒点亮「可合并文件夹」 */}
             {chargeUi && (
               <div
                 data-charge={chargeUi.ready ? 'ready' : 'charging'}
                 className="absolute inset-x-3 bottom-3 z-10 rounded-xl bg-[#17171d]/95 border border-white/15 px-3 py-2"
               >
                 <p className={`text-[11px] font-medium text-center ${chargeUi.ready ? 'text-indigo-300' : 'text-white/75'}`}>
-                  {chargeUi.ready ? '可合并：压住另一张文件夹卡松手即合并' : '充能中…保持拖动，满 3 秒可合并'}
+                  {chargeUi.ready ? '可合并文件夹：压住另一张文件夹卡松手即合并' : '充能中…保持拖动，满 2 秒可合并文件夹'}
                 </p>
                 <div className="mt-1.5 h-1 rounded-full bg-white/10 overflow-hidden">
                   <div

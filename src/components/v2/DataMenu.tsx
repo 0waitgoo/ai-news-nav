@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, AlertTriangle, Pencil, LogIn, LogOut, ChevronDown } from 'lucide-react';
+import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, AlertTriangle, LogIn, LogOut } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { LocalStore } from '../../store/localStore';
 import {
@@ -14,10 +14,8 @@ import {
   ghPutFile,
   githubConfigComplete,
   loadGithubSyncMeta,
-  maskToken,
   OAUTH_BRANCH,
   OAUTH_FILE_PATH,
-  parseRepoInput,
   saveGithubSyncMeta,
   type GithubSyncConfig,
   type GithubSyncMeta,
@@ -175,15 +173,10 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   type GhStatusKind = 'syncing' | 'ok' | 'error' | 'conflict' | 'missing';
   const [ghMeta, setGhMeta] = useState<GithubSyncMeta>(loadGithubSyncMeta);
   const [ghStatus, setGhStatus] = useState<{ kind: GhStatusKind; text: string } | null>(null);
-  const [ghEditing, setGhEditing] = useState(false);
   /* GitHub 登录（默认入口）：client_id 是公开信息，从 /api/github-oauth?config=1 拿；
    * undefined = 正在查，null = 服务端未配置（按钮置灰），string = 可登录 */
   const [oauthClientId, setOauthClientId] = useState<string | null | undefined>(undefined);
-  /* 令牌方式收进折叠区作备用：已有可用的令牌配置时默认展开，免得老用户找不到原来的面板 */
-  const [patOpen, setPatOpen] = useState<boolean>(() => {
-    const m = loadGithubSyncMeta();
-    return m.authMode === 'pat' && githubConfigComplete(m);
-  });
+  /* 第五十轮起同步只保留 GitHub 登录一种方式：旧 PAT 配置加载时按未登录处理（见 githubSync.ts） */
   const isOauthLoggedIn = ghMeta.authMode === 'oauth' && !!ghMeta.token;
 
   useEffect(() => {
@@ -195,10 +188,6 @@ export default function DataMenu({ store }: { store: LocalStore }) {
       cancelled = true;
     };
   }, []);
-  const [formRepo, setFormRepo] = useState('');
-  const [formBranch, setFormBranch] = useState('main');
-  const [formPath, setFormPath] = useState('ainav-data.json');
-  const [formToken, setFormToken] = useState('');
 
   const storeRef = useRef(store);
   storeRef.current = store;
@@ -445,47 +434,6 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.data]);
 
-  const openGhEditor = () => {
-    const m = ghMetaRef.current;
-    setFormRepo(m.owner && m.repo ? `${m.owner}/${m.repo}` : '');
-    setFormBranch(m.branch || 'main');
-    setFormPath(m.path || 'ainav-data.json');
-    setFormToken('');
-    setGhStatus(null);
-    setGhEditing(true);
-  };
-
-  const saveGhConfig = () => {
-    const parsed = parseRepoInput(formRepo);
-    if (!parsed) {
-      setGhStatus({ kind: 'error', text: '仓库地址格式不对：填 owner/repo 或粘贴 GitHub 仓库链接' });
-      return;
-    }
-    // OAuth 模式下现存的 token 是登录令牌，不能当作 PAT 复用，令牌方式必须显式粘贴
-    const token = formToken.trim() || (ghMetaRef.current.authMode === 'pat' ? ghMetaRef.current.token : '');
-    if (!token) {
-      setGhStatus({ kind: 'error', text: '请填写访问令牌' });
-      return;
-    }
-    updateGhMeta({
-      authMode: 'pat',
-      oauthLogin: '',
-      owner: parsed.owner,
-      repo: parsed.repo,
-      branch: formBranch.trim() || 'main',
-      path: formPath.trim() || 'ainav-data.json',
-      token,
-      enabled: true,
-      lastSha: null,
-      baseUpdatedAt: 0,
-      lastSyncedAt: null,
-    });
-    setGhEditing(false);
-    setFormToken('');
-    // 保存后立即校验连接（文件不存在会进入「云端尚无数据文件」状态并给出首次推送入口）
-    void pullFromGithub();
-  };
-
   const toggleGhEnabled = () => {
     const next = !ghMetaRef.current.enabled;
     updateGhMeta({ enabled: next });
@@ -521,8 +469,6 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-xs text-white/75 hover:bg-white/8 hover:text-white transition-colors';
   const itemDisabledCls =
     'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-xs text-white/30 cursor-not-allowed';
-  const inputCls =
-    'w-full bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] text-white/85 placeholder:text-white/25 outline-none focus:border-violet-400/50';
   const ghStatusTextCls = (kind: string) =>
     kind === 'ok'
       ? 'text-emerald-300'
@@ -696,7 +642,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
             </div>
 
             {/* ---- GitHub 同步（第十五轮起）：数据同步到自己仓库的一个 JSON 文件，打开自动拉、变化自动推；
-                 默认入口是 GitHub 一键登录（OAuth，仓库固定 ainav-data），手填令牌收进折叠区作备用 ---- */}
+                 同步只保留 GitHub 一键登录（OAuth，仓库固定 ainav-data），第五十轮已删令牌备用方式 ---- */}
             <div className="mt-1 border-t border-white/8 px-3 pt-2.5 pb-1">
               <p className="text-[10px] font-medium text-white/50 tracking-wide">GitHub 同步</p>
               {isOauthLoggedIn ? (
@@ -771,7 +717,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
                     <LogIn size={14} /> 使用 GitHub 登录
                   </button>
                   {oauthClientId === null ? (
-                    <p className="mt-1 text-[10px] text-white/35 leading-relaxed">服务端未配置 GitHub 登录，可用下方令牌方式。</p>
+                    <p className="mt-1 text-[10px] text-white/35 leading-relaxed">服务端未配置 GitHub 登录。</p>
                   ) : oauthClientId === undefined ? (
                     <p className="mt-1 text-[10px] text-white/35 leading-relaxed">正在检查 GitHub 登录配置…</p>
                   ) : (
@@ -779,7 +725,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
                       登录后自动在你的账号下创建私有仓库 ainav-data 并同步，不用填任何配置；每台设备登录一次即可。
                     </p>
                   )}
-                  {ghStatus && !patOpen && (
+                  {ghStatus && (
                     <p className={`pt-1 text-[11px] leading-relaxed ${ghStatusTextCls(ghStatus.kind)}`}>
                       {ghStatus.kind === 'error' || ghStatus.kind === 'conflict' ? (
                         <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />
@@ -787,165 +733,6 @@ export default function DataMenu({ store }: { store: LocalStore }) {
                       {ghStatus.text}
                     </p>
                   )}
-                  <button
-                    onClick={() => setPatOpen((v) => !v)}
-                    className="mt-2 w-full flex items-center justify-between py-1 text-[11px] text-white/50 hover:text-white/75 transition-colors"
-                  >
-                    <span>使用令牌（备用）</span>
-                    <ChevronDown size={13} className={`transition-transform ${patOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {patOpen ? (
-                    <>
-              {githubConfigComplete(ghMeta) && !ghEditing ? (
-                <>
-                  <p className="mt-1.5 text-[11px] text-white/70 break-all">
-                    仓库：<span className="text-white/90">{ghMeta.owner}/{ghMeta.repo}</span>
-                    <span className="text-white/40"> · {ghMeta.branch} · {ghMeta.path}</span>
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-white/40">令牌：{maskToken(ghMeta.token)}</p>
-                  <button
-                    onClick={toggleGhEnabled}
-                    className="mt-1 w-full flex items-center justify-between py-1.5 text-xs text-white/75"
-                  >
-                    <span>开启同步（打开自动拉取、变化自动推送）</span>
-                    <span className={`relative h-4.5 w-8 shrink-0 rounded-full transition-colors ${ghMeta.enabled ? 'bg-violet-500' : 'bg-white/15'}`}>
-                      <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all ${ghMeta.enabled ? 'left-4' : 'left-0.5'}`} />
-                    </span>
-                  </button>
-                  <div className="mt-0.5 -mx-3">
-                    <div className="flex">
-                      <button onClick={() => void pullFromGithub()} className={`${itemCls} w-auto flex-1`}>
-                        <Download size={14} className="text-white/45" /> 立即拉取
-                      </button>
-                      <button onClick={() => void pushToGithub()} className={`${itemCls} w-auto flex-1`}>
-                        <Upload size={14} className="text-white/45" /> 立即推送
-                      </button>
-                      <button onClick={openGhEditor} className={`${itemCls} w-auto flex-1`}>
-                        <Pencil size={14} className="text-white/45" /> 改配置
-                      </button>
-                    </div>
-                  </div>
-                  {ghStatus?.kind === 'missing' && (
-                    <button
-                      onClick={() => void pushToGithub()}
-                      className="mt-1 w-full px-3 py-2 rounded-xl bg-violet-500/80 text-white text-xs font-medium hover:bg-violet-500 transition-colors"
-                    >
-                      把本机数据首次推送上去
-                    </button>
-                  )}
-                  {ghStatus?.kind === 'conflict' && (
-                    <div className="mt-1 flex gap-2">
-                      <button
-                        onClick={() => void pullFromGithub({ forceApply: true })}
-                        className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/8 text-white/80 text-[11px] hover:bg-white/12 transition-colors"
-                      >
-                        以云端为准
-                      </button>
-                      <button
-                        onClick={() => void forcePushLocal()}
-                        className="flex-1 px-2.5 py-1.5 rounded-lg bg-violet-500/80 text-white text-[11px] font-medium hover:bg-violet-500 transition-colors"
-                      >
-                        以本地为准
-                      </button>
-                    </div>
-                  )}
-                  <p className={`pb-1 pt-1 text-[11px] leading-relaxed ${ghStatus ? ghStatusTextCls(ghStatus.kind) : 'text-white/40'}`}>
-                    {ghStatus
-                      ? ghStatus.text
-                      : ghMeta.lastSyncedAt
-                        ? `上次同步 · ${formatSavedTime(ghMeta.lastSyncedAt)}`
-                        : '未连接'}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="mt-2 space-y-2">
-                    <div>
-                      <p className="mb-1 text-[10px] text-white/40">仓库地址（owner/repo 或粘贴完整链接）</p>
-                      <input
-                        value={formRepo}
-                        onChange={(e) => setFormRepo(e.target.value)}
-                        placeholder="如 yourname/ainav-data"
-                        className={inputCls}
-                        spellCheck={false}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <p className="mb-1 text-[10px] text-white/40">分支</p>
-                        <input
-                          value={formBranch}
-                          onChange={(e) => setFormBranch(e.target.value)}
-                          placeholder="main"
-                          className={inputCls}
-                          spellCheck={false}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <p className="mb-1 text-[10px] text-white/40">文件路径</p>
-                        <input
-                          value={formPath}
-                          onChange={(e) => setFormPath(e.target.value)}
-                          placeholder="ainav-data.json"
-                          className={inputCls}
-                          spellCheck={false}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-1 text-[10px] text-white/40">访问令牌（Fine-grained PAT）</p>
-                      <input
-                        type="password"
-                        value={formToken}
-                        onChange={(e) => setFormToken(e.target.value)}
-                        placeholder={ghMeta.token ? '留空 = 保持原令牌' : '粘贴令牌'}
-                        className={inputCls}
-                        spellCheck={false}
-                        autoComplete="off"
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={saveGhConfig}
-                      className="flex-1 px-3 py-2 rounded-xl bg-violet-500/80 text-white text-xs font-medium hover:bg-violet-500 transition-colors"
-                    >
-                      保存并开启同步
-                    </button>
-                    {githubConfigComplete(ghMeta) && (
-                      <button
-                        onClick={() => setGhEditing(false)}
-                        className="px-3 py-2 rounded-xl bg-white/8 text-white/70 text-xs hover:bg-white/12 transition-colors"
-                      >
-                        取消
-                      </button>
-                    )}
-                  </div>
-                  {ghStatus && (
-                    <p className={`pt-1.5 text-[11px] leading-relaxed ${ghStatusTextCls(ghStatus.kind)}`}>
-                      {ghStatus.kind === 'error' || ghStatus.kind === 'conflict' ? (
-                        <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />
-                      ) : null}
-                      {ghStatus.text}
-                    </p>
-                  )}
-                  <details className="mt-1.5">
-                    <summary className="text-[11px] text-violet-300/80 cursor-pointer select-none">如何生成令牌？</summary>
-                    <ol className="mt-1.5 list-decimal pl-4 text-[10px] text-white/40 leading-relaxed space-y-0.5">
-                      <li>打开 github.com/settings/personal-access-tokens，点「Generate new token」</li>
-                      <li>类型选 Fine-grained token（细粒度令牌）</li>
-                      <li>Repository access 只选这一个仓库</li>
-                      <li>Permissions 里把 Contents 设为 Read and write</li>
-                      <li>生成后复制令牌，粘贴到上面</li>
-                    </ol>
-                    <p className="mt-1.5 text-[10px] text-white/35 leading-relaxed">
-                      令牌只保存在这台设备的浏览器里，不会写入同步的数据；建议仓库设为私有。
-                    </p>
-                  </details>
-                </>
-              )}
-                    </>
-                  ) : null}
                 </>
               )}
             </div>

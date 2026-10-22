@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, LayoutGrid, CornerDownLeft } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { NavGroup } from '../../data/groups';
+import { siteIconSrc, type NavGroup } from '../../data/groups';
 import { searchAll } from '../../utils/search';
 import { SiteLogo } from './Card';
 
@@ -142,7 +142,7 @@ export default function StickySearch({
                       onClick={() => openSite(site.url)}
                       className="w-full flex items-center gap-3 px-3 py-2 rounded-2xl hover:bg-white/8 text-left transition-colors group/item"
                     >
-                      <SiteLogo logo={site.logo} name={site.name} size={32} imgSize={22} />
+                      <SiteLogo logo={siteIconSrc(site)} name={site.name} size={32} imgSize={22} />
                       <span className="flex-1 min-w-0">
                         <span className="flex items-center gap-2">
                           <span className="text-sm font-medium truncate">{site.name}</span>

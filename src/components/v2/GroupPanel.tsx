@@ -1,17 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, Pin, Plus, Pencil, Trash2, Check } from 'lucide-react';
-import { GROUP_NAME_MAX, GROUP_TAB_COLORS, cleanSiteTag, sortSites, textCharCount, type NavGroup, type SiteEntry } from '../../data/groups';
+import { GROUP_NAME_MAX, GROUP_TAB_COLORS, cleanSiteTag, siteIconSrc, sortSites, textCharCount, type NavGroup, type SiteEntry } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import { SiteForm, SiteTagBadge } from './GroupExpanded';
 import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteContextMenu';
+import { SITE_DRAG_PLACEHOLDER_STYLE, useSiteDragSort } from './useSiteDragSort';
 
 /**
  * C 型 · 编组展开弹窗（第三轮恢复）
- * 点击堆叠卡弹出居中弹窗：组内站点为 ICON 瓷砖（图标 + 名字，置顶优先 + 频率排序），
+ * 点击堆叠卡弹出居中弹窗：组内站点为 ICON 瓷砖（图标 + 名字，置顶优先 + 存储顺序），
  * 带「+ 添加网站」瓷砖；瓷砖的操作（打开/编辑/删除）走右键菜单（第十六轮追加，悬停不再冒图标）；
  * 头部可改组名、切换形态、删组；失效链接只在站点瓷砖上标记（汇总提示条已按用户要求删除）。面板为实色背景，不用半透明/毛玻璃。
+ * 第三十八轮：瓷砖可拖动排序（置顶区/普通区各自区内换位，松手落盘；组合弹窗的两组各拖各的，互不串组）。
  * （B 型列表卡不走这里——它在主页原地向下拉开。）
  */
 export default function GroupPanel({
@@ -89,6 +91,11 @@ export function GroupPanelSection({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const sorted = useMemo(() => sortSites(group.sites), [group]);
+  /** 组内拖动排序（第三十八轮）：每个 Section 一套，组合弹窗里两组互不串组 */
+  const siteDrag = useSiteDragSort({
+    sites: sorted,
+    onReorder: (ids) => store.reorderSites(group.id, ids),
+  });
   const showForm = adding || editingSite !== null;
 
   const switchDisplay = (display: 'list' | 'stack') => {
@@ -143,6 +150,9 @@ export function GroupPanelSection({
                 <h3 className="text-lg sm:text-xl font-bold tracking-tight truncate">{group.name}</h3>
                 <span className="text-xs text-white/40 shrink-0">{group.sites.length} 个站点</span>
               </div>
+              {/* 操作控件簇（第四十七轮）：改组名 / 形态切换 / 删组整簇移到行最右端右对齐，
+                  左端只留组名 + 计数；单组弹窗里关闭按钮紧随簇后同在右端 */}
+              <span className="flex flex-wrap items-center gap-2 ml-auto shrink-0">
               <button
                 onClick={() => {
                   setGroupName(group.name);
@@ -196,12 +206,15 @@ export function GroupPanelSection({
                   <Trash2 size={11} /> 删组
                 </button>
               )}
+              </span>
             </>
           )}
           {!embedded && (
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0 ml-auto"
+              className={`w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors shrink-0 ${
+                renaming ? 'ml-auto' : ''
+              }`}
               aria-label="关闭"
             >
               <X size={16} />
@@ -266,16 +279,22 @@ export function GroupPanelSection({
           </div>
         )}
 
-        {sorted.length === 0 && !showForm ? (
+        {siteDrag.items.length === 0 && !showForm ? (
           <div className="py-10 text-center text-sm text-white/40">
             这个编组还没有网站，点下方「+ 添加网站」加上第一个吧
           </div>
         ) : (
-          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
-            {sorted.map((site) => (
+          <div
+            className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2"
+            onPointerDown={siteDrag.onContainerPointerDown}
+            onDragStart={siteDrag.onContainerDragStart}
+          >
+            {siteDrag.items.map((site) => (
               <div
                 key={site.id ?? site.name}
                 data-panel-site={site.name}
+                data-site-drag-id={site.id}
+                style={siteDrag.isDragging(site) ? SITE_DRAG_PLACEHOLDER_STYLE : undefined}
                 onContextMenu={(e) => {
                   // 站点右键菜单：屏蔽浏览器默认菜单（弹窗不在卡片包装层内，不涉及尺寸菜单）
                   e.preventDefault();
@@ -291,8 +310,17 @@ export function GroupPanelSection({
                     <SiteTagBadge site={site} />
                   </span>
                 )}
-                <button onClick={() => window.open(site.url, '_blank')} title={site.description} className="flex flex-col items-center gap-1.5 w-full">
-                  <SiteLogo logo={site.logo} name={site.name} size={40} imgSize={28} grayscale={site.dead} />
+                <button
+                  onClick={() => {
+                    // 刚拖完的 click 是拖拽手势的尾巴，吞掉不打开站点
+                    if (siteDrag.consumeSuppressClick()) return;
+                    window.open(site.url, '_blank');
+                  }}
+                  title={site.description}
+                  className="flex flex-col items-center gap-1.5 w-full mt-4"
+                >
+                  {/* mt-4（第四十九轮）：图标区下移避开右上角徽标带，徽标独占格子右上角、与图标零重叠 */}
+                  <SiteLogo logo={siteIconSrc(site)} name={site.name} size={40} imgSize={28} grayscale={site.dead} />
                   <span className={`text-[11px] font-medium w-full text-center truncate ${site.dead ? 'text-white/45' : 'text-white/85'}`}>
                     {site.name}
                   </span>
@@ -317,6 +345,9 @@ export function GroupPanelSection({
       </div>
 
       {/* 底部失效提示条已按用户要求删除（第二十九轮）：站点瓷砖自身的「失效」徽标与失效标记逻辑保留 */}
+
+      {/* 组内拖动排序的浮动快照（第三十八轮） */}
+      {siteDrag.dragLayer}
 
       {/* 站点右键菜单（打开/编辑/删除）：fixed 定位，渲染在弹窗内容之外不被滚动区裁剪 */}
       {siteMenu && (

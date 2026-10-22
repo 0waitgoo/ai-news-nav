@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { groupIcon, siteLogoFallback, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { groupIcon, siteIconSrc, siteLogoFallback, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
 
 /**
  * C 型 · 编组堆叠卡（默认 1 栏 × 1X）——「极简文件夹」卡面（第十二轮，用户在第三轮线稿中选定方案四）
@@ -95,7 +95,7 @@ export function StackCardFrame({
           悬停只提亮描边，不改变底色 */}
       <div
         data-stack-body
-        style={{ background: 'rgba(30, 30, 35, 0.4)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+        style={{ background: 'rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4))', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
         className="absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
       >
         {children}
@@ -140,7 +140,7 @@ function SiteTile({ site, className }: { site: SiteEntry; className: string }) {
     <button type="button" title={site.name} data-face-site={site.name} onClick={openSite} className={className}>
       <span className="block w-full aspect-square rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
         <img
-          src={site.logo}
+          src={siteIconSrc(site)}
           alt={site.name}
           loading="lazy"
           className={`w-full h-full object-contain p-[16%] ${site.dead ? 'grayscale opacity-60' : ''}`}
@@ -156,7 +156,7 @@ function SiteTile({ site, className }: { site: SiteEntry; className: string }) {
 
 /**
  * C 卡底部瓷砖区（普通 C 卡与组合卡共用同一套排版规则）：
- * - 1x：单行 flex，1 栏每排 7 个 / 2 栏每排 11 个，未展示完右端渐隐
+ * - 1x：单行 flex，最多 5 个（第四十六轮），整行在图标区内水平 + 垂直居中，无渐隐
  * - 2x（第二十二轮）：5 列网格撑满卡宽、从上往下逐行排，可见 2 行共 10 个，未展示完底部渐隐
  */
 export function StackSiteTiles({
@@ -192,7 +192,7 @@ export function StackSiteTiles({
             className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-10"
             style={{
               background:
-                'linear-gradient(to top, rgba(23,23,29,0.92) 0%, rgba(23,23,29,0.55) 55%, rgba(23,23,29,0) 100%)',
+                'linear-gradient(to top, rgb(var(--fade-rgb) / 0.92) 0%, rgb(var(--fade-rgb) / 0.55) 55%, rgb(var(--fade-rgb) / 0) 100%)',
             }}
           />
         )}
@@ -200,13 +200,14 @@ export function StackSiteTiles({
     );
   }
 
-  const perRow = colSpan === 1 ? 7 : 11;
-  const faceSites = sorted.slice(0, perRow);
-  const hasMore = group.sites.length > faceSites.length;
+  /* 单行形态（第四十六轮）：最多 5 个图标，整行在图标区内水平 + 垂直居中
+     （不足 5 个同样居中，不再靠左）；超出部分只在弹窗里看，单行不再需要右端渐隐。
+     2x 的 5 列网格形态不在本轮范围，保持原样（见上方分支） */
+  const faceSites = sorted.slice(0, 5);
   return (
-    <div className="mt-auto pt-3 relative">
+    <div className="flex-1 flex flex-col justify-center pt-3 relative">
       <div className="flex flex-col gap-1.5">
-        <div data-icon-row className="flex items-end gap-1.5">
+        <div data-icon-row className="flex items-center justify-center gap-1.5">
           {faceSites.map((site) => (
             <React.Fragment key={site.id ?? site.name}>
               <SiteTile site={site} className="group/face flex-1 max-w-[48px] rounded-[13px] hover:z-20" />
@@ -214,16 +215,8 @@ export function StackSiteTiles({
           ))}
         </div>
       </div>
-      {group.sites.length === 0 && <span className="text-[11px] text-white/35">点开添加第一个网站</span>}
-      {hasMore && (
-        <div
-          data-icon-fade
-          className="pointer-events-none absolute inset-y-0 right-0 w-12 z-10"
-          style={{
-            background:
-              'linear-gradient(to right, rgba(23,23,29,0) 0%, rgba(23,23,29,0.55) 55%, rgba(23,23,29,0.92) 100%)',
-          }}
-        />
+      {group.sites.length === 0 && (
+        <span className="text-[11px] text-white/35 self-center">点开添加第一个网站</span>
       )}
     </div>
   );

@@ -47,36 +47,48 @@ export default function ComboCard({
       ariaLabel={`组合卡：${groups[0].name} 与 ${groups[1].name}`}
       rootProps={{ 'data-combo-card': combo.id }}
     >
-      {/* 双 tab 头：左右各一个组（头图标 + 组名），当前高亮、另一个变暗；中间一条竖分隔 */}
-      <div className="flex items-stretch gap-1 min-w-0">
-        {groups.map((g, i) => {
-          const isActive = g.id === active.id;
-          return (
-            <React.Fragment key={g.id}>
-              {i === 1 && <div className="w-px bg-white/10 shrink-0 my-1" />}
-              <button
-                type="button"
-                data-combo-tab={g.id}
-                data-combo-tab-active={isActive ? 'true' : 'false'}
-                data-combo-tab-drag=""
-                data-combo-id={combo.id}
-                data-group-id={g.id}
-                onClick={(e) => switchTab(e, g.id)}
-                title={g.name}
-                className={`flex-1 flex items-center gap-2 min-w-0 px-1.5 py-1 rounded-[10px] transition-all ${
-                  isActive ? 'bg-white/[0.07] opacity-100' : 'opacity-45 hover:opacity-75'
-                }`}
-              >
-                <StackGroupIcon group={g} size={26} />
-                <span className="flex-1 min-w-0 font-bold text-[14px] tracking-tight truncate text-left">{g.name}</span>
-              </button>
-            </React.Fragment>
-          );
-        })}
-      </div>
+      {/* 双 tab 头（第四十五轮：整段头部可点）：头部区（分隔线以上，含卡身上沿内边距）
+          按左右半区铺一层透明命中按钮——点半区任意位置即切到该组；上面的胶囊转为纯视觉
+          （pointer-events-none，样式/高亮与改版前完全一致）。拖出解组的 data 标记移到命中按钮上，
+          主页 pointer 逻辑按标记识别的手势归属不变；真拖动仍由阈值区分，不会误切 tab */}
+      <div className="relative -mx-4 -mt-3.5 px-4 pt-3.5 shrink-0">
+        {groups.map((g, i) => (
+          <button
+            key={g.id}
+            type="button"
+            aria-label={`切换到「${g.name}」`}
+            data-combo-tab-hit={g.id}
+            data-combo-tab-drag=""
+            data-combo-id={combo.id}
+            data-group-id={g.id}
+            onClick={(e) => switchTab(e, g.id)}
+            className={`absolute inset-y-0 z-0 w-1/2 cursor-pointer ${i === 0 ? 'left-0' : 'right-0'}`}
+          />
+        ))}
+        <div className="relative z-10 flex items-stretch gap-1 min-w-0 pointer-events-none">
+          {groups.map((g, i) => {
+            const isActive = g.id === active.id;
+            return (
+              <React.Fragment key={g.id}>
+                {i === 1 && <div className="w-px bg-white/10 shrink-0 my-1" />}
+                <div
+                  data-combo-tab={g.id}
+                  data-combo-tab-active={isActive ? 'true' : 'false'}
+                  className={`flex-1 flex items-center gap-2 min-w-0 px-1.5 py-1 rounded-[10px] transition-all ${
+                    isActive ? 'bg-white/[0.07] opacity-100' : 'opacity-45'
+                  }`}
+                >
+                  <StackGroupIcon group={g} size={26} />
+                  <span className="flex-1 min-w-0 font-bold text-[14px] tracking-tight truncate text-left">{g.name}</span>
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
 
-      {/* 口线：与普通 C 卡一致 */}
-      <div className="mt-3 h-px bg-white/[0.08] shrink-0" />
+        {/* 口线：与普通 C 卡一致（纯视觉，不拦点击，点线本身也归命中层） */}
+        <div className="relative z-10 mt-3 h-px bg-white/[0.08] shrink-0 pointer-events-none" />
+      </div>
 
       {/* 瓷砖区：当前 tab 组的站点，规则与普通 C 卡一致 */}
       <StackSiteTiles group={active} colSpan={colSpan} heightUnits={heightUnits} />

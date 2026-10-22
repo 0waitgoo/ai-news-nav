@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Pin, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
-import { GROUP_NAME_MAX, sortSites, textCharCount, type NavGroup } from '../../data/groups';
+import { GROUP_NAME_MAX, siteIconSrc, sortSites, textCharCount, type NavGroup } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import GroupExpandedBody, { SiteTagBadge } from './GroupExpanded';
@@ -10,9 +10,12 @@ import GroupExpandedBody, { SiteTagBadge } from './GroupExpanded';
  * B 型 · 编组列表卡（收起态占格由右键布局决定：默认 2 栏 × 2x）
  * 站点行式排布（图标 + 名称 + 一句介绍 + 标签，同旧站 AI 导航）。
  * 收起只显示站点：可见数按布局算（栏数 × 每列行数，2x 每列 4 行、1x 每列 2 行）。
- * 展开 / 收起只由明确按钮控制（第十六轮修正，整卡点击太容易误触）：
- * 唯一入口是头部组名后的小胶囊按钮——收起态显示「展开」、展开态显示「收起」（第三十/三十一轮最终形态；
- * 第十六轮的卡底渐隐提示条与卡底展开小按钮、第三十轮前的卡底收起条均已退役）。点卡面空白处不展开也不收起，点站点行仍是打开网站。
+ * 展开 / 收起入口（第十六轮修正，整卡单击太容易误触）：头部组名后的小胶囊按钮——收起态显示「展开」、展开态显示「收起」
+ * （第三十/三十一轮最终形态；第十六轮的卡底渐隐提示条与卡底展开小按钮、第三十轮前的卡底收起条均已退役）。
+ * 单击卡面空白处不展开也不收起，点站点行仍是打开网站。
+ * 第三十七轮新增第二入口：双击卡面「空白区域」也能切换展开/收起（不恢复单击展开）。
+ * 空白 = 卡身背景、内边距、行间间隙、标题行空白等非交互区域；双击落在 button / a / input 等交互元素、
+ * 编辑控件或 data-no-dblclick 标记上的一律忽略；刚拖拽完（松手移动超阈值）的手势不顺带触发双击切换。
  * 展开后站点在卡内滚动区域里继续以行式呈现，末尾有虚线「增加网站」格子。
  * 第十二轮头部调整：标题行 = 组名 +「· N 个站点」小字（原右上角「编组 · N 个站点」已删除）；该计数第三十轮已删除，收起态标题行同样不带计数；
  * 展开态的组操作（改组名 / 删组 / 详细列表↔文件夹式切换）上移到标题行右侧，与组名同一行。
@@ -51,12 +54,50 @@ export default function GroupListCard({
 
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
+  /* ---------- 双击空白展开/收起（第三十七轮） ----------
+   * 拖拽抑制（与 HomePage 拖拽的 click 抑制同思路、按双击手势本身判定）：
+   * 卡根记录每次左键按下的起止位移（阈值与 HomePage 拖拽判定一致，8px）；
+   * dblclick 到达时看「组成这次双击的最近两次按下」——任一次发生过拖拽位移就忽略
+   * （典型场景：第一下单击、第二下按住拖走松手，浏览器仍可能凑出一个 dblclick）。
+   * 拖拽结束后再做一次干净的双击，两次按下都没位移，不受此抑制影响。
+   * 两个指针处理器只做记录、不拦截冒泡，HomePage 包装层的拖拽排序照常工作。 */
+  const DRAG_MOVE_THRESHOLD = 8;
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const pressHistoryRef = useRef<{ t: number; moved: boolean }[]>([]);
+
+  const trackPressStart = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const trackPressEnd = (e: React.PointerEvent) => {
+    const start = pressStartRef.current;
+    pressStartRef.current = null;
+    if (!start) return;
+    const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y) > DRAG_MOVE_THRESHOLD;
+    pressHistoryRef.current = [...pressHistoryRef.current.slice(-5), { t: Date.now(), moved }];
+  };
+
+  const handleCardDoubleClick = (e: React.MouseEvent) => {
+    // 组成这次双击的两次按下里有一次是拖拽 → 是拖拽手势的尾巴，不切换
+    const now = Date.now();
+    const pair = pressHistoryRef.current.filter((r) => now - r.t < 1500).slice(-2);
+    if (pair.length === 2 && pair.some((r) => r.moved)) return;
+    // 只认空白区域：交互元素（站点行/链接/胶囊按钮/表单/右键菜单项等）与显式标记上一律忽略
+    const t = e.target as HTMLElement;
+    if (t.closest('button, a, input, textarea, select, label, [contenteditable="true"], [data-no-dblclick]')) return;
+    e.preventDefault(); // 避免双击顺带选中卡内文字
+    onToggleExpand(group);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}
-      className="glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
+      onPointerDown={trackPressStart}
+      onPointerUp={trackPressEnd}
+      onDoubleClick={handleCardDoubleClick}
+      className="group-card-panel group-card-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
     >
       {/* 标题行：组名（展开时其后跟「收起」胶囊按钮）；展开时右侧同行放组操作（标题行内点击不触发卡片展开/收起） */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 mb-2 shrink-0" onClick={expanded ? stop : undefined}>
@@ -189,7 +230,7 @@ export default function GroupListCard({
                 }}
                 className="flex items-center gap-2.5 px-2 py-[7px] rounded-2xl hover:bg-white/6 text-left transition-colors"
               >
-                <SiteLogo logo={site.logo} name={site.name} size={34} imgSize={23} grayscale={site.dead} />
+                <SiteLogo logo={siteIconSrc(site)} name={site.name} size={34} imgSize={23} grayscale={site.dead} />
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center gap-1.5">
                     <span className={`text-[13px] font-semibold truncate ${site.dead ? 'text-white/45' : ''}`}>{site.name}</span>

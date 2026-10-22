@@ -177,6 +177,8 @@ export function TasksSection({
 }) {
   const { tasks } = store.data;
   const [menu, setMenu] = useState<RowMenuState | null>(null);
+  /** 「已完成」分组头右键菜单（第四十八轮）：只记位置，开/关与行菜单分开管理 */
+  const [doneMenu, setDoneMenu] = useState<{ x: number; y: number } | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [showDone, setShowDone] = useState(false);
@@ -184,7 +186,11 @@ export function TasksSection({
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupName, setGroupName] = useState('');
 
-  if (menuOpenRef) menuOpenRef.current = menu;
+  if (menuOpenRef) {
+    // doneMenu 也并入上报：面板 Esc 判断「有菜单开着就别关面板」对它同样成立
+    menuOpenRef.current =
+      menu ?? (doneMenu ? { ...doneMenu, kind: 'task', id: '__done_clear__', title: '' } : null);
+  }
 
   // 计数口径与卡面一致：组按子任务摊平（taskFlatStats）；顶层条目按完成态分未完成/已完成两区
   const flat = taskFlatStats(tasks);
@@ -294,7 +300,14 @@ export function TasksSection({
         <div className="mt-1.5">
           <button
             type="button"
+            data-done-header
             onClick={() => setShowDone((v) => !v)}
+            onContextMenu={(e) => {
+              // 右键只出本菜单：拦掉卡片级（尺寸/换底色）与主页空白右键菜单；左键折叠行为不变
+              e.preventDefault();
+              e.stopPropagation();
+              setDoneMenu(rowMenuPosition(e));
+            }}
             className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-white/45 hover:text-white/75 transition-colors"
           >
             <ChevronDown size={13} className={`transition-transform ${showDone ? '' : '-rotate-90'}`} />
@@ -385,6 +398,20 @@ export function TasksSection({
               else store.deleteTask(menu.id);
             }
             setMenu(null);
+          }}
+        />
+      )}
+
+      {/* 「已完成」分组头右键菜单（第四十八轮）：一键清空，不加二次确认（文案写明「全部」防误解） */}
+      {doneMenu && (
+        <DoneClearMenu
+          x={doneMenu.x}
+          y={doneMenu.y}
+          count={doneEntries.length}
+          onClose={() => setDoneMenu(null)}
+          onConfirm={() => {
+            store.clearCompletedTasks();
+            setDoneMenu(null);
           }}
         />
       )}
@@ -853,6 +880,61 @@ const PlanEditForm: React.FC<{ plan: PlanItem; store: LocalStore; onClose: () =>
     </div>
   );
 };
+
+/** 「已完成」分组头右键菜单（第四十八轮）：与行菜单同壳同关闭范式，只一项「删除全部已完成项」 */
+function DoneClearMenu({
+  x,
+  y,
+  count,
+  onClose,
+  onConfirm,
+}: {
+  x: number;
+  y: number;
+  count: number;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onPointerDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    const onScroll = () => onClose();
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', onScroll, true);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      data-done-clear-menu
+      className="fixed z-[90] w-[196px] rounded-2xl bg-[#1e1e26] border border-white/15 shadow-2xl shadow-black/70 p-1.5"
+      style={{ left: x, top: y }}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <button
+        type="button"
+        data-done-clear-action
+        onClick={onConfirm}
+        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs text-red-300 hover:bg-red-500/10 transition-colors"
+      >
+        <Trash2 size={13} /> 删除全部已完成项（{count}）
+      </button>
+    </div>
+  );
+}
 
 /** 行右键菜单：范式同 SiteContextMenu（实色、点外关闭、删除两步确认） */
 function RowContextMenu({

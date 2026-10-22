@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, ImagePlus, Trash2, Check } from 'lucide-react';
+import { Image as ImageIcon, ImagePlus, Trash2, Check, Moon, Sun } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BACKGROUND_PRESETS, type LocalStore } from '../../store/localStore';
 import { deleteBgImage, saveBgImage } from '../../store/bgImageDb';
+import { setDisplayPrefs, useDisplayPrefs } from '../../store/displayPrefs';
 
 /**
  * 「背景」入口：顶栏最左侧，与「数据」按钮同款视觉。
@@ -16,6 +17,9 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const background = store.data.background;
   const usingLocal = background.kind === 'local';
+  // 本机显示偏好（第四十二轮）：外观模式 + 编组卡底框透明度，只存本机、不随数据同步
+  const displayPrefs = useDisplayPrefs();
+  const alphaPct = Math.round(displayPrefs.groupCardAlpha * 100);
 
   useEffect(() => {
     const onPointerDown = (e: MouseEvent) => {
@@ -96,6 +100,54 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
               })}
             </div>
             {usingLocal && <p className="px-1 pt-2 text-[11px] text-white/40">正在使用本地图片；点选预设将切回预设背景。</p>}
+
+            <div className="my-3 border-t border-white/[0.07]" />
+
+            <p className="px-1 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">外观模式</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { id: 'dark', label: '暗夜', Icon: Moon },
+                  { id: 'light', label: '白天', Icon: Sun },
+                ] as const
+              ).map(({ id, label, Icon }) => {
+                const active = displayPrefs.theme === id;
+                return (
+                  <button
+                    key={id}
+                    data-theme-option={id}
+                    onClick={() => setDisplayPrefs({ theme: id })}
+                    className={`flex items-center justify-center gap-1.5 py-2 rounded-xl border text-xs transition-all ${
+                      active
+                        ? 'border-indigo-400/80 bg-white/8 text-white'
+                        : 'border-white/10 text-white/55 hover:border-white/30 hover:text-white/85'
+                    }`}
+                  >
+                    <Icon size={13} /> {label}
+                    {active && <Check size={12} className="text-indigo-400" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="px-1 pt-3 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">底框透明度</p>
+            <div className="px-1 flex items-center gap-2.5">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={alphaPct}
+                data-group-alpha-slider
+                onChange={(e) => setDisplayPrefs({ groupCardAlpha: Number(e.target.value) / 100 })}
+                className="flex-1 accent-indigo-500 cursor-pointer"
+                aria-label="编组卡底框透明度"
+              />
+              <span className="text-[11px] text-white/60 w-9 text-right shrink-0">{alphaPct}%</span>
+            </div>
+            <p className="px-1 pt-1 text-[11px] text-white/40 leading-relaxed">
+              控制编组卡（列表 / 文件夹 / 组合卡）底框的实心程度；小组件底色不受影响。外观与透明度只保存在这台设备上。
+            </p>
 
             <div className="my-3 border-t border-white/[0.07]" />
 
