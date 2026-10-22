@@ -71,6 +71,8 @@ export default function App() {
   };
 
   const showLocalImage = background.kind === 'local' && !!localUrl;
+  // 子页面（资讯/导航/工具）：顶栏由 App 渲染、内容走 lazy 页；主页栏在 HomePage 内自理
+  const isSubPage = currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools';
   // 「深海蓝」预设换成 Binary Orbits 动态背景（第四十四轮）：只在该预设被选中时挂载，
   // 底色用与组件一致的深蓝 #030b1f 兜底（组件加载前/画布外不露其他预设色）
   const showOceanDynamics = background.kind === 'preset' && background.presetId === 'ocean';
@@ -78,9 +80,12 @@ export default function App() {
   return (
     <div className="relative min-h-screen w-full text-white bg-black">
       {/* 全页固定背景层：底层永远是当前预设（纯 CSS），本地图片就绪后淡入覆盖其上，
-          再压深色遮罩保证卡片文字可读；默认预设额外保留 DarkVeil 纹理层，维持原观感 */}
+          再压深色遮罩保证卡片文字可读；默认预设额外保留 DarkVeil 纹理层，维持原观感。
+          纯装饰层：pointer-events-none 全穿透（第六十五轮）——子层两个动态背景均已关交互
+          （BinaryOrbits interactive/clickRipple=false、DarkVeil 无交互），本层不许再挡任何
+          点按/滚轮命中（原先它盖满视口，是左右空白区滚轮死区的命中层之一） */}
       <div
-        className="fixed inset-0 z-0 overflow-hidden transition-all duration-700"
+        className="pointer-events-none fixed inset-0 z-0 overflow-hidden transition-all duration-700"
         style={{ background: showOceanDynamics ? '#030b1f' : preset.css }}
       >
         {showOceanDynamics && <BinaryOrbits interactive={false} clickRipple={false} className="absolute inset-0" />}
@@ -123,36 +128,51 @@ export default function App() {
 
       {/* Main Content */}
       {/* h-dvh 固定视口高度：让内部 overflow-y-auto 容器成为真正的滚动区，position: sticky 吸顶才有可依附的滚动容器 */}
-      <div className="relative z-10 flex flex-col h-dvh w-full p-3 sm:p-4 md:p-6 gap-4 sm:gap-6 max-w-[1600px] mx-auto">
+      {/* 第六十五轮（滚轮死区）：本容器不再 max-w-[1600px] 居中、横向 padding 也撤掉——
+          原先滚动容器被关在居中 1600 列内，宽屏两侧空白条的滚轮命中只能落到背景层/根层、
+          祖先链里没有可滚动盒子（页面又被 h-dvh 锁死、窗口本身不滚），滚了没反应。
+          改法：容器铺满视口宽，1600 列宽与横向 padding 下放到滚动区内的子层各自居中复刻
+          （子页面顶栏 div、页面内容列 div），列宽/列内几何与改前逐像素一致；
+          滚动区因此横贯全视口，鼠标在任意横位置滚轮都能滚。纵向 py 不动；
+          原容器 gap（栏与 main 的间距）改由子页面内容列的 pt 在滚动区内复刻。 */}
+      <div className="relative z-10 flex flex-col h-dvh w-full py-3 sm:py-4 md:py-6">
         {/* 顶栏遮挡带（第五十九轮引入、第六十三轮改全幅）：fixed 铺满视口上/左/右，
             在本容器层统一渲染一份（主页/子页面共用），变体按当前页实际渲染的栏选
             （子页面栏在本组件内、主页栏在 HomePage 内，高度差只有 -mt-1 的 4px）。
             几何与层级见 index.css .topbar-shade */}
-        <TopBarShade variant={currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools' ? 'sub' : 'home'} />
-        {/* 子页面顶栏与主页吸顶栏同款渲染（第四十三轮修漂移）：同样的 4 栏 grid 左半——
-            LOGO + 背景按钮 + 导航图标组（第六十四轮：左组全去底色、白色图标，LOGO 两页同位），
-            位置/间距/高亮与主页完全一致，不再用旧的居中导航行；
-            右半（搜索/数据）是主页专属，子页面留空占位保持左半位置不变 */}
-        {(currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools') && (
-          /* 不带主页那条的 -mt-1：主页吸顶栏在滚动容器内、边距折叠后净偏移与此处不同，
-             实测去掉后三页图标组 Y 坐标一致（均为主页基准） */
-          <div className="sticky top-0 z-50 pt-1 pb-2 shrink-0">
-            {/* 行高与主页栏对齐（第六十四轮实测修正）：主页栏行高由搜索框（h-12/sm:h-13）撑起、
-                左组在行内居中；子页面无搜索框、行高只剩左组 40px，整组比主页高 6px。
-                给子页面 grid 同款 min-h 后两处左组中心线回到同一 Y 坐标。
-                列宽同主页：移动端左列按内容宽（加 LOGO 后约 207px，半屏装不下会溢出）、右列吃剩余 */}
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-4 gap-3 sm:gap-4 items-center min-h-12 sm:min-h-13">
-              <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
-                <TopLogo onClick={() => handlePageChange('home')} />
-                <BackgroundMenu store={store} />
-                <TopNav onPageChange={handlePageChange} currentPage={currentPage} />
-              </div>
-              <div className="col-span-1 lg:col-span-2" />
-            </div>
-          </div>
-        )}
+        <TopBarShade variant={isSubPage ? 'sub' : 'home'} />
         <main className="flex-1 flex flex-col min-h-0">
+          {/* 滚动区横贯全视口（第六十五轮）：页面内容在区内再套一层居中列
+              （max-w+横向 padding 复刻原容器列宽），列宽与改前一致；
+              居中列 overflow 可见，主页拖拽的 findScrollAncestor 向上仍命中本滚动区 */}
           <div className="flex-1 overflow-y-auto pb-20 sm:pb-6">
+            {/* 子页面顶栏与主页吸顶栏同款渲染（第四十三轮修漂移）：同样的 4 栏 grid 左半——
+                LOGO + 背景按钮 + 导航图标组（第六十四轮：左组全去底色、白色图标，LOGO 两页同位），
+                位置/间距/高亮与主页完全一致，不再用旧的居中导航行；
+                右半（搜索/数据）是主页专属，子页面留空占位保持左半位置不变。
+                第六十五轮起本栏移进滚动区内 sticky（原在滚动区外的 flex 列里）：一是与主页栏
+                同框居中——滚动条移到视口右缘后滚动区内容框比视口窄一个滚动条宽，栏只有同在
+                滚动区内与内容列同框，左组横坐标才能与主页栏逐像素一致；二是栏在滚动区内，
+                悬停栏上滚轮同样滚页面。sticky top-0 贴的是滚动区上缘、正落在外层容器 py 之下，
+                与移入前「栏贴容器内容顶」的静止位相同；不带主页那条的 -mt-1（主页栏在滚动
+                容器内、边距折叠后净偏移与此处不同，实测去掉后三页图标组 Y 坐标一致）。
+                栏与内容的间距由下方内容列的 pt 复刻原容器 gap（gap-4/sm:gap-6） */}
+            {isSubPage && (
+              <div className="sticky top-0 z-50 pt-1 pb-2 mx-auto w-full max-w-[1600px] px-3 sm:px-4 md:px-6">
+                {/* 行高与主页栏对齐（第六十四轮实测修正）：主页栏行高由搜索框（h-12/sm:h-13）撑起、
+                    左组在行内居中；子页面无搜索框、行高只剩左组 40px，整组比主页高 6px。
+                    给子页面 grid 同款 min-h 后两处左组中心线回到同一 Y 坐标。
+                    列宽同主页：移动端左列按内容宽（加 LOGO 后约 207px，半屏装不下会溢出）、右列吃剩余 */}
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-4 gap-3 sm:gap-4 items-center min-h-12 sm:min-h-13">
+                  <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
+                    <TopLogo onClick={() => handlePageChange('home')} />
+                    <BackgroundMenu store={store} />
+                    <TopNav onPageChange={handlePageChange} currentPage={currentPage} />
+                  </div>
+                  <div className="col-span-1 lg:col-span-2" />
+                </div>
+              </div>
+            )}
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-full">
@@ -160,7 +180,11 @@ export default function App() {
                 </div>
               }
             >
-              {renderCurrentPage()}
+              <div
+                className={`mx-auto w-full max-w-[1600px] px-3 sm:px-4 md:px-6${isSubPage ? ' pt-4 sm:pt-6' : ''}`}
+              >
+                {renderCurrentPage()}
+              </div>
             </Suspense>
           </div>
         </main>
