@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { X, Pin, Plus, Pencil, Trash2, Check } from 'lucide-react';
+import { X, Pin, Plus, Trash2, Check } from 'lucide-react';
 import { GROUP_NAME_MAX, GROUP_TAB_COLORS, cleanSiteTag, siteIconSrc, sortSites, textCharCount, type NavGroup, type SiteEntry } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
@@ -12,7 +12,7 @@ import { SITE_DRAG_PLACEHOLDER_STYLE, useSiteDragSort } from './useSiteDragSort'
  * C 型 · 编组展开弹窗（第三轮恢复）
  * 点击堆叠卡弹出居中弹窗：组内站点为 ICON 瓷砖（图标 + 名字，置顶优先 + 存储顺序），
  * 带「+ 添加网站」瓷砖；瓷砖的操作（打开/编辑/删除）走右键菜单（第十六轮追加，悬停不再冒图标）；
- * 头部可改组名、切换形态、删组；失效链接只在站点瓷砖上标记（汇总提示条已按用户要求删除）。面板为实色背景，不用半透明/毛玻璃。
+ * 头部点组名就地改名、切换形态、删组；失效链接只在站点瓷砖上标记（汇总提示条已按用户要求删除）。面板为实色背景，不用半透明/毛玻璃。
  * 第三十八轮：瓷砖可拖动排序（置顶区/普通区各自区内换位，松手落盘；组合弹窗的两组各拖各的，互不串组）。
  * （B 型列表卡不走这里——它在主页原地向下拉开。）
  */
@@ -89,6 +89,18 @@ export function GroupPanelSection({
   const [renaming, setRenaming] = useState(false);
   const [groupName, setGroupName] = useState(group.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** 就地改名（第六十七轮）：Esc 取消后输入框失焦不能再把名字存回去，用 ref 标记本次已取消 */
+  const renameCancelRef = useRef(false);
+  const startRename = () => {
+    renameCancelRef.current = false;
+    setGroupName(group.name);
+    setRenaming(true);
+  };
+  const commitRename = () => {
+    const next = groupName.trim();
+    if (next && next !== group.name) store.renameGroup(group.id, next);
+    setRenaming(false);
+  };
 
   const sorted = useMemo(() => sortSites(group.sites), [group]);
   /** 组内拖动排序（第三十八轮）：每个 Section 一套，组合弹窗里两组互不串组 */
@@ -106,62 +118,61 @@ export function GroupPanelSection({
 
   return (
     <div data-panel-section={group.id} className="contents">
-      {/* 头部（第十二轮）：组名 + 计数 + 组操作全部与组名同一行，右侧依次 改组名 / 形态切换 / 删组 / 关闭；
-          已删除「自定义标题」输入行与「按使用频率排序」提示行（subtitle 仅保留在数据模型兼容老数据） */}
+      {/* 头部（第十二轮）：组名 + 组操作全部与组名同一行，右侧依次 形态切换 / 删组 / 关闭；
+          已删除「自定义标题」输入行与「按使用频率排序」提示行（subtitle 仅保留在数据模型兼容老数据）。
+          第六十七轮：「改组名」按钮与组名旁「N 个站点」计数删除——点组名本身就地改名
+          （行内输入预填全选，回车/失焦确认、Esc 取消，空名不保存，沿用旧校验） */}
       <div className="px-5 sm:px-6 pt-5 pb-4 shrink-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
           {renaming ? (
-            <span className="flex items-center gap-2 min-w-0">
-              <span className="relative block">
-                <input
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                  autoFocus
-                  maxLength={GROUP_NAME_MAX}
-                  data-group-name-input
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && groupName.trim()) {
-                      store.renameGroup(group.id, groupName.trim());
-                      setRenaming(false);
-                    }
-                  }}
-                  className="w-44 bg-white/5 border border-white/15 rounded-xl px-3 py-1.5 pr-10 text-sm outline-none focus:border-indigo-400/60"
-                />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/30 pointer-events-none">
-                  {textCharCount(groupName)}/{GROUP_NAME_MAX}
-                </span>
-              </span>
-              <button
-                onClick={() => {
-                  if (groupName.trim()) store.renameGroup(group.id, groupName.trim());
-                  setRenaming(false);
+            <span className="relative block">
+              <input
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                maxLength={GROUP_NAME_MAX}
+                data-group-name-input
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && groupName.trim()) {
+                    commitRename();
+                  } else if (e.key === 'Escape') {
+                    // Esc 取消改名：恢复原名，并阻止弹窗自身的 Esc 关闭监听把整个弹窗关掉
+                    e.preventDefault();
+                    e.stopPropagation();
+                    renameCancelRef.current = true;
+                    setGroupName(group.name);
+                    setRenaming(false);
+                  }
                 }}
-                className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg bg-indigo-500/80 text-white shrink-0"
-              >
-                <Check size={12} /> 保存
-              </button>
-              <button onClick={() => setRenaming(false)} className="text-[11px] px-2.5 py-1.5 rounded-lg bg-white/10 text-white/70 shrink-0">
-                取消
-              </button>
+                onBlur={() => {
+                  if (renameCancelRef.current) {
+                    setRenaming(false);
+                    return;
+                  }
+                  commitRename();
+                }}
+                className="w-44 bg-white/5 border border-white/15 rounded-xl px-3 py-1.5 pr-10 text-sm outline-none focus:border-indigo-400/60"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-white/30 pointer-events-none">
+                {textCharCount(groupName)}/{GROUP_NAME_MAX}
+              </span>
             </span>
           ) : (
             <>
               <div className="flex items-baseline gap-2.5 min-w-0">
-                <h3 className="text-lg sm:text-xl font-bold tracking-tight truncate">{group.name}</h3>
-                <span className="text-xs text-white/40 shrink-0">{group.sites.length} 个站点</span>
+                <h3
+                  onClick={startRename}
+                  title="点击改名"
+                  className="text-lg sm:text-xl font-bold tracking-tight truncate cursor-pointer"
+                >
+                  {group.name}
+                </h3>
               </div>
-              {/* 操作控件簇（第四十七轮）：改组名 / 形态切换 / 删组整簇移到行最右端右对齐，
-                  左端只留组名 + 计数；单组弹窗里关闭按钮紧随簇后同在右端 */}
+              {/* 操作控件簇（第四十七轮）：形态切换 / 删组整簇移到行最右端右对齐，
+                  左端只留组名（点击就地改名）；单组弹窗里关闭按钮紧随簇后同在右端。
+                  第六十七轮：删组改纯图标按钮（垃圾桶与关闭 X 同为 16px、热区同为 32px） */}
               <span className="flex flex-wrap items-center gap-2 ml-auto shrink-0">
-              <button
-                onClick={() => {
-                  setGroupName(group.name);
-                  setRenaming(true);
-                }}
-                className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white/85 transition-colors shrink-0"
-              >
-                <Pencil size={11} /> 改组名
-              </button>
               <span className="flex items-center rounded-lg bg-white/5 border border-white/10 overflow-hidden shrink-0">
                 <button
                   onClick={() => switchDisplay('list')}
@@ -201,9 +212,11 @@ export function GroupPanelSection({
               ) : (
                 <button
                   onClick={() => setConfirmDelete(true)}
-                  className="flex items-center gap-1 text-[11px] text-white/50 hover:text-red-300 transition-colors shrink-0"
+                  title="删组"
+                  aria-label="删组"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-red-300 hover:bg-white/10 transition-colors shrink-0"
                 >
-                  <Trash2 size={11} /> 删组
+                  <Trash2 size={16} />
                 </button>
               )}
               </span>
@@ -225,7 +238,7 @@ export function GroupPanelSection({
         {/* 小角颜色：卡面文件夹小角的填充色，点选即时生效并落盘；「默认」= 同色灰。当前色带描边 + 勾标记 */}
         {!renaming && (
           <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-            <span className="text-[11px] text-white/50 shrink-0 mr-0.5">小角颜色</span>
+            {/* 第六十七轮：「小角颜色」文字标签按用户要求删除，只留颜色圆点 */}
             <button
               type="button"
               title="默认（同色灰）"
