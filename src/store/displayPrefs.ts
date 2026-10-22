@@ -5,11 +5,15 @@ import { useEffect, useState } from 'react';
  * 与背景设置同属「这台设备上的显示设置」家族，但按产品口径**不进 store.data**：
  * 不参与 JSON 导出/导入、不随 GitHub 同步走，换设备各设各的。故独立存一个 localStorage key。
  * 生效方式：App 把 theme 写到 <html data-theme>、把 alpha 写成 CSS 变量 --group-card-alpha。
- * 白天模式的作用域（第五十一轮收窄）：只有编组卡（B/C/组合卡）卡面变白——
- * index.css 里 [data-theme="light"] 的覆盖全部限定在 .group-card-panel / .group-card-scope 后代内；
- * 页面背景、顶栏、面板/弹窗、A 型小组件不翻色，保持暗夜样式。
- * 液态玻璃（第五十五轮，外观第三档 'glass'）：作用域与白天同口径——只换编组卡卡面
- * （及同源的搜索框/数据按钮 .card-glass-surface）的材质为通透玻璃，文字仍走白色系；
+ * 白天模式的最终定义（第五十八轮收敛为一句话）：与暗夜完全相同，只有 B 卡与 C 卡
+ * （含组合卡）卡面变白底深字。为此 App 背景层不随主题变（旧版白色遮罩 veil 已撤除）、
+ * 小组件/顶栏/弹窗保持暗夜观感、搜索框与数据按钮白天也钉回暗夜深色毛玻璃
+ * （index.css 的 [data-theme="light"] .card-glass-surface 规则）；
+ * index.css 里其余 light 覆盖仍全部限定在编组卡作用域（.group-card-panel / .group-card-scope）内。
+ * 液态玻璃（外观第三档 'glass'）：作用域与白天同口径——只换编组卡卡面
+ * （及同源的搜索框/数据按钮 .card-glass-surface）的材质；第五十八轮起改为 React Bits
+ * GlassSurface 的真实折射移植（见 components/v2/GlassSurface.tsx），CSS 渐变版降为
+ * 不支持 SVG backdrop 滤镜的浏览器上的回退层。文字仍走白色系；
  * 底框透明度滑杆在三档下语义一致（玻璃档控制玻璃 tint 浓淡），且同时驱动 A 型小组件
  * 的渐变 tint 强度（见 WidgetTint）。
  */
