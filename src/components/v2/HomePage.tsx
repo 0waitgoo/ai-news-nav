@@ -25,6 +25,7 @@ import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import BackgroundMenu from './BackgroundMenu';
 import { TopLogo, TopNav } from '../Sidebar';
+import FileToolsCard from './FileToolsCard';
 import NewsCard from './NewsCard';
 import RankingCard from './RankingCard';
 import TaskCard from './TaskCard';
@@ -430,6 +431,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     // 组合卡作为一个条目参与顺序（成员组不再单独出现）；已存顺序里组合的位置由 merge/split 动作维护
     for (const c of validCombos) order.push(comboCardKey(c.id));
     if (hasWidget('trending')) order.push(widgetCardKey('trending'));
+    if (hasWidget('tools')) order.push(widgetCardKey('tools'));
     return order;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listGroups, stackA, stackB, stackC, stackRest, widgets, validCombos]);
@@ -576,6 +578,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
    * - 资讯/榜单：条数固定（资讯头条+4、榜单 6），2x 按内容全高、1x 与桌面同理只露一部分。
    * - 话题卡：固定 8 条，手机内部网格 2 列 4 行，按全高给 344（其内部 grid 为 flex-1，
    *   条数不足时行自动拉伸填满，不留白）。
+   * - 文件工具卡：全宽走 1 栏排布，1x 横排瓷砖 2 行给 196、2x 放大瓷砖 3 行给 300。
    * 估算宁可略高几像素：各卡内容区多为 flex-1，多余高度被内容区吸收，不形成可见空白；
    * 略低则会被 overflow-hidden 截断内容，故统一带少量余量。 */
   const phoneHeights = useMemo(() => {
@@ -636,6 +639,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           break;
         case 'trending':
           map.set(key, 344);
+          break;
+        case 'tools':
+          // 文件工具卡（第六十八轮）：手机全宽走 1 栏排布——1x 横排瓷砖 2 行、2x 放大瓷砖 3 行
+          map.set(key, lay.heightUnits === 2 ? 300 : 196);
           break;
         default:
           map.set(key, 172);
@@ -745,6 +752,16 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         return <RankingCard delay={delay} tint={widgetTintOf(store.data.widgetTints, widgetCardKey('ranking'))} />;
       case 'trending':
         return <TrendingWidget tint={widgetTintOf(store.data.widgetTints, widgetCardKey('trending'))} />;
+      case 'tools':
+        return (
+          <FileToolsCard
+            onNavigate={onNavigate}
+            delay={delay}
+            colSpan={phoneViewport ? 1 : widgetLayouts.tools.colSpan}
+            heightUnits={widgetLayouts.tools.heightUnits}
+            tint={widgetTintOf(store.data.widgetTints, widgetCardKey('tools'))}
+          />
+        );
       default:
         return null;
     }
