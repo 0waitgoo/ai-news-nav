@@ -247,12 +247,38 @@ body {
      TopBarShade 组件以行内样式直写（同第五十八轮 url() 滤镜的落点教训）。
    pointer-events:none 不挡点按。 */
 .topbar-shade {
-  position: absolute;
-  inset: -12px 0 -30px 0;
-  z-index: -1;
+  /* 第六十三轮：改 fixed 全幅铺满——原 absolute 困在吸顶栏内，宽=内容列宽（≤1600 居中）、
+     上伸仅 12px，用户实测「上面没到顶、左右没到边」。absolute 方案即使拉宽也会被主页
+     滚动容器（overflow-y-auto）裁掉越界部分；fixed 以视口为基准、且不产生横向溢出，
+     本站根层无 transform/filter 祖先，fixed 基准可靠（r63 自测实证）。
+     渲染位置改为 App 内容容器（relative z-10）的直接子层：z-40 卡在内容浮层（≤z-20 的
+     卡内元素、z-60+ 的弹窗/菜单/拖影）与吸顶栏（z-50）之间，与旧版「栏内 z-50 上下文
+     之下、页面内容之上」的层级关系等价。
+     高度 = 页面上垫（p-3/sm:p-4/md:p-6 = 12/16/24）+ 栏高（pt-1+内容 h-12/h-13+pb-2
+     = 60/64/64）+ 下缘渐隐 30，与栏底对齐后渐隐，与旧版 inset 的 -30px 下延等价。
+     主页栏另有 -mt-1（上移 4px），--home 变体各断点减 4px。 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 102px;
+  z-index: 40;
   pointer-events: none;
   /* 第六十二轮：去掉原深色 tint 渐变（rgb(3 3 7 / 0.84→0.8)），背景全透明、只留模糊 */
   background: transparent;
   mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
+}
+@media (min-width: 640px) {
+  .topbar-shade { height: 110px; }
+}
+@media (min-width: 768px) {
+  .topbar-shade { height: 118px; }
+}
+.topbar-shade--home { height: 98px; }
+@media (min-width: 640px) {
+  .topbar-shade--home { height: 106px; }
+}
+@media (min-width: 768px) {
+  .topbar-shade--home { height: 114px; }
 }

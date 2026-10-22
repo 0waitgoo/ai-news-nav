@@ -124,6 +124,11 @@ export default function App() {
       {/* Main Content */}
       {/* h-dvh 固定视口高度：让内部 overflow-y-auto 容器成为真正的滚动区，position: sticky 吸顶才有可依附的滚动容器 */}
       <div className="relative z-10 flex flex-col h-dvh w-full p-3 sm:p-4 md:p-6 gap-4 sm:gap-6 max-w-[1600px] mx-auto">
+        {/* 顶栏遮挡带（第五十九轮引入、第六十三轮改全幅）：fixed 铺满视口上/左/右，
+            在本容器层统一渲染一份（主页/子页面共用），变体按当前页实际渲染的栏选
+            （子页面栏在本组件内、主页栏在 HomePage 内，高度差只有 -mt-1 的 4px）。
+            几何与层级见 index.css .topbar-shade */}
+        <TopBarShade variant={currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools' ? 'sub' : 'home'} />
         {/* 子页面顶栏与主页吸顶栏同款渲染（第四十三轮修漂移）：同样的 4 栏 grid 左半——
             背景按钮 + 导航图标组，位置/间距/高亮与主页完全一致，不再用旧的居中导航行；
             右半（搜索/数据）是主页专属，子页面留空占位保持左半位置不变 */}
@@ -131,8 +136,6 @@ export default function App() {
           /* 不带主页那条的 -mt-1：主页吸顶栏在滚动容器内、边距折叠后净偏移与此处不同，
              实测去掉后三页图标组 Y 坐标一致（均为主页基准） */
           <div className="sticky top-0 z-50 pt-1 pb-2 shrink-0">
-            {/* 遮挡带与主页顶栏同款（第五十九轮），样式见 index.css .topbar-shade */}
-            <TopBarShade />
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
               <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
                 <BackgroundMenu store={store} />
