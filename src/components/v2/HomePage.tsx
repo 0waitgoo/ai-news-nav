@@ -24,7 +24,7 @@ import { placeInLanes, simulateDenseFlow, type LaneItemSpec } from './laneLayout
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import BackgroundMenu from './BackgroundMenu';
-import { TopNav } from '../Sidebar';
+import { TopLogo, TopNav } from '../Sidebar';
 import NewsCard from './NewsCard';
 import RankingCard from './RankingCard';
 import TaskCard from './TaskCard';
@@ -1103,8 +1103,12 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       {/* 吸顶栏底已按用户要求全透明：各控件自带实色底，直接浮在页面背景之上 */}
       <div className="sticky top-0 z-50 -mt-1 pt-1 pb-2">
         {/* 遮挡带（第五十九轮）第六十三轮起改由 App 在容器层统一渲染（fixed 全幅），不在栏内挂 */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
+        {/* 移动端列宽（第六十四轮实测修正）：左组加 LOGO 后内容约 207px，grid-cols-2 的半屏
+            （390px 时 177px）装不下、工具钮会被搜索框盖住一半无法点。移动端改左列按内容宽、
+            右列吃剩余（搜索框可缩），lg 起仍是原 4 栏等分、左组位置与桌面完全一致 */}
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-4 gap-3 sm:gap-4 items-center">
           <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
+            <TopLogo onClick={() => onNavigate('home')} />
             <BackgroundMenu store={store} />
             <TopNav onPageChange={onNavigate} currentPage="home" />
           </div>

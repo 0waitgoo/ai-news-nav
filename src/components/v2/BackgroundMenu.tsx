@@ -6,7 +6,8 @@ import { deleteBgImage, saveBgImage } from '../../store/bgImageDb';
 import { setDisplayPrefs, useDisplayPrefs } from '../../store/displayPrefs';
 
 /**
- * 「背景」入口：顶栏最左侧，与「数据」按钮同款视觉。
+ * 「背景」入口：顶栏左组第二位（LOGO 之后）；第六十四轮起触发钮与导航图标同款——
+ * 无底色纯白色图标，不再是带文字的深色胶囊。
  * 背景来源只有两种：内置预设（纯 CSS）与用户本地图片。
  * 本地图片只存本机浏览器的 IndexedDB，绝不上传；选预设即时生效，当前项打勾。
  */
@@ -53,16 +54,20 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
 
   return (
     <div ref={containerRef} className="relative shrink-0">
+      {/* 触发按钮（第六十四轮）：与顶栏导航图标同款——去深色胶囊底、去「背景」文字，
+          只剩白色图片图标；明暗随开合（打开纯白、平时半透明、hover 提亮），尺寸与 NavItem 对齐 */}
       <button
         onClick={() => {
           setOpen((v) => !v);
           setMessage(null);
         }}
         title="背景：预设 / 本地图片"
-        className="h-12 sm:h-13 px-2.5 sm:px-3 rounded-2xl bg-[#141419]/60 backdrop-blur-xl border border-white/[0.07] text-white/45 hover:text-white/85 hover:border-white/15 flex items-center gap-1.5 text-xs transition-colors"
+        aria-label="背景"
+        className={`p-2 sm:p-2.5 rounded-xl flex items-center justify-center transition-colors duration-300 ${
+          open ? 'text-white' : 'text-white/55 hover:text-white'
+        }`}
       >
-        <ImageIcon size={15} />
-        <span className="hidden sm:inline">背景</span>
+        <ImageIcon size={20} />
       </button>
 
       <AnimatePresence>
