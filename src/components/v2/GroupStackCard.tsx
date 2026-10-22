@@ -11,13 +11,11 @@ import { groupIcon, siteIconSrc, siteLogoFallback, sortSites, type NavGroup, typ
  * - 底部图标排是主角：图标瓷砖（置顶优先 + 频率序）可点击直达、悬停放大；卡面其余区域点击打开组弹窗（GroupPanel）
  * - 第十三轮（纠正）：卡身底色不用全透明，改回 B 卡（GroupListCard）同款半透明底——
  *   与 .glass-panel 同数值：rgba(30, 30, 35, 0.4) + backdrop-blur(24px)，页面背景半透出、两型卡观感一致
- * - 第十六轮：与 B 卡一样可右键改尺寸（groupLayouts 按组存，缺省 1 栏 × 1x）；
- *   图标排去掉「+N」尾巴——1 栏每排 7 个（瓷砖 flex 自适应缩小以整排放下），2 栏每排按 48px 瓷砖放宽到 11 个；
- *   未展示完时图标区右端加渐隐罩作提示，不再写数字（总数在标题行已有）
+ * - 第十六轮：与 B 卡一样可右键改尺寸（groupLayouts 按组存，缺省 1 栏 × 1x）
  * - 第十七轮：去掉卡身外投影（原 shadow-xl shadow-black/30），卡面走扁平；图标瓷砖经常态/悬停态核查本就无阴影类，未动
- * - 第二十二轮：卡高 2x 时图标区改 5 列网格——瓷砖从左到右、从上往下逐行排，网格撑满卡宽（左右对齐）、
- *   间距比 1x 更宽松、瓷砖略放大；可见 2 行共 10 个，再多底部渐隐提示（1x 规则不变）
  * - 第二十一轮：卡框（StackCardFrame）与瓷砖区（StackSiteTiles）抽成共享组件，组合卡（ComboCard）复用同一套外观与排版规则
+ * - 第五十三轮：卡面图标全形态统一尺寸与排布（见 FACE_TILE_SIZE 与 StackSiteTiles 注释）——
+ *   取代第二十二轮「2x 网格撑满卡宽、瓷砖随卡宽放大」的旧规则
  */
 
 /** 组合卡专用小角：造型与普通 C 卡小角一致（圆角上沿 + clipPath 裁下 7px），按左右半区定位、宽度略收，两块之间留间隙 */
@@ -95,7 +93,13 @@ export function StackCardFrame({
           悬停只提亮描边，不改变底色 */}
       <div
         data-stack-body
-        style={{ background: 'rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4))', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+        style={{
+          background: 'rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4))',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          /* 第五十三轮：卡身作容器查询上下文，卡面瓷砖尺寸变量（--face-tile-size）里的 cqw 以卡宽为基准解析 */
+          containerType: 'inline-size',
+        }}
         className="group-card-scope absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
       >
         {children}
@@ -130,15 +134,38 @@ export function StackGroupIcon({ group, size = 30 }: { group: NavGroup; size?: n
   );
 }
 
-/** 单个站点瓷砖（白底圆角块 + 站点图标），点击直达并阻止冒泡 */
-function SiteTile({ site, className }: { site: SiteEntry; className: string }) {
+/**
+ * 卡面瓷砖尺寸（第五十三轮，全形态统一）：
+ * 基准 = 改版前「宽 1 栏 × 高 2x」形态下瓷砖的实测边长 60.4px、gap 10px（1680 视口实测）。
+ * --face-tile-size 用 cqw 复刻基准公式：cqw 的基准是容器（StackCardFrame 卡身）的 content-box 宽，
+ * 基准卡 content-box = 342px = 5×60.4 + 4×10，故 tile = (100cqw − 4×gap) / 5、上限 60.4px：
+ * 卡宽达到基准宽度时恒为 60.4px，更窄的卡（小屏）按同一公式等比缩小——任何视口下
+ * 四种形态（1/2 栏 × 1x/2x）的卡面图标都等于该视口下「1 栏 2x」的尺寸，不再随形态变化。
+ * gap 同为全形态统一常量 10px（横向与纵向同值）：实测自「1 栏卡面 5 个基准图标恰好排满一整行」——
+ * 4 个图标间隙恒为 10px、整行 341.95px 恰好填满 content-box（342），两侧各 17px 只是卡身自带的
+ * 16px 内边距 + 1px 边框、无额外分配；5 个/行只是这套常量在 1 栏宽下的自然结果，不是排布规则。
+ */
+const FACE_TILE_VARS = {
+  '--face-tile-size': 'min(60.4px, calc((100cqw - 40px) / 5))',
+  '--face-tile-gap': '10px',
+} as React.CSSProperties;
+
+/** 单个站点瓷砖（白底圆角块 + 站点图标），尺寸走全形态统一变量；点击直达并阻止冒泡 */
+function SiteTile({ site }: { site: SiteEntry }) {
   const openSite = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(site.url, '_blank');
   };
   return (
-    <button type="button" title={site.name} data-face-site={site.name} onClick={openSite} className={className}>
-      <span className="block w-full aspect-square rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
+    <button
+      type="button"
+      title={site.name}
+      data-face-site={site.name}
+      onClick={openSite}
+      className="group/face shrink-0 rounded-[13px] hover:z-20"
+      style={{ width: 'var(--face-tile-size)', height: 'var(--face-tile-size)' }}
+    >
+      <span className="block w-full h-full rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
         <img
           src={siteIconSrc(site)}
           alt={site.name}
@@ -155,9 +182,12 @@ function SiteTile({ site, className }: { site: SiteEntry; className: string }) {
 }
 
 /**
- * C 卡底部瓷砖区（普通 C 卡与组合卡共用同一套排版规则）：
- * - 1x：单行 flex，最多 5 个（第四十六轮），整行在图标区内水平 + 垂直居中，无渐隐
- * - 2x（第二十二轮）：5 列网格撑满卡宽、从上往下逐行排，可见 2 行共 10 个，未展示完底部渐隐
+ * C 卡底部瓷砖区（普通 C 卡与组合卡共用，第五十三轮最终口径）：
+ * 全部形态（1/2 栏 × 1x/2x）共用同一套常量——图标尺寸（FACE_TILE_VARS 的 1栏2X 基准）
+ * + 统一 gap 10px——做流式排布（flex-wrap）：全部站点从左往右排、排不下自动换行，
+ * 每行能放几个由卡面实际宽度自然决定（1 栏自然约 5 个、2 栏自然约 10 个，都只是结果不是规则）；
+ * 不写死任何每行个数、不设数量上限。每行居中、整块在图标区内垂直居中。
+ * colSpan / heightUnits 仅保留签名兼容，排布不再按形态分支。
  */
 export function StackSiteTiles({
   group,
@@ -165,58 +195,31 @@ export function StackSiteTiles({
   heightUnits = 1,
 }: {
   group: NavGroup;
+  /** 仅签名兼容：排布已全形态统一（第五十三轮），不再按宽高分支 */
   colSpan?: 1 | 2;
   heightUnits?: 1 | 2;
 }) {
   const sorted = sortSites(group.sites);
-
-  if (heightUnits === 2) {
-    const faceSites = sorted.slice(0, 10);
-    const hasMore = group.sites.length > faceSites.length;
-    return (
-      <div className="mt-auto pt-3 relative">
-        {group.sites.length === 0 ? (
-          <span className="text-[11px] text-white/35">点开添加第一个网站</span>
-        ) : (
-          <div data-tiles-grid="5" className="grid grid-cols-5 gap-2.5">
-            {faceSites.map((site) => (
-              <React.Fragment key={site.id ?? site.name}>
-                <SiteTile site={site} className="group/face w-full rounded-[13px] hover:z-20" />
-              </React.Fragment>
-            ))}
-          </div>
-        )}
-        {hasMore && (
-          <div
-            data-icon-fade="bottom"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-12 z-10"
-            style={{
-              background:
-                'linear-gradient(to top, rgb(var(--fade-rgb) / 0.92) 0%, rgb(var(--fade-rgb) / 0.55) 55%, rgb(var(--fade-rgb) / 0) 100%)',
-            }}
-          />
-        )}
-      </div>
-    );
-  }
-
-  /* 单行形态（第四十六轮）：最多 5 个图标，整行在图标区内水平 + 垂直居中
-     （不足 5 个同样居中，不再靠左）；超出部分只在弹窗里看，单行不再需要右端渐隐。
-     2x 的 5 列网格形态不在本轮范围，保持原样（见上方分支） */
-  const faceSites = sorted.slice(0, 5);
   return (
-    <div className="flex-1 flex flex-col justify-center pt-3 relative">
-      <div className="flex flex-col gap-1.5">
-        <div data-icon-row className="flex items-center justify-center gap-1.5">
-          {faceSites.map((site) => (
+    <div
+      data-tiles-zone
+      style={FACE_TILE_VARS}
+      className="flex-1 min-h-0 flex items-center justify-center pt-3 relative"
+    >
+      {group.sites.length === 0 ? (
+        <span className="text-[11px] text-white/35">点开添加第一个网站</span>
+      ) : (
+        <div
+          data-tiles-flow
+          className="w-full flex flex-wrap items-center justify-center"
+          style={{ gap: 'var(--face-tile-gap)' }}
+        >
+          {sorted.map((site) => (
             <React.Fragment key={site.id ?? site.name}>
-              <SiteTile site={site} className="group/face flex-1 max-w-[48px] rounded-[13px] hover:z-20" />
+              <SiteTile site={site} />
             </React.Fragment>
           ))}
         </div>
-      </div>
-      {group.sites.length === 0 && (
-        <span className="text-[11px] text-white/35 self-center">点开添加第一个网站</span>
       )}
     </div>
   );
@@ -232,9 +235,9 @@ export default function GroupStackCard({
   group: NavGroup;
   onOpen: (group: NavGroup) => void;
   delay?: number;
-  /** 右键布局宽度：1 栏每排 7 个图标；2 栏每排按 48px 瓷砖放宽 */
+  /** 右键布局宽度（瓷砖尺寸已全形态统一，此值不再影响图标大小） */
   colSpan?: 1 | 2;
-  /** 右键布局高度：1x 一排图标；2x 改 5 列网格两排（第二十二轮） */
+  /** 右键布局高度（卡面排布已全形态统一为同一常量流式排布，此值只决定卡高） */
   heightUnits?: 1 | 2;
 }) {
   return (
