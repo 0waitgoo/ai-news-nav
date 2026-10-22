@@ -5,7 +5,7 @@ import type { WidgetTint } from '../../store/localStore';
 import WidgetTintLayer from './WidgetTint';
 
 /** A 型小组件卡的统一卡壳：标题行（图标 + 标题 + 右侧操作） + 内容区；
- *  传入 tint 时在内容之下叠一层专属底色（渐变 + 水印图标，第二十三轮） */
+ *  传入 tint 时在内容之下叠一层专属底色（渐变 + 居中 Emoji 水印，第二十三轮/第三十六轮） */
 export function Card({
   title,
   icon,
@@ -26,8 +26,8 @@ export function Card({
   delay?: number;
   /** 专属底色（第二十三轮）：与 watermark 同时传入才渲染底色层 */
   tint?: WidgetTint;
-  /** 水印图标节点（与标题图标同源的大号 lucide 图标） */
-  watermark?: React.ReactNode;
+  /** 水印字符（按卡片语义传入的 Emoji，居中渲染，第三十六轮） */
+  watermark?: string;
 }) {
   return (
     <motion.div
@@ -37,7 +37,7 @@ export function Card({
       onClick={onClick}
       className={`glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors ${onClick ? 'cursor-pointer' : ''} ${className}`}
     >
-      {tint && watermark && <WidgetTintLayer tint={tint} icon={watermark} />}
+      {tint && watermark && <WidgetTintLayer tint={tint} emoji={watermark} />}
       <div className="relative flex flex-col flex-1 min-h-0">
         {title !== undefined && (
           <div className="flex items-center justify-between gap-2 mb-3 shrink-0">

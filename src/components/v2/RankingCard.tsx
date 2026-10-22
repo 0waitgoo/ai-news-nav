@@ -48,7 +48,7 @@ export default function RankingCard({
       right={<span className="text-[10px] text-white/35">Product Hunt · 每周更新</span>}
       delay={delay}
       tint={tint}
-      watermark={<Trophy size={176} strokeWidth={1} />}
+      watermark="🏆"
     >
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col gap-1">
         {entries.map((item) => (

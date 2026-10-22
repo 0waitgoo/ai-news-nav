@@ -51,7 +51,7 @@ export default function NewsCard({
       onClick={() => onNavigate('news')}
       delay={delay}
       tint={tint}
-      watermark={<Newspaper size={176} strokeWidth={1} />}
+      watermark="📰"
     >
       {loading ? (
         <div className="flex-1 flex items-center justify-center">

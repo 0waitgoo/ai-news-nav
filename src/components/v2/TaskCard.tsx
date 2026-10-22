@@ -107,9 +107,7 @@ export default function TaskCard({
   const restCount = Math.max(0, open.length - 1);
 
   /** 专属底色层（第二十三轮）：1x/2x 两壳共用，内容以 relative 层级盖在其上 */
-  const tintLayer = tint ? (
-    <WidgetTintLayer tint={tint} icon={<ListTodo size={176} strokeWidth={1} />} />
-  ) : null;
+  const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="📋" /> : null;
 
   /* ---------- 高 2x：面板式布局（复用 TaskPanel 双列内容，核心交互卡内直接可用） ---------- */
   if (heightUnits === 2) {
