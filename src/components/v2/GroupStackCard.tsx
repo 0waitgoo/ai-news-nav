@@ -19,6 +19,7 @@ import { useGlassBackdrop } from './GlassSurface';
  *   取代第二十二轮「2x 网格撑满卡宽、瓷砖随卡宽放大」的旧规则
  * - 第五十六轮：布局修正——高 1x 卡面只显示一行（按卡宽截断）；高 2x 改为从图标区左上角起排，
  *   取消整块居中（见 StackSiteTiles 注释）
+ * - 第六十三轮：高 1x 单行也改从左起排（用户推翻第五十六轮的单行水平居中），与 2x 第一行同左缘
  */
 
 /** 组合卡专用小角：造型与普通 C 卡小角一致（圆角上沿 + clipPath 裁下 7px），按左右半区定位、宽度略收，两块之间留间隙 */
@@ -224,7 +225,8 @@ function useRowFitCount(zoneRef: React.RefObject<HTMLDivElement | null>, enabled
  * 全部形态共用同一套常量——图标尺寸（FACE_TILE_VARS 的 1栏2X 基准）+ 统一 gap 10px，
  * 排布按高度分两型（用户第五十六轮拍板）：
  * - 高 1x：卡面只显示**一行**——按卡宽可容纳数截断（见 useRowFitCount），超出的站点
- *   不在卡面出现（弹窗里照常可见）；这一行在图标区内垂直居中、整行水平居中（沿用旧口径）。
+ *   不在卡面出现（弹窗里照常可见）；这一行在图标区内垂直居中、水平**从左起排**
+ *   （第六十三轮：用户「不要居中，靠左就行」推翻第五十六轮的单行居中，左缘与 2x 第一行一致）。
  * - 高 2x：流式网格**从图标区左上角开始布局**——第一行顶着图标区顶部、每行从左边缘
  *   逐个排、逐行向下，全部站点都摆出来（排不下自动换行，每行个数由卡宽决定）；
  *   取消第五十三轮的整块横向/纵向居中（居中会让上方留大块空白、末行单个图标跑到中间）。
@@ -250,8 +252,8 @@ export function StackSiteTiles({
       data-tiles-zone
       style={FACE_TILE_VARS}
       className={`flex-1 min-h-0 flex pt-3 relative ${
-        /* 1x：补 pb-3 与 pt-3 对称，单行在整个图标区（含内边距）内真正垂直居中 */
-        heightUnits === 1 ? 'items-center justify-center pb-3' : 'items-start justify-start'
+        /* 1x：补 pb-3 与 pt-3 对称，单行在整个图标区（含内边距）内真正垂直居中；水平靠左（第六十三轮） */
+        heightUnits === 1 ? 'items-center justify-start pb-3' : 'items-start justify-start'
       }`}
     >
       {group.sites.length === 0 ? (
@@ -259,7 +261,7 @@ export function StackSiteTiles({
       ) : heightUnits === 1 ? (
         <div
           data-tiles-flow
-          className="w-full flex flex-nowrap items-center justify-center overflow-hidden"
+          className="w-full flex flex-nowrap items-center justify-start overflow-hidden"
           style={{ gap: 'var(--face-tile-gap)' }}
         >
           {visible.map((site) => (

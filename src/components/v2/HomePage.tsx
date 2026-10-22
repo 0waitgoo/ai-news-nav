@@ -36,7 +36,6 @@ import ComboCard from './ComboCard';
 import ComboPanel from './ComboPanel';
 import TrendingWidget from '../widgets/TrendingWidget';
 import { GlassDefsHost } from './GlassSurface';
-import TopBarShade from './TopBarShade';
 
 /**
  * V2 新主页（第三轮修订 + 第五轮拖拽排序 + 第八轮顶栏一行对齐）
@@ -1103,8 +1102,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           移动端为 2 栏 grid，左右各半，仍保持一行不换行。 */}
       {/* 吸顶栏底已按用户要求全透明：各控件自带实色底，直接浮在页面背景之上 */}
       <div className="sticky top-0 z-50 -mt-1 pt-1 pb-2">
-        {/* 遮挡带（第五十九轮）：顶栏背后的全宽糊化层，滚动时挡住透进顶栏区域的卡片，样式见 index.css .topbar-shade */}
-        <TopBarShade />
+        {/* 遮挡带（第五十九轮）第六十三轮起改由 App 在容器层统一渲染（fixed 全幅），不在栏内挂 */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
           <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
             <BackgroundMenu store={store} />
