@@ -35,6 +35,11 @@ import { splitTasksText, type SplitPlanDraft } from '../../utils/taskSplit';
  * - 第五十四轮：待办拖拽合并成组——在「未完成」列表里按住顶层待办行身（控件除外）拖动、
  *   压到另一条顶层待办上松手即合并（手势与反馈沿用 useSiteDragSort 的两段式指针拖拽，
  *   落盘走 store.mergeTaskIntoGroup）；已完成区条目不参与，手动建组入口不变
+ * - 第五十七轮：① 修「加了子任务还显示组里还没有子任务」——空提示条件本身没错（与子任务行
+ *   同源于 group.children），病在添加路径只靠表单隐式提交：中文输入法组合态下按回车只上屏、
+ *   不触发提交，文字留在框里、组仍为空。子任务/添加待办/组名三个输入框改由 keydown 显式提交
+ *   （组合中的回车忽略、提交后草稿同步清零防同键重复），标题编辑框的回车同样加组合守卫；
+ *   ② 拖拽合并改口径：普通 × 普通改为新建自动命名组「小组N」（语义见 store.mergeTaskIntoGroup）
  */
 
 interface RowMenuState {
@@ -351,6 +356,9 @@ export function TasksSection({
   const [newTask, setNewTask] = useState('');
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [groupName, setGroupName] = useState('');
+  /** 两个草稿的 ref 镜像（理由同 GroupBlock 第五十七轮注：回车显式提交 + 同步清零防重复） */
+  const newTaskRef = useRef('');
+  const groupNameRef = useRef('');
   /** 待办拖拽合并（第五十四轮）：手势状态在本节内管理，面板与 2x 卡面共用同一份 */
   const drag = useTaskMergeDrag(store.mergeTaskIntoGroup);
 
@@ -385,17 +393,38 @@ export function TasksSection({
     setEditingTaskId(null);
   };
 
+  const changeNewTask = (v: string) => {
+    newTaskRef.current = v;
+    setNewTask(v);
+  };
+
   const submitNewTask = () => {
-    if (!newTask.trim()) return;
-    store.addTask(newTask);
-    setNewTask('');
+    const draft = newTaskRef.current;
+    if (!draft.trim()) return;
+    store.addTask(draft);
+    changeNewTask('');
+  };
+
+  const changeGroupName = (v: string) => {
+    groupNameRef.current = v;
+    setGroupName(v);
   };
 
   const submitGroup = () => {
-    if (!groupName.trim()) return;
-    store.addTaskGroup(groupName);
-    setGroupName('');
+    const draft = groupNameRef.current;
+    if (!draft.trim()) return;
+    store.addTaskGroup(draft);
+    changeGroupName('');
     setShowGroupForm(false);
+  };
+
+  /** 输入框回车显式提交（第五十七轮，同 GroupBlock 子任务框的口径）：
+   * 输入法组合中的回车只上屏；组合结束后的回车直接提交并挡掉表单隐式提交防重复 */
+  const enterToSubmit = (submit: () => void) => (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submit();
+    }
   };
 
   const checkBtn = (done: boolean, onToggle: () => void, label: string) => (
@@ -417,7 +446,8 @@ export function TasksSection({
       autoFocus
       onChange={(e) => setEditText(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') commitEditTask();
+        // 输入法组合中的回车只上屏，别把半成品标题提前提交（第五十七轮）
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) commitEditTask();
         if (e.key === 'Escape') setEditingTaskId(null);
       }}
       onBlur={commitEditTask}
@@ -511,7 +541,8 @@ export function TasksSection({
         <Plus size={14} className="text-zinc-300 shrink-0" />
         <input
           value={newTask}
-          onChange={(e) => setNewTask(e.target.value)}
+          onChange={(e) => changeNewTask(e.target.value)}
+          onKeyDown={enterToSubmit(submitNewTask)}
           placeholder="添加待办，回车确认"
           data-task-add
           className="flex-1 min-w-0 bg-transparent text-sm py-1.5 outline-none placeholder:text-zinc-400"
@@ -530,9 +561,10 @@ export function TasksSection({
             <input
               value={groupName}
               autoFocus
-              onChange={(e) => setGroupName(e.target.value)}
+              onChange={(e) => changeGroupName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setShowGroupForm(false);
+                else enterToSubmit(submitGroup)(e);
               }}
               placeholder="组名，如 周末采购"
               data-group-name
@@ -720,14 +752,24 @@ const GroupBlock: React.FC<{
 }> = ({ group, store, startExpanded, editing, editor, onMenu, onChildMenu, checkBtn, entryId, dragVisual, onGripPointerDown }) => {
   const [expanded, setExpanded] = useState(startExpanded);
   const [subDraft, setSubDraft] = useState('');
+  /** 草稿的 ref 镜像：提交时同步读它并清零，让同一次回车即便同时触发 keydown 与表单 submit 也只加一条；
+   * 回车改由输入框 keydown 显式提交（见下方 input）——只靠表单隐式提交时，中文输入法组合态下
+   * 按回车只上屏不提交，用户会以为加了、实际文字还留在框里（第五十七轮修） */
+  const subDraftRef = useRef('');
   const kids = group.children ?? [];
   const { done, total } = taskChildProgress(group);
   const allDone = taskGroupDone(group);
 
+  const changeSubDraft = (v: string) => {
+    subDraftRef.current = v;
+    setSubDraft(v);
+  };
+
   const submitSub = () => {
-    if (!subDraft.trim()) return;
-    store.addSubTask(group.id, subDraft);
-    setSubDraft('');
+    const draft = subDraftRef.current;
+    if (!draft.trim()) return;
+    store.addSubTask(group.id, draft);
+    changeSubDraft('');
     setExpanded(true);
   };
 
@@ -798,7 +840,15 @@ const GroupBlock: React.FC<{
             <Plus size={13} className="text-zinc-400 shrink-0" />
             <input
               value={subDraft}
-              onChange={(e) => setSubDraft(e.target.value)}
+              onChange={(e) => changeSubDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // 输入法组合中（isComposing）的回车只用来上屏，不添加；组合结束后的回车才提交，
+                // 并 preventDefault 挡掉表单隐式提交，避免同一次按键重复添加
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  submitSub();
+                }
+              }}
               placeholder="添加子任务，回车确认"
               data-subtask-add
               className="flex-1 min-w-0 bg-transparent text-[13px] py-1 outline-none placeholder:text-zinc-400 border-b border-transparent focus:border-indigo-400/40 transition-colors"
