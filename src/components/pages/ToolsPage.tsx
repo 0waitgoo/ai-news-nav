@@ -1,5 +1,7 @@
 import React, { Suspense, useState } from 'react';
-import { Combine, FileText, GalleryVertical, ImagePlus, Images, Scissors, ShieldCheck, Wrench } from 'lucide-react';
+import { ShieldCheck, Wrench } from 'lucide-react';
+import { TOOL_DEFS, type ToolTabId } from './tools/toolDefs';
+import { consumeToolTab } from '../../store/toolNav';
 
 const PdfToImages = React.lazy(() => import('./tools/PdfToImages'));
 const PdfToLongImage = React.lazy(() => import('./tools/PdfToLongImage'));
@@ -12,20 +14,24 @@ const PdfSplit = React.lazy(() => import('./tools/PdfSplit'));
  * 工具页（第六十一轮）：PDF 格式转换一期。
  * 全部工具都在浏览器本地处理文件，不上传服务器、本站不保留任何用户文件。
  * 二期（Word/Excel/PPT 互转）与 Office 转 PDF 不在本期范围，页面不放假入口。
+ * 工具 id/名称/图标走共享定义 toolDefs（第六十八轮），与主页文件工具卡同一套；
+ * 本页只按 id 挂懒加载实现。初始 tab 优先消费主页卡的直达意图（toolNav）。
  */
-const TABS = [
-  { id: 'images', label: 'PDF 转图片', icon: Images, Comp: PdfToImages },
-  { id: 'long', label: 'PDF 转长图', icon: GalleryVertical, Comp: PdfToLongImage },
-  { id: 'img2pdf', label: '图片转 PDF', icon: ImagePlus, Comp: ImagesToPdf },
-  { id: 'txt', label: 'PDF 转 TXT', icon: FileText, Comp: PdfToTxt },
-  { id: 'merge', label: 'PDF 合并', icon: Combine, Comp: PdfMerge },
-  { id: 'split', label: 'PDF 拆分', icon: Scissors, Comp: PdfSplit },
-] as const;
+const COMPS: Record<ToolTabId, React.LazyExoticComponent<React.ComponentType>> = {
+  images: PdfToImages,
+  long: PdfToLongImage,
+  img2pdf: ImagesToPdf,
+  txt: PdfToTxt,
+  merge: PdfMerge,
+  split: PdfSplit,
+};
 
-type TabId = (typeof TABS)[number]['id'];
+const TABS = TOOL_DEFS.map((d) => ({ ...d, Comp: COMPS[d.id] }));
+
+type TabId = ToolTabId;
 
 export default function ToolsPage() {
-  const [tab, setTab] = useState<TabId>('images');
+  const [tab, setTab] = useState<TabId>(() => consumeToolTab() ?? 'images');
   const Active = TABS.find((t) => t.id === tab)!;
 
   return (
