@@ -17,7 +17,7 @@ import {
  * - 同步层（GitHub 仓库 / 云端）以后只替换这一层的读写后端，组件不感知
  */
 
-export type WidgetId = 'task' | 'news' | 'ranking' | 'trending';
+export type WidgetId = 'task' | 'news' | 'ranking' | 'trending' | 'tools';
 
 /** A 型原生组件在网格中的占位：宽度跨栏数（最多 2 栏） + 高度单位（1X / 2X） */
 export interface WidgetLayout {
@@ -30,6 +30,8 @@ export const DEFAULT_WIDGET_LAYOUTS: Record<WidgetId, WidgetLayout> = {
   news: { colSpan: 2, heightUnits: 2 },
   ranking: { colSpan: 2, heightUnits: 2 },
   trending: { colSpan: 2, heightUnits: 1 },
+  /** 文件工具卡（第六十八轮）：默认 2 栏 × 1x，6 个工具一排摆下 */
+  tools: { colSpan: 2, heightUnits: 1 },
 };
 
 /** B 型编组卡收起态的默认占位：2 栏 × 2x（与组件共用 WidgetLayout 形状，右键菜单可改） */
@@ -526,10 +528,11 @@ export const ALL_WIDGETS: { id: WidgetId; name: string; desc: string }[] = [
   { id: 'news', name: 'AI 资讯', desc: '今日最热头条 + 热门榜单' },
   { id: 'ranking', name: 'AI 软件榜', desc: 'Product Hunt 每周更新榜单' },
   { id: 'trending', name: '热门话题', desc: '社区热门话题帖子数' },
+  { id: 'tools', name: '文件工具', desc: 'PDF 转图片/长图、图片转 PDF、合并与拆分' },
 ];
 
 const STORAGE_KEY = 'ainav-store-v1';
-const DEFAULT_WIDGETS: WidgetId[] = ['task', 'news', 'ranking', 'trending'];
+const DEFAULT_WIDGETS: WidgetId[] = ['task', 'news', 'ranking', 'trending', 'tools'];
 
 const genId = (prefix: string) => `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
