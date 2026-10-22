@@ -1,5 +1,5 @@
 import React, { useEffect, useState, Suspense } from 'react';
-import { TopNav } from './components/Sidebar';
+import { TopLogo, TopNav } from './components/Sidebar';
 import BackgroundMenu from './components/v2/BackgroundMenu';
 import HomePage from './components/v2/HomePage';
 import TopBarShade from './components/v2/TopBarShade';
@@ -130,14 +130,20 @@ export default function App() {
             几何与层级见 index.css .topbar-shade */}
         <TopBarShade variant={currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools' ? 'sub' : 'home'} />
         {/* 子页面顶栏与主页吸顶栏同款渲染（第四十三轮修漂移）：同样的 4 栏 grid 左半——
-            背景按钮 + 导航图标组，位置/间距/高亮与主页完全一致，不再用旧的居中导航行；
+            LOGO + 背景按钮 + 导航图标组（第六十四轮：左组全去底色、白色图标，LOGO 两页同位），
+            位置/间距/高亮与主页完全一致，不再用旧的居中导航行；
             右半（搜索/数据）是主页专属，子页面留空占位保持左半位置不变 */}
         {(currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools') && (
           /* 不带主页那条的 -mt-1：主页吸顶栏在滚动容器内、边距折叠后净偏移与此处不同，
              实测去掉后三页图标组 Y 坐标一致（均为主页基准） */
           <div className="sticky top-0 z-50 pt-1 pb-2 shrink-0">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-center">
+            {/* 行高与主页栏对齐（第六十四轮实测修正）：主页栏行高由搜索框（h-12/sm:h-13）撑起、
+                左组在行内居中；子页面无搜索框、行高只剩左组 40px，整组比主页高 6px。
+                给子页面 grid 同款 min-h 后两处左组中心线回到同一 Y 坐标。
+                列宽同主页：移动端左列按内容宽（加 LOGO 后约 207px，半屏装不下会溢出）、右列吃剩余 */}
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-4 gap-3 sm:gap-4 items-center min-h-12 sm:min-h-13">
               <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
+                <TopLogo onClick={() => handlePageChange('home')} />
                 <BackgroundMenu store={store} />
                 <TopNav onPageChange={handlePageChange} currentPage={currentPage} />
               </div>
