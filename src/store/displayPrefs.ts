@@ -19,6 +19,10 @@ import { useEffect, useState } from 'react';
  * 玻璃 tint）；新增 widgetAlpha 只管 A 型小组件的渐变 tint（见 WidgetTint），两者解耦。
  * 迁移：旧存档没有 widgetAlpha 时，按第五十五轮旧耦合公式 strength = alpha / 0.45
  * 由编组卡现值推导初值（钳 [0,1]），保证升级后小组件第一眼观感与升级前一致，此后独立保存。
+ * 第六十二轮：新增 bgBlur——本地图片背景之上的模糊强度（0–1），背景面板「背景模糊」滑杆
+ * 控制。此前该模糊在 App 遮罩层写死 backdrop-blur 6px，故默认值 0.3 恰对应 6px
+ * （换算见 BG_BLUR_MAX_PX / bgBlurPx：0%→0px、30%→6px、100%→20px），老用户升级后
+ * 第一眼观感不变。只作用于本地图片背景，预设背景不受影响；同层的压黑遮罩 bg-black/50 不动。
  */
 export type DisplayTheme = 'dark' | 'light' | 'glass';
 
@@ -28,6 +32,8 @@ export interface DisplayPrefs {
   groupCardAlpha: number;
   /** 小组件（资讯/话题/榜单/计划）底色 tint 不透明度 0–1（第六十轮新增，与编组卡滑杆解耦） */
   widgetAlpha: number;
+  /** 本地图片背景的模糊强度 0–1（第六十二轮新增）；经 bgBlurPx 换算成 backdrop blur 像素，默认 0.3 = 旧写死值 6px */
+  bgBlur: number;
 }
 
 const STORAGE_KEY = 'ainav-display-prefs-v1';
@@ -42,16 +48,26 @@ function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
 }
 
+/** 背景模糊上限：滑杆 100% 对应的 backdrop blur 像素（第六十二轮） */
+export const BG_BLUR_MAX_PX = 20;
+
+/** 模糊强度（0–1）→ backdrop blur 像素：线性换算，0.3（默认）→ 6px = 第六十二轮前的写死值 */
+export function bgBlurPx(strength: number): number {
+  return Math.round(clamp01(strength) * BG_BLUR_MAX_PX);
+}
+
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   theme: 'dark',
   groupCardAlpha: 0.4,
   // 缺省种子用户从没动过滑杆：小组件初值按旧耦合公式由默认 0.4 推导（≈0.89），与拆分前观感一致
   widgetAlpha: legacyWidgetStrength(0.4),
+  // 背景模糊默认 0.3 ↔ 6px，即第六十二轮前 App 遮罩层写死的 backdrop-blur-[6px]，观感不变
+  bgBlur: 0.3,
 };
 
 function normalizePrefs(raw: unknown): DisplayPrefs {
   if (raw && typeof raw === 'object') {
-    const p = raw as { theme?: unknown; groupCardAlpha?: unknown; widgetAlpha?: unknown };
+    const p = raw as { theme?: unknown; groupCardAlpha?: unknown; widgetAlpha?: unknown; bgBlur?: unknown };
     const groupCardAlpha =
       typeof p.groupCardAlpha === 'number' && Number.isFinite(p.groupCardAlpha)
         ? clamp01(p.groupCardAlpha)
@@ -64,6 +80,11 @@ function normalizePrefs(raw: unknown): DisplayPrefs {
         typeof p.widgetAlpha === 'number' && Number.isFinite(p.widgetAlpha)
           ? clamp01(p.widgetAlpha)
           : legacyWidgetStrength(groupCardAlpha),
+      // 第六十二轮迁移：老存档没有 bgBlur 时回落默认 0.3（= 旧写死 6px），观感不变
+      bgBlur:
+        typeof p.bgBlur === 'number' && Number.isFinite(p.bgBlur)
+          ? clamp01(p.bgBlur)
+          : DEFAULT_DISPLAY_PREFS.bgBlur,
     };
   }
   return { ...DEFAULT_DISPLAY_PREFS };
