@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, AlertTriangle, LogIn, LogOut } from 'lucide-react';
+import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, AlertTriangle, LogIn, LogOut, KeyRound } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { IS_EXTENSION_BUILD } from '../../services/apiBase';
 import type { LocalStore } from '../../store/localStore';
 import { useGlassBackdrop } from './GlassSurface';
 import {
@@ -182,8 +183,17 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   const [oauthClientId, setOauthClientId] = useState<string | null | undefined>(undefined);
   /* 第五十轮起同步只保留 GitHub 登录一种方式：旧 PAT 配置加载时按未登录处理（见 githubSync.ts） */
   const isOauthLoggedIn = ghMeta.authMode === 'oauth' && !!ghMeta.token;
+  /* 扩展构建（方案 B）：OAuth 回跳不可用，改走粘贴令牌直连；令牌同样只存本机独立 key */
+  const isPatLoggedIn = IS_EXTENSION_BUILD && ghMeta.authMode === 'pat' && !!ghMeta.token;
+  const isGhLoggedIn = isOauthLoggedIn || isPatLoggedIn;
+  const [patToken, setPatToken] = useState('');
 
   useEffect(() => {
+    if (IS_EXTENSION_BUILD) {
+      // 扩展里不用 OAuth：不查服务端登录配置，登录区直接渲染令牌表单
+      setOauthClientId(null);
+      return;
+    }
     let cancelled = false;
     void fetchOAuthClientId().then((id) => {
       if (!cancelled) setOauthClientId(id);
@@ -405,6 +415,45 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     setGhStatus(null);
   };
 
+  /* 扩展方案 B：粘贴令牌连接——验令牌拿账号 → 确保 ainav-data 仓库（与 OAuth 同一约定）→
+   * 写定配置开启同步并立即拉取一次。令牌只存本机独立 key，绝不进同步/导出 JSON。 */
+  const connectWithToken = async () => {
+    const token = patToken.trim();
+    if (!token || ghBusyRef.current) return;
+    ghBusyRef.current = true;
+    setGhStatus({ kind: 'syncing', text: '正在验证令牌…' });
+    try {
+      const user = await ghGetUser(token);
+      if ('error' in user) {
+        setGhStatus({ kind: 'error', text: user.error });
+        return;
+      }
+      const ensured = await ensureOAuthRepo(token, user.login);
+      if ('error' in ensured) {
+        setGhStatus({ kind: 'error', text: ensured.error });
+        return;
+      }
+      updateGhMeta({
+        authMode: 'pat',
+        oauthLogin: '',
+        owner: user.login,
+        repo: ensured.repo,
+        branch: OAUTH_BRANCH,
+        path: OAUTH_FILE_PATH,
+        token,
+        enabled: true,
+        lastSha: null,
+        baseUpdatedAt: 0,
+        lastSyncedAt: null,
+      });
+      setPatToken('');
+      setGhStatus({ kind: 'ok', text: `已连接 GitHub（${user.login}），同步已开启` });
+    } finally {
+      ghBusyRef.current = false;
+    }
+    await pullFromGithub();
+  };
+
   // 页面加载：带 OAuth 回跳参数时先处理登录，否则同步已开启且配置完整时自动拉取一次
   const ghInitRef = useRef(false);
   useEffect(() => {
@@ -412,7 +461,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     ghInitRef.current = true;
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
-    if (code) {
+    if (code && !IS_EXTENSION_BUILD) {
       void handleOAuthReturn(code, params.get('state'));
       return;
     }
@@ -648,13 +697,15 @@ export default function DataMenu({ store }: { store: LocalStore }) {
             </div>
 
             {/* ---- GitHub 同步（第十五轮起）：数据同步到自己仓库的一个 JSON 文件，打开自动拉、变化自动推；
-                 同步只保留 GitHub 一键登录（OAuth，仓库固定 ainav-data），第五十轮已删令牌备用方式 ---- */}
+                 网站版只保留 GitHub 一键登录（OAuth，仓库固定 ainav-data），第五十轮已删令牌备用方式；
+                 扩展构建例外走方案 B 粘贴令牌（OAuth 回跳不可用），仓库约定与 OAuth 相同 ---- */}
             <div className="mt-1 border-t border-white/8 px-3 pt-2.5 pb-1">
               <p className="text-[10px] font-medium text-white/50 tracking-wide">GitHub 同步</p>
-              {isOauthLoggedIn ? (
+              {isGhLoggedIn ? (
                 <>
                   <p className="mt-1.5 text-[11px] text-white/70 break-all">
-                    已登录 GitHub：<span className="text-white/90">{ghMeta.oauthLogin || ghMeta.owner}</span>
+                    {isPatLoggedIn ? '已连接 GitHub（令牌）：' : '已登录 GitHub：'}
+                    <span className="text-white/90">{ghMeta.oauthLogin || ghMeta.owner}</span>
                   </p>
                   <p className="mt-0.5 text-[11px] text-white/40 break-all">
                     同步仓库（固定）：{ghMeta.owner}/{ghMeta.repo} · {ghMeta.branch} · {ghMeta.path}
@@ -712,6 +763,37 @@ export default function DataMenu({ store }: { store: LocalStore }) {
                         ? `上次同步 · ${formatSavedTime(ghMeta.lastSyncedAt)}`
                         : '未连接'}
                   </p>
+                </>
+              ) : IS_EXTENSION_BUILD ? (
+                <>
+                  {/* 扩展方案 B：粘贴 GitHub 令牌直连同步（OAuth 回跳在扩展里不可用） */}
+                  <input
+                    type="password"
+                    value={patToken}
+                    onChange={(e) => setPatToken(e.target.value)}
+                    placeholder="粘贴 GitHub 令牌（ghp_… / github_pat_…）"
+                    autoComplete="off"
+                    className="mt-2 w-full px-3 py-2 rounded-xl bg-white/6 border border-white/12 text-xs text-white placeholder:text-white/30 outline-none focus:border-violet-400/60"
+                  />
+                  <button
+                    onClick={() => void connectWithToken()}
+                    disabled={!patToken.trim()}
+                    className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-violet-500/80 text-white text-xs font-medium hover:bg-violet-500 transition-colors disabled:bg-white/10 disabled:text-white/35 disabled:cursor-not-allowed"
+                  >
+                    <KeyRound size={14} /> 连接并同步
+                  </button>
+                  <p className="mt-1 text-[10px] text-white/35 leading-relaxed">
+                    扩展版无法用 GitHub 一键登录，请粘贴令牌连接：GitHub 设置 → Developer settings → Personal access
+                    tokens 生成（需 repo 权限）。连接后自动使用你账号下的私有仓库 ainav-data 同步；令牌只存本机，绝不上传。
+                  </p>
+                  {ghStatus && (
+                    <p className={`pt-1 text-[11px] leading-relaxed ${ghStatusTextCls(ghStatus.kind)}`}>
+                      {ghStatus.kind === 'error' || ghStatus.kind === 'conflict' ? (
+                        <AlertTriangle size={11} className="inline mr-1 -mt-0.5" />
+                      ) : null}
+                      {ghStatus.text}
+                    </p>
+                  )}
                 </>
               ) : (
                 <>
