@@ -4,7 +4,6 @@ import { TrendingUp, RefreshCw } from 'lucide-react';
 import { fetchTrends, type TrendItem } from '../../services/api';
 import type { WidgetTint } from '../../store/localStore';
 import WidgetTintLayer from '../v2/WidgetTint';
-import { useGlassBackdrop } from '../v2/GlassSurface';
 
 /** 热门话题（第九十五轮重做）：数据经本站 /api 聚合微博热搜 + 百度热搜的公开热榜，
  *  heatText 为源站真实热度的格式化展示；拉不到时显示空态，绝不编造话题与热度。
@@ -43,12 +42,9 @@ export default function TrendingWidget({
     : '';
 
   const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="🔥" /> : null;
-  const glass = useGlassBackdrop<HTMLDivElement>(32);
 
   return (
     <motion.div
-      ref={glass.ref}
-      style={glass.style}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5 }}
