@@ -38,9 +38,12 @@ import { useDisplayPrefs } from '../../store/displayPrefs';
  * 第六十轮（用户新口径）：三通道偏移统一改为 -50（redOffset / greenOffset / blueOffset
  *  均为 -50），三通道位移 scale 因此同为 -230——各通道位移量一致，边缘不再有彩虹色差
  *  条纹，只剩纯折射；其余参数一律不动。
+ * 第九十九轮（性能档，用户点选「折射范围强度降一档，常驻流畅」）：上面口径中仅
+ *  distortionScale 例外——-180 → -120（强度降 1/3），三通道 scale 随之为 -170；
+ *  滤镜区域外扩 25% → 12.5%、贴图光栅上限 1024 → 768（见各处注释）。其余参数仍不动。
  */
 export const GLASS_PARAMS = {
-  distortionScale: -180,
+  distortionScale: -120,
   displace: 0.5,
   blur: 11,
   brightness: 50,
@@ -174,12 +177,15 @@ function rasterizeBucketMap(bucket: GlassBucket): void {
    * test-r97 等价断言内（逐像素 meanAbsDiff 与 89 轮 SVG↔PNG 同一口径）；
    * 折射参数（scale/blur/displace/区域）一字未动，贴图定义仍是同一份 SVG。 */
   const SS = 1; // 光栅倍数（第九十七轮由 2 改 1，理由见上）
+  /* 第九十九轮（性能档）：光栅上限 1024 → 768。位移场平滑、分辨率不携带场信息，
+   * 768 与 1024 的场差同在 test-r97 等价口径内；单张贴图面积降到原来的 56%。 */
+  const RASTER_CAP = 768;
   const img = new Image();
   img.onload = () => {
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = Math.min(1024, bucket.w * SS);
-      canvas.height = Math.min(1024, bucket.h * SS);
+      canvas.width = Math.min(RASTER_CAP, bucket.w * SS);
+      canvas.height = Math.min(RASTER_CAP, bucket.h * SS);
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -227,8 +233,12 @@ export function GlassDefsHost() {
              透明黑（feColorMatrix 的 alpha 行取位移后源 alpha → 边缘通道变透明、折射在
              边缘断崖）。外扩后边缘采样落到真实幕布上。feImage 的贴图矩形仍是 0/0/100%：
              贴图外区域取透明黑 = 位移量恒定偏移，那部分结果只落在元素框外、被宿主
-             裁剪裁掉，不进画面。折射参数（scale/blur/通道）一律不动。 */
-          <filter key={b.id} id={b.id} colorInterpolationFilters="sRGB" x="-25%" y="-25%" width="150%" height="150%">
+             裁剪裁掉，不进画面。折射参数（scale/blur/通道）一律不动。
+             第九十九轮（性能档）：外扩 25% → 12.5%（区域 150% → 125%），单面采样
+             面积降为原来的 (1.25²/1.5²) ≈ 69%；同期 scale 230 → 170（位移最大幅度
+             ±85px），12.5% 外扩对本站最大宿主（搜索面/大卡 ~1000px 级）仍 ≥125px 留边，
+             大于最大位移幅度，边缘采样不回落到透明黑。定义仅此一处（桶共用同一模板）。 */
+          <filter key={b.id} id={b.id} colorInterpolationFilters="sRGB" x="-12.5%" y="-12.5%" width="125%" height="125%">
             <feImage x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="map" href={b.mapUrl} />
             <feDisplacementMap
               in="SourceGraphic"
@@ -305,7 +315,7 @@ export function useGlassBackdrop<T extends HTMLElement>(borderRadius: number): {
    * 本就不可见，撤下后宿主回到其自有底（--glass-bg tint + 原 backdrop，如 C 卡内联
    * blur），与「CSS 回退层」同形态；进入视口前（rootMargin 800px 预加载带）即恢复
    * 折射，用户视野内永远是全折射。收益在求值面数：filter: url() 的 backdrop 每帧要
-   * 对滤镜区域（宿主 150%）全量求值，身后又是动态背景，长页面十几张卡同帧共摊；
+   * 对滤镜区域（宿主 125%，第九十九轮性能档由 150% 降档）全量求值，身后又是动态背景，长页面十几张卡同帧共摊；
    * 门控后同帧在算的只剩视口±800px 内的一屏多。折射参数/区域/tint 一字未动。
    * 同轮探针证伪的另一手段备查：filterRes——隔离页四档（无/512/384/256）实测帧
    * 耗时全在噪声内、静态像素差 max=0，Chromium 的 backdrop url() 合成路径不消费
