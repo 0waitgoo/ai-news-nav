@@ -264,6 +264,33 @@ export interface WidgetTint {
 }
 
 /**
+ * 自定义双色渐变（第九十一轮）：用户在右键菜单「换个底色」面板里自选起点/终点两色。
+ * widgetTints 的值除色板索引（number）外可为此形态；渲染时经 widgetTintOf 展开成
+ * WidgetTint（id='custom'）后走与色板完全相同的一条渲染链（vivid 提饱和 + 同 alpha 档），
+ * 不另起渲染口径。from/to 只收 #rrggbb，归一化时非法值整项丢弃（回落补抽）。
+ */
+export interface WidgetTintCustom {
+  kind: 'custom';
+  from: string;
+  to: string;
+}
+
+/** widgetTints 的落盘值：色板索引或自定义双色 */
+export type WidgetTintValue = number | WidgetTintCustom;
+
+const HEX6_RE = /^#[0-9a-fA-F]{6}$/;
+
+/** 校验并清洗一个自定义双色值：形态/色值任一非法返回 null */
+function sanitizeWidgetTintCustom(raw: unknown): WidgetTintCustom | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as { kind?: unknown; from?: unknown; to?: unknown };
+  if (v.kind !== 'custom') return null;
+  if (typeof v.from !== 'string' || !HEX6_RE.test(v.from)) return null;
+  if (typeof v.to !== 'string' || !HEX6_RE.test(v.to)) return null;
+  return { kind: 'custom', from: v.from.toLowerCase(), to: v.to.toLowerCase() };
+}
+
+/**
  * 小组件底色色板（第四十轮按用户给的参考图整套更换，共 8 个双色渐变模板；
  * id 与 name 即图上的命名，后续维护按名找色。存量 widgetTints 存的是索引，
  * 换板后旧索引按新板重新解释（颜色整体换一遍是预期行为）；越界索引在归一化时取模兜底。
@@ -281,12 +308,17 @@ export const WIDGET_TINTS: WidgetTint[] = [
 ];
 
 /** 按卡片 key 读底色：未分配（老数据/尚未补抽）时返回 undefined（渲染侧不叠底色）；
- * 索引越界（色板换代后存量数据可能出现）时取模回绕，永远有底色、不报错 */
-export function widgetTintOf(tints: Record<string, number>, cardKey: string): WidgetTint | undefined {
-  const i = tints[cardKey];
-  if (typeof i !== 'number' || !Number.isFinite(i)) return undefined;
+ * 索引越界（色板换代后存量数据可能出现）时取模回绕，永远有底色、不报错；
+ * 自定义双色（第九十一轮）展开为同形 WidgetTint（id='custom'），渲染链与色板一致 */
+export function widgetTintOf(tints: Record<string, WidgetTintValue>, cardKey: string): WidgetTint | undefined {
+  const v = tints[cardKey];
+  if (v && typeof v === 'object') {
+    const c = sanitizeWidgetTintCustom(v);
+    return c ? { id: 'custom', name: '自定义渐变', from: c.from, to: c.to } : undefined;
+  }
+  if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
   const len = WIDGET_TINTS.length;
-  return WIDGET_TINTS[((Math.trunc(i) % len) + len) % len];
+  return WIDGET_TINTS[((Math.trunc(v) % len) + len) % len];
 }
 
 /**
@@ -301,14 +333,18 @@ export function pickWidgetTintIndex(exclude: Iterable<number>): number {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/** 归一化 widgetTints：只采纳合法色板索引（老数据无此字段时为空表，渲染前由 HomePage 补抽） */
-function normalizeWidgetTints(raw: unknown): Record<string, number> {
-  const out: Record<string, number> = {};
+/** 归一化 widgetTints：采纳合法色板索引与自定义双色（第九十一轮）；
+ * 老数据无此字段时为空表（渲染前由 HomePage 补抽）。加载/导入/同步共用 validateStoreData 一条路径 */
+function normalizeWidgetTints(raw: unknown): Record<string, WidgetTintValue> {
+  const out: Record<string, WidgetTintValue> = {};
   if (raw && typeof raw === 'object') {
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
       if (typeof v === 'number' && Number.isInteger(v) && v >= 0) {
         // 色板换代兜底（第四十轮）：旧色板有 9 色、新板 8 色，存量索引 8 取模回绕到 0，不丢底色
         out[k] = v % WIDGET_TINTS.length;
+      } else {
+        const c = sanitizeWidgetTintCustom(v);
+        if (c) out[k] = c;
       }
     }
   }
@@ -538,10 +574,11 @@ export interface StoreData {
   /** A 型组件摞（第七十二轮）：老数据无此字段时归一化为空数组（无摞时行为与此前完全一致） */
   widgetStacks: WidgetStackItem[];
   /**
-   * A 型小组件专属底色（第二十三轮）：key = 卡片稳定 key（widget:<id>），value = WIDGET_TINTS 色板索引。
+   * A 型小组件专属底色（第二十三轮）：key = 卡片稳定 key（widget:<id>），value = WIDGET_TINTS 色板索引，
+   * 或用户自选的自定义双色（第九十一轮，WidgetTintCustom）。
    * 组件首次出现时随机抽一次并落盘，之后刷新/同步都不变；老数据无此字段时为空表（渲染前补抽）。
    */
-  widgetTints: Record<string, number>;
+  widgetTints: Record<string, WidgetTintValue>;
 }
 
 /** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
@@ -1487,6 +1524,19 @@ export function useLocalStore() {
     [update],
   );
 
+  /** 自定义双色（第九十一轮，选色面板边选边存）：任一色值非法整次不写；走 update() 正常落盘 */
+  const setWidgetTintCustom = useCallback(
+    (cardKey: string, from: string, to: string) => {
+      const c = sanitizeWidgetTintCustom({ kind: 'custom', from, to });
+      if (!c) return;
+      update((d) => {
+        d.widgetTints[cardKey] = c;
+        return d;
+      });
+    },
+    [update],
+  );
+
   const setWidgetVisible = useCallback(
     (widgetId: WidgetId, visible: boolean) => {
       update((d) => {
@@ -1879,6 +1929,7 @@ export function useLocalStore() {
     applyCardMigration,
     ensureWidgetTints,
     setWidgetTint,
+    setWidgetTintCustom,
     setBackground,
     addTask,
     addTaskGroup,
