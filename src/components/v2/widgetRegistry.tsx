@@ -88,13 +88,14 @@ const ALL_SIZES: WidgetLayout[] = [
 
 /* ---------- 适配组件：统一 props → 各组件真实 props（映射与原 HomePage switch 逐字一致） ---------- */
 
-const TaskWidget: React.ComponentType<WidgetRenderProps> = ({ store, tint, layout, delay = 0, phone }) => (
+const TaskWidget: React.ComponentType<WidgetRenderProps> = ({ store, onNavigate, tint, layout, delay = 0, phone }) => (
   <TaskCard
     store={store}
     delay={delay}
     colSpan={phone ? 1 : layout.colSpan}
     heightUnits={layout.heightUnits}
     tint={tint}
+    onOpenPlanPage={() => onNavigate('plan')}
   />
 );
 

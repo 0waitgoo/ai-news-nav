@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Check, Layers, ListTodo, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Layers, ListTodo, Sparkles } from 'lucide-react';
 import {
   cardFaceStyleOf,
   isTaskGroup,
@@ -39,6 +39,9 @@ import { useGlassBackdrop } from './GlassSurface';
  * 结构——各列「标题在顶 → 列表区各自滚动占满中间 → 添加行钉列底」（sections 的 pinned 模式），
  * 壳内边距/头部间距收一档；水印改为待办与计划双列都空时才淡显，有任何条目即隐藏；
  * 卡内拖拽滚动随之泛化到每列自己的滚动区（[data-task-col-scroll]）。1 栏堆叠仍走共享滚动。
+ * 第八十八轮（计划全窗页）：1x/2x 两壳卡头加「打开计划页」入口（语言仿资讯卡「进入资讯页」，
+ * 由注册表注入 onOpenPlanPage、商店预览等无导航场景不传则不渲染）；卡面其余结构不动；
+ * useCardDragScroll 导出供 PlanPage 复用同一套拖拽滚动。
  */
 export default function TaskCard({
   store,
@@ -46,6 +49,7 @@ export default function TaskCard({
   colSpan = 1,
   heightUnits = 1,
   tint,
+  onOpenPlanPage,
 }: {
   store: LocalStore;
   delay?: number;
@@ -55,6 +59,8 @@ export default function TaskCard({
   heightUnits?: 1 | 2;
   /** 专属底色（第二十三轮，由 HomePage 按 widgetTints 分配传入；1x/2x 两壳都生效） */
   tint?: WidgetTint;
+  /** 打开计划全窗页（第八十八轮）：由注册表按 onNavigate 注入；不传则不渲染卡头入口 */
+  onOpenPlanPage?: () => void;
 }) {
   const { tasks, plans, cardFaceStyles } = store.data;
   const face = cardFaceStyleOf(cardFaceStyles, widgetCardKey('task'));
@@ -124,6 +130,19 @@ export default function TaskCard({
   const glassFull = useGlassBackdrop<HTMLDivElement>(28);
   const glassMini = useGlassBackdrop<HTMLDivElement>(28);
 
+  /* 「打开计划页」入口（第八十八轮，1x/2x 两壳共用；语言仿资讯卡头部的「进入资讯页 >」：
+   * 11px 弱化文字 + ChevronRight，靠右排在进度之后） */
+  const planPageEntry = onOpenPlanPage ? (
+    <button
+      type="button"
+      data-plan-open
+      onClick={onOpenPlanPage}
+      className="flex items-center gap-0.5 text-[11px] text-white/45 hover:text-white/85 transition-colors shrink-0"
+    >
+      打开计划页 <ChevronRight size={12} />
+    </button>
+  ) : null;
+
   /* ---------- 高 2x：全功能卡面（双列内容与原面板同一套组件；头部 AI 整理切换卡内视图） ---------- */
   if (heightUnits === 2) {
     return (
@@ -148,6 +167,7 @@ export default function TaskCard({
           <span data-task-progress className="ml-auto text-xs text-zinc-300 tabular-nums">
             {doneCount}/{total}
           </span>
+          {planPageEntry}
           <button
             type="button"
             data-ai-open
@@ -235,6 +255,7 @@ export default function TaskCard({
         <span data-task-progress className="ml-auto text-xs text-zinc-300 tabular-nums">
           {doneCount}/{total}
         </span>
+        {planPageEntry}
       </div>
       <div className="h-1 rounded-full bg-white/20 overflow-hidden shrink-0 mb-2">
         <div className="h-full rounded-full bg-indigo-400 transition-all duration-300" style={{ width: `${pct}%` }} />
@@ -338,7 +359,7 @@ const SCROLL_DRAG_THRESHOLD = 5;
  * 第八十七轮：滚动目标在按下时按落点决定——落点在某列自己的滚动区（[data-task-col-scroll]，
  * 2 栏 pinned 结构）就滚那一列，否则滚共享容器（scrollRef，1 栏堆叠）。
  */
-function useCardDragScroll() {
+export function useCardDragScroll() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; startY: number; startTop: number; el: HTMLElement; dragging: boolean } | null>(null);
   const suppressAtRef = useRef(0);
