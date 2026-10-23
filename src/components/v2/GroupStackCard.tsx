@@ -29,7 +29,7 @@ function ComboTabBump({ color, side }: { color: string; side: 'left' | 'right' }
     <div
       data-tab-bump
       data-ear-side={side}
-      className="absolute top-0 h-[20px] w-[40%] max-w-[140px] rounded-t-[13px] border border-b-0 pointer-events-none"
+      className="absolute top-0 z-20 h-[20px] w-[40%] max-w-[140px] rounded-t-[13px] border border-b-0 pointer-events-none"
       style={{
         backgroundColor: c || '#26262e',
         borderColor: c || 'rgba(255,255,255,0.1)',
@@ -77,25 +77,6 @@ export function StackCardFrame({
       aria-label={ariaLabel}
       {...rootProps}
     >
-      {/* 小角（标签凸起）：从卡身后探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边）。
-          clipPath 裁掉下 7px：卡身透明后，原先被卡身压住的小角下截会透出来，故只保留上沿以上的可见轮廓（与透明化前的外观一致） */}
-      {tabEars ? (
-        <>
-          <ComboTabBump color={tabEars[0]} side="left" />
-          <ComboTabBump color={tabEars[1]} side="right" />
-        </>
-      ) : (
-        <div
-          data-tab-bump
-          className="absolute top-0 left-[18px] h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
-          style={{
-            backgroundColor: color || '#26262e',
-            borderColor: color || 'rgba(255,255,255,0.1)',
-            clipPath: 'inset(0 0 7px 0)',
-          }}
-        />
-      )}
-
       {/* 卡身：四角完整的圆角矩形，底色为 B 卡同款半透明（.glass-panel 同数值 rgba(30,30,35,0.4) + blur(24px)，内联实现不动 index.css），
           悬停只提亮描边，不改变底色 */}
       <div
@@ -113,6 +94,31 @@ export function StackCardFrame({
       >
         {children}
       </div>
+
+      {/* 小角（标签凸起）：从卡身上沿探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边）。
+          clipPath 裁掉下 7px：只保留卡身上沿以上的可见轮廓（小角可见部分与卡身零重叠，造型号与位置一字未动）。
+          第九十六轮：小角改在卡身**之后**绘制（z-20 压卡身 z-10）。原先小角垫在卡身背后绘制，属于卡身
+          backdrop-filter 的采样内容；真机 GPU 下玻璃折射场的纵向折叠采样会把小角色带拉进卡面中下部，
+          压成一条横贯卡宽的小角色细线（用户真机两张截图实证：线色 = 本卡小角色 ×约 0.35、只出现在
+          卡面背景层、瓷砖本体干净）。绘制顺序后移后小角成为前景，不再进入 backdrop，鬼线源头消除；
+          玻璃折射参数与卡面观感不动。无头 SwiftShader 的 backdrop 寻址与真机 GPU 不同、复现不出此线，
+          本修法的验证在采样层与结构层（见 test-r96）。 */}
+      {tabEars ? (
+        <>
+          <ComboTabBump color={tabEars[0]} side="left" />
+          <ComboTabBump color={tabEars[1]} side="right" />
+        </>
+      ) : (
+        <div
+          data-tab-bump
+          className="absolute top-0 left-[18px] z-20 h-[20px] w-[46%] max-w-[150px] rounded-t-[13px] border border-b-0"
+          style={{
+            backgroundColor: color || '#26262e',
+            borderColor: color || 'rgba(255,255,255,0.1)',
+            clipPath: 'inset(0 0 7px 0)',
+          }}
+        />
+      )}
     </motion.div>
   );
 }
