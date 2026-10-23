@@ -10,9 +10,12 @@ export interface SiteEntry {
   logo: string;
   needVpn?: boolean;
   /**
-   * 站点标签（第二十六轮）：行上小徽标的唯一文本来源，仅 1–4 个英文字母、大写（如 VPN、DEV）。
-   * 旧数据里 needVpn=true 的站点在归一化时迁移为 tag='VPN'；为空 = 不显示徽标。
+   * 站点标签（第二十六轮单标签；第七十六轮改多标签）：行上小徽标的唯一文本来源，
+   * 每项仅 1–4 个英文字母、大写（如 VPN、DEV），每站最多 2 个（SITE_TAGS_MAX_COUNT）。
+   * 旧数据里 needVpn=true 的站点在归一化时迁移为 tags=['VPN']；为空 = 不显示徽标。
    */
+  tags?: string[];
+  /** 旧单标签字段（≤第七十五轮）：仅供归一化迁移读取，迁移后删除，新代码不要再写 */
   tag?: string;
   /** 搜索别名：命中别名可直达，如 ChatGPT 的「gpt」（表单已无编辑入口，数据保留继续供搜索） */
   aliases?: string[];
@@ -53,6 +56,31 @@ export const clampGroupName = (name: string): string => Array.from(name).slice(0
 export function cleanSiteTag(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   return raw.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, SITE_TAG_MAX);
+}
+
+/** 每站标签数量上限（第七十六轮） */
+export const SITE_TAGS_MAX_COUNT = 2;
+
+/**
+ * 多标签清洗（第七十六轮）：入参兼容三种形态——新格式数组、旧格式单字符串、其他一律视为空。
+ * 逐项按 cleanSiteTag 清洗、去空、去重（保序），最多取前 SITE_TAGS_MAX_COUNT 个。
+ */
+export function cleanSiteTags(raw: unknown): string[] {
+  const items: unknown[] = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : [];
+  const out: string[] = [];
+  for (const item of items) {
+    const t = cleanSiteTag(item);
+    if (t && !out.includes(t)) out.push(t);
+    if (out.length >= SITE_TAGS_MAX_COUNT) break;
+  }
+  return out;
+}
+
+/** 读站点的标签列表：新字段 tags 存在（含空数组 = 已明确无标签）就以它为准；
+ *  字段缺失时才回落旧单字段 tag（迁移前的存量对象也能正确显示） */
+export function siteTags(site: SiteEntry): string[] {
+  if (site.tags !== undefined) return cleanSiteTags(site.tags);
+  return cleanSiteTags(site.tag);
 }
 
 /** 文件夹小角预设色（鲜明但不刺眼）：GroupPanel 里点选，卡面小角按色填充；空字符串 = 默认同色灰 */
