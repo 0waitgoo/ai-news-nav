@@ -222,10 +222,13 @@ body {
 [data-theme="light"] :is(.group-card-panel, .group-card-scope) .hover\:border-white\/30:hover { border-color: rgb(0 0 0 / 0.3); }
 [data-theme="light"] :is(.group-card-panel, .group-card-scope) .hover\:border-white\/35:hover { border-color: rgb(0 0 0 / 0.35); }
 
-/* 例外：编组卡内彩色底按钮上的白字（保存/形态切换选中态等）在白天模式保持白色 */
+/* 例外：编组卡内彩色底按钮上的白字（保存/形态切换选中态等）在白天模式保持白色；
+   第八十二轮起小组件的实底图标徽标同走本例外（粉/金/靛蓝实底 + 白 glyph） */
 [data-theme="light"] :is(.group-card-panel, .group-card-scope) .text-white[class*="bg-indigo-"],
 [data-theme="light"] :is(.group-card-panel, .group-card-scope) .text-white[class*="bg-red-"],
-[data-theme="light"] :is(.group-card-panel, .group-card-scope) .text-white[class*="bg-emerald-"] { color: #ffffff; }
+[data-theme="light"] :is(.group-card-panel, .group-card-scope) .text-white[class*="bg-emerald-"],
+[data-theme="light"] :is(.group-card-panel, .group-card-scope) .text-white[class*="bg-pink-"],
+[data-theme="light"] :is(.group-card-panel, .group-card-scope) .text-white[class*="bg-amber-"] { color: #ffffff; }
 [data-theme="light"] :is(.group-card-panel, .group-card-scope) .drop-shadow.text-white\/90 { color: rgba(255, 255, 255, 0.9); }
 
 /* 白天白底上加深一档：自定义（灰）标签徽标与「失效」徽标（预设三色徽标在白底上已够醒目，不动） */
@@ -238,6 +241,87 @@ body {
 /* 白天作用域内输入框占位符加深：编组卡内的输入框（改组名、加站点等）在白底上占位符会看不见，
    统一压成深灰（第五十八轮起搜索框已退出本作用域——白天钉回深底、占位符维持暗夜的浅色） */
 [data-theme="light"] :is(.group-card-panel, .group-card-scope) ::placeholder { color: rgb(18 18 22 / 0.38); opacity: 1; }
+
+/* ---------- 第八十二轮：小组件白天档内部适配 + 站点图标底框 ---------- */
+/* 病根：第七十八轮只把基底与 .text-white\/* / .bg-white\/* 工具类接进翻字表，
+   小组件内部另有一批颜色不在表内——zinc 灰阶文字（计划卡进度/空状态/分区小字）、
+   -200/-300/-400 粉彩强调字（资讯来源分类、榜单名次、话题标签、计划日期/逾期）、
+   以及低 alpha 白字翻深后仍只有 0.30–0.55（日期、右侧入口、说明行在白底上发糊）。
+   本节一律只命中 .widget-panel 后代（TaskCard/Trending 两壳与 Card 壳都带此类），
+   编组卡与其余页面零影响；暗夜/玻璃档无 [data-theme="light"] 前提，逐项不变。
+   做法：低 alpha 文字整条阶梯抬深（保序不倒挂）、zinc 映射到同梯深灰、
+   彩色强调字统一压到 600/700 深阶（同色相）、占位符单独加深。 */
+/* 低 alpha 白字阶梯（改前 = 与 alpha 同值 0.30/0.35/0.40/…，白底对比仅约 1.6–2.9） */
+[data-theme="light"] .widget-panel .text-white\/20 { color: rgb(18 18 22 / 0.46); }
+[data-theme="light"] .widget-panel .text-white\/25 { color: rgb(18 18 22 / 0.5); }
+[data-theme="light"] .widget-panel .text-white\/30 { color: rgb(18 18 22 / 0.54); }
+[data-theme="light"] .widget-panel .text-white\/35 { color: rgb(18 18 22 / 0.58); }
+[data-theme="light"] .widget-panel .text-white\/40 { color: rgb(18 18 22 / 0.63); }
+[data-theme="light"] .widget-panel .text-white\/45 { color: rgb(18 18 22 / 0.67); }
+[data-theme="light"] .widget-panel .text-white\/50 { color: rgb(18 18 22 / 0.71); }
+[data-theme="light"] .widget-panel .text-white\/55 { color: rgb(18 18 22 / 0.75); }
+[data-theme="light"] .widget-panel .text-white\/60 { color: rgb(18 18 22 / 0.79); }
+[data-theme="light"] .widget-panel .text-white\/70 { color: rgb(18 18 22 / 0.84); }
+[data-theme="light"] .widget-panel .text-white\/75 { color: rgb(18 18 22 / 0.87); }
+[data-theme="light"] .widget-panel .text-white\/80 { color: rgb(18 18 22 / 0.9); }
+[data-theme="light"] .widget-panel .text-white\/85 { color: rgb(18 18 22 / 0.92); }
+/* zinc 灰阶（改前 zinc-300 = #d4d4d8，白底对比约 1.5；zinc-400 约 2.5） */
+[data-theme="light"] .widget-panel .text-zinc-100 { color: rgb(18 18 22 / 0.88); }
+[data-theme="light"] .widget-panel .text-zinc-200 { color: rgb(18 18 22 / 0.8); }
+[data-theme="light"] .widget-panel .text-zinc-300 { color: rgb(18 18 22 / 0.66); }
+[data-theme="light"] .widget-panel .text-zinc-400 { color: rgb(18 18 22 / 0.56); }
+/* 占位符：作用域通则 0.38 在小组件里仍偏浅（添加待办/子任务/计划表单），抬到 0.48 */
+[data-theme="light"] .widget-panel ::placeholder { color: rgb(18 18 22 / 0.48); opacity: 1; }
+/* 彩色强调字 → 深阶（同色相）：资讯粉/分类靛蓝、榜单金/银/铜、计划日期与逾期、
+   话题标签（接口下发的 -400 家族逐个列全，服务端 api 与前端兜底同表） */
+[data-theme="light"] .widget-panel .text-pink-300 { color: #9d174d; }
+[data-theme="light"] .widget-panel .text-indigo-100 { color: #3730a3; }
+[data-theme="light"] .widget-panel .text-indigo-200 { color: #4338ca; }
+[data-theme="light"] .widget-panel .text-indigo-300 { color: #4338ca; }
+[data-theme="light"] .widget-panel .text-yellow-300 { color: #854d0e; }
+[data-theme="light"] .widget-panel .text-amber-300 { color: #b45309; }
+[data-theme="light"] .widget-panel .text-orange-300 { color: #c2410c; }
+[data-theme="light"] .widget-panel .text-gray-200 { color: #4b5563; }
+[data-theme="light"] .widget-panel .text-red-200 { color: #b91c1c; }
+[data-theme="light"] .widget-panel .text-blue-400 { color: #1d4ed8; }
+[data-theme="light"] .widget-panel .text-purple-400 { color: #7e22ce; }
+[data-theme="light"] .widget-panel .text-violet-400 { color: #6d28d9; }
+[data-theme="light"] .widget-panel .text-fuchsia-400 { color: #a21caf; }
+[data-theme="light"] .widget-panel .text-pink-400 { color: #9d174d; }
+[data-theme="light"] .widget-panel .text-rose-400 { color: #be123c; }
+[data-theme="light"] .widget-panel .text-red-400 { color: #b91c1c; }
+[data-theme="light"] .widget-panel .text-orange-400 { color: #c2410c; }
+[data-theme="light"] .widget-panel .text-orange-400\/80 { color: rgb(194 65 12 / 0.92); }
+[data-theme="light"] .widget-panel .text-amber-400 { color: #b45309; }
+[data-theme="light"] .widget-panel .text-yellow-400 { color: #a16207; }
+[data-theme="light"] .widget-panel .text-lime-400 { color: #4d7c0f; }
+[data-theme="light"] .widget-panel .text-green-400 { color: #15803d; }
+[data-theme="light"] .widget-panel .text-emerald-400 { color: #047857; }
+[data-theme="light"] .widget-panel .text-teal-400 { color: #0f766e; }
+[data-theme="light"] .widget-panel .text-cyan-400 { color: #0e7490; }
+[data-theme="light"] .widget-panel .text-sky-400 { color: #0369a1; }
+[data-theme="light"] .widget-panel .text-indigo-400 { color: #4338ca; }
+/* 榜单第 2 名银牌芯片：gray-300/20 在白底上近乎消失，换成黑 8% 底（字已由上表压深） */
+[data-theme="light"] .widget-panel .bg-gray-300\/20 { background-color: rgb(0 0 0 / 0.08); }
+/* 文件工具瓷砖与话题瓷砖：翻色后的黑 6%/5% 边在白底+渐变上太弱，边框单独加深定义轮廓 */
+[data-theme="light"] .widget-panel [data-tool-link] { border-color: rgb(0 0 0 / 0.14); }
+[data-theme="light"] .widget-panel [data-trend-tile] { border-color: rgb(0 0 0 / 0.12); }
+/* 计划日期输入在白天用浅色方案（组件类里写死 [color-scheme:dark]，白天表单位于浅底） */
+[data-theme="light"] .widget-panel [type="date"] { color-scheme: light; }
+/* 拖拽合并跟随浮层是刻意的深底芯片（#23232c，fixed 浮层）：它在 DOM 上仍挂在计划卡内，
+   上面的 zinc/白字规则会把它翻坏——在此按类名精确恢复浮层自身的暗色口径 */
+[data-theme="light"] .widget-panel [data-task-drag-clone] .text-white\/90 { color: rgb(255 255 255 / 0.9); }
+[data-theme="light"] .widget-panel [data-task-drag-clone] .text-zinc-300 { color: #d4d4d8; }
+[data-theme="light"] .widget-panel [data-task-drag-clone] .border-white\/50 { border-color: rgb(255 255 255 / 0.5); }
+
+/* 站点图标底框（全站统一 .site-icon-frame：SiteLogo / C 卡面瓷砖 / 组头图标 / 导航页同款）：
+   改前白天 = 纯白无边无影——卡面同为白（或透壁纸的灰白）时框体没有定义、读成一片灰白块。
+   白天处理：底保持纯白，靠 1px 深色细边（黑 12%）+ 一层极浅投影把框「画」出来，
+   与白底协调、不填任何灰。暗夜/玻璃不命中本规则，白框原样。 */
+[data-theme="light"] .site-icon-frame {
+  border: 1px solid rgb(0 0 0 / 0.12);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
 
 /* ---------- 液态玻璃模式（外观第三档 [data-theme="glass"]） ---------- */
 /* 第五十八轮：从纯 CSS 渐变版换成 React Bits GlassSurface 的真实折射（用户验收原话：
