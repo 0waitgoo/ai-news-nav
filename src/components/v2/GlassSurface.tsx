@@ -311,6 +311,16 @@ export function useGlassBackdrop<T extends HTMLElement>(borderRadius: number): {
   const ref = useRef<T | null>(null);
   const [filterId, setFilterId] = useState<string | null>(null);
   const savedBackdropRef = useRef<{ value: string; priority: string } | null>(null);
+  /* 第九十八轮（玻璃性能·可视区门控）：完全离屏的玻璃面不再挂 url() 折射——离屏面
+   * 本就不可见，撤下后宿主回到其自有底（--glass-bg tint + 原 backdrop，如 C 卡内联
+   * blur），与「CSS 回退层」同形态；进入视口前（rootMargin 800px 预加载带）即恢复
+   * 折射，用户视野内永远是全折射。收益在求值面数：filter: url() 的 backdrop 每帧要
+   * 对滤镜区域（宿主 150%）全量求值，身后又是动态背景，长页面十几张卡同帧共摊；
+   * 门控后同帧在算的只剩视口±800px 内的一屏多。折射参数/区域/tint 一字未动。
+   * 同轮探针证伪的另一手段备查：filterRes——隔离页四档（无/512/384/256）实测帧
+   * 耗时全在噪声内、静态像素差 max=0，Chromium 的 backdrop url() 合成路径不消费
+   * 该属性，未落地。 */
+  const [inView, setInView] = useState(true);
 
   useEffect(() => {
     if (!active) {
@@ -331,18 +341,23 @@ export function useGlassBackdrop<T extends HTMLElement>(borderRadius: number): {
       timer = window.setTimeout(update, 120);
     });
     ro.observe(el);
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) setInView(e.isIntersecting);
+    }, { rootMargin: '800px' });
+    io.observe(el);
     return () => {
       ro.disconnect();
+      io.disconnect();
       window.clearTimeout(timer);
     };
   }, [active, borderRadius]);
 
   // 每渲染后重申折射声明：宿主（C 卡）在重渲染时会按其 style 对象重写 backdropFilter，
-  // 本 effect 在布局阶段随后覆盖回 url 值，避免被冲掉
+  // 本 effect 在布局阶段随后覆盖回 url 值，避免被冲掉；离屏（门控关）时走恢复分支撤下 url
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (active && filterId) {
+    if (active && filterId && inView) {
       if (!savedBackdropRef.current) {
         savedBackdropRef.current = {
           value: el.style.getPropertyValue('backdrop-filter'),
