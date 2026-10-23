@@ -4,6 +4,7 @@ import { TrendingUp, RefreshCw } from 'lucide-react';
 import { fetchTrends, type TrendItem } from '../../services/api';
 import type { WidgetTint } from '../../store/localStore';
 import WidgetTintLayer from '../v2/WidgetTint';
+import { useGlassBackdrop } from '../v2/GlassSurface';
 
 export default function TrendingWidget({
   tint,
@@ -40,6 +41,11 @@ export default function TrendingWidget({
   const displayTrends = trends.length > 0 ? trends : defaultTrends;
 
   const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="🔥" /> : null;
+
+  /* 第七十八轮：基底改与编组卡同款的面（.widget-panel + .group-card-scope 翻字作用域，
+   * 见 index.css）；loading/正常两壳互斥渲染，各挂一份玻璃折射 hook（本卡圆角 32px） */
+  const glassLoading = useGlassBackdrop<HTMLDivElement>(32);
+  const glassMain = useGlassBackdrop<HTMLDivElement>(32);
   const header = (
     <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0">
       <div className="flex items-center gap-2">
@@ -54,10 +60,12 @@ export default function TrendingWidget({
   if (loading) {
     return (
       <motion.div
+        ref={glassLoading.ref}
+        style={glassLoading.style}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
-        className="glass-panel relative rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
+        className="group-card-scope widget-panel relative rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {tintLayer}
@@ -73,10 +81,12 @@ export default function TrendingWidget({
 
   return (
     <motion.div
+      ref={glassMain.ref}
+      style={glassMain.style}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.5 }}
-      className="glass-panel relative rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
+      className="group-card-scope widget-panel relative rounded-[32px] h-full p-4 sm:p-5 flex flex-col overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
       {tintLayer}
