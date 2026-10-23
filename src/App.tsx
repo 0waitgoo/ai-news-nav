@@ -12,6 +12,7 @@ import { applyDisplayPrefs, bgBlurPx, useDisplayPrefs } from './store/displayPre
 const NewsPage = React.lazy(() => import('./components/pages/NewsPage'));
 const NavPage = React.lazy(() => import('./components/pages/NavPage'));
 const ToolsPage = React.lazy(() => import('./components/pages/ToolsPage'));
+const WidgetStorePage = React.lazy(() => import('./components/pages/WidgetStorePage'));
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -65,6 +66,9 @@ export default function App() {
         return <NavPage />;
       case 'tools':
         return <ToolsPage />;
+      case 'store':
+        // 组件商店（第七十四轮）：主页「添加组件」入口升级为整页商店，与其他子页面同一顶栏
+        return <WidgetStorePage store={store} onNavigate={handlePageChange} />;
       default:
         return <HomePage onNavigate={handlePageChange} store={store} />;
     }
@@ -72,7 +76,7 @@ export default function App() {
 
   const showLocalImage = background.kind === 'local' && !!localUrl;
   // 子页面（资讯/导航/工具）：顶栏由 App 渲染、内容走 lazy 页；主页栏在 HomePage 内自理
-  const isSubPage = currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools';
+  const isSubPage = currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools' || currentPage === 'store';
   // 「深海蓝」预设换成 Binary Orbits 动态背景（第四十四轮）：只在该预设被选中时挂载，
   // 底色用与组件一致的深蓝 #030b1f 兜底（组件加载前/画布外不露其他预设色）
   const showOceanDynamics = background.kind === 'preset' && background.presetId === 'ocean';
