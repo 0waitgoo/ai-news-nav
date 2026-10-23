@@ -4,7 +4,7 @@
 import https from 'https';
 import http from 'http';
 // 直接导入 ranking-data.js 中的数据
-import { softwareRankingData } from './ranking-data.js';
+import { softwareRankingData, rankingMeta } from './ranking-data.js';
 
 // RSS源配置
 const RSS_URLS = [
@@ -19,24 +19,124 @@ const fallbackNewsData = [
   { title: 'Sora新版本发布：视频生成质量超越真实', description: 'OpenAI视频生成工具实现重大突破，生成视频时长可达60秒', source: '机器之心', category: '视频AI', url: 'https://www.jiqizhixin.com/', publishedAt: new Date(Date.now() - 7200000).toISOString() },
 ];
 
-const fallbackTrendsData = [
-  { topic: '#Sora', volume: '12.4万', color: 'text-blue-400' },
-  { topic: '#Kimi', volume: '9.8万', color: 'text-purple-400' },
-  { topic: '#可灵', volume: '4.5万', color: 'text-emerald-400' },
-  { topic: '#Suno', volume: '3.2万', color: 'text-orange-400' },
-  { topic: '#GPT-5', volume: '2.8万', color: 'text-green-400' },
-  { topic: '#Claude', volume: '2.5万', color: 'text-yellow-400' },
-  { topic: '#Midjourney', volume: '2.1万', color: 'text-pink-400' },
-  { topic: '#Gemini', volume: '1.9万', color: 'text-red-400' },
-];
-
 console.log(`✅ API 加载了 ${softwareRankingData.length} 条软件排行数据`);
 
 // 全局缓存
 let cachedNews = [];
 let cachedTrends = [];
+let trendsUpdatedAt = null;
+let trendsStale = false;
 let lastUpdate = null;
 let isInitialized = false;
+
+/* ---------- 热门话题：真实热榜聚合（第九十五轮） ----------
+ * 数据源（均为源站公开接口，heat 为源站真实热度原值，不做任何编造）：
+ *   - 百度热搜 https://top.baidu.com/api/board?tab=realtime（hotScore）
+ *   - 微博热搜 https://weibo.com/ajax/side/hotSearch（num）
+ * 双源各按源内排名交错合并；成功结果缓存 10 分钟；
+ * 刷新全失败时返回最近一次成功缓存并标 stale + 原 updatedAt；无缓存时返回失败，
+ * 前端显示空态——旧版写死的 #Sora/12.4万 等模拟数据已删除，绝不再上屏。 */
+
+const TRENDS_TTL_MS = 10 * 60 * 1000;
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
+function fetchJSON(url, headers = {}, timeout = 8000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout, headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', ...headers } }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+      }
+      let data = '';
+      res.on('data', (chunk) => (data += chunk));
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error(`Timeout for ${url}`)); });
+  });
+}
+
+/** 真实热度值 → 展示文本（纯格式化：7713136 → 「771.3万」；650424 → 「65万」） */
+function formatHeat(heat) {
+  if (typeof heat !== 'number' || !isFinite(heat)) return '';
+  if (heat >= 10000) {
+    const v = Math.round(heat / 1000) / 10;
+    return `${Number.isInteger(v) ? v.toFixed(0) : v}万`;
+  }
+  return `${heat}`;
+}
+
+async function fetchBaiduTrends() {
+  const json = await fetchJSON('https://top.baidu.com/api/board?tab=realtime');
+  const content = json?.data?.cards?.[0]?.content || [];
+  return content
+    .filter((it) => it && it.word && it.hotScore != null && !it.isTop)
+    .slice(0, 15)
+    .map((it) => ({
+      topic: it.word,
+      heat: Number(it.hotScore),
+      source: '百度热搜',
+      url: it.url || it.appUrl || 'https://top.baidu.com/board?tab=realtime',
+    }));
+}
+
+async function fetchWeiboTrends() {
+  const json = await fetchJSON('https://weibo.com/ajax/side/hotSearch', { Referer: 'https://weibo.com/' });
+  const realtime = json?.data?.realtime || [];
+  return realtime
+    .filter((it) => it && (it.note || it.word) && typeof it.num === 'number')
+    .slice(0, 15)
+    .map((it) => ({
+      topic: it.note || it.word,
+      heat: it.num,
+      source: '微博热搜',
+      url: `https://s.weibo.com/weibo?q=${encodeURIComponent(it.word_scheme || `#${it.word}#`)}`,
+    }));
+}
+
+/** 双源交错合并（微博1, 百度1, 微博2, 百度2…），保持各源内部排名原序 */
+function interleaveTrends(a, b) {
+  const out = [];
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (a[i]) out.push(a[i]);
+    if (b[i]) out.push(b[i]);
+  }
+  return out;
+}
+
+let trendsRefreshing = null;
+async function refreshTrends() {
+  if (trendsRefreshing) return trendsRefreshing;
+  trendsRefreshing = (async () => {
+    const [weibo, baidu] = await Promise.allSettled([fetchWeiboTrends(), fetchBaiduTrends()]);
+    const weiboItems = weibo.status === 'fulfilled' ? weibo.value : [];
+    const baiduItems = baidu.status === 'fulfilled' ? baidu.value : [];
+    if (weibo.status === 'rejected') console.log('微博热搜抓取失败:', weibo.reason?.message);
+    if (baidu.status === 'rejected') console.log('百度热搜抓取失败:', baidu.reason?.message);
+    const merged = interleaveTrends(weiboItems, baiduItems);
+    if (merged.length > 0) {
+      cachedTrends = merged.map((it, idx) => ({ ...it, id: idx + 1, heatText: formatHeat(it.heat) }));
+      trendsUpdatedAt = new Date().toISOString();
+      trendsStale = false;
+      console.log(`Trends synced: 微博 ${weiboItems.length} + 百度 ${baiduItems.length}`);
+    } else if (cachedTrends.length > 0) {
+      trendsStale = true;
+      console.log('Trends refresh failed, serving stale cache');
+    }
+    return cachedTrends;
+  })();
+  try { await trendsRefreshing; } finally { trendsRefreshing = null; }
+  return cachedTrends;
+}
+
+async function ensureTrends() {
+  const fresh = trendsUpdatedAt && Date.now() - new Date(trendsUpdatedAt).getTime() < TRENDS_TTL_MS;
+  if (!fresh) await refreshTrends();
+  return cachedTrends;
+}
 
 // 获取RSS内容
 function fetchRSS(url, timeout = 10000) {
@@ -127,13 +227,11 @@ async function syncNews() {
       ...item,
       id: idx + 1
     }));
-    cachedTrends = fallbackTrendsData.map((item, idx) => ({ ...item, id: idx + 1 }));
     lastUpdate = new Date().toISOString();
     console.log(`Synced ${cachedNews.length} news items`);
   } else {
     console.log('Using fallback data');
     cachedNews = fallbackNewsData.map((item, idx) => ({ ...item, id: idx + 1 }));
-    cachedTrends = fallbackTrendsData.map((item, idx) => ({ ...item, id: idx + 1 }));
     lastUpdate = new Date().toISOString();
   }
   
@@ -182,19 +280,31 @@ export default async function handler(req, res) {
     }
     
     if (type === 'trends') {
+      const data = await ensureTrends();
+      if (data.length === 0) {
+        return res.status(200).json({
+          success: false,
+          data: [],
+          updatedAt: trendsUpdatedAt,
+          stale: false,
+          error: '热榜源暂时不可达'
+        });
+      }
       return res.status(200).json({
         success: true,
-        data: cachedTrends,
-        lastUpdate
+        data,
+        updatedAt: trendsUpdatedAt,
+        stale: trendsStale
       });
     }
-    
+
     if (type === 'software-ranking') {
       return res.status(200).json({
         success: true,
         data: softwareRankingData,
+        meta: rankingMeta,
         lastUpdate,
-        dataSource: 'a16z Top 100 Gen AI Consumer Apps',
+        dataSource: 'Product Hunt',
         updateCycle: '每周更新'
       });
     }
@@ -211,18 +321,21 @@ export default async function handler(req, res) {
     
     if (type === 'sync') {
       const result = await syncNews();
+      await refreshTrends();
       return res.status(200).json({
         success: true,
         ...result,
+        trendsCount: cachedTrends.length,
         lastUpdate
       });
     }
     
     // 默认返回所有数据
+    const trends = await ensureTrends();
     return res.status(200).json({
       success: true,
       news: shuffleArray(cachedNews).slice(0, 10),
-      trends: cachedTrends,
+      trends,
       softwareRanking: softwareRankingData,
       lastUpdate
     });
