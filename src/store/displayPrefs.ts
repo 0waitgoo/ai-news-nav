@@ -37,7 +37,13 @@ export interface DisplayPrefs {
   widgetAlpha: number;
   /** 本地图片背景的模糊强度 0–1（第六十二轮新增）；经 bgBlurPx 换算成 backdrop blur 像素，默认 0.3 = 旧写死值 6px */
   bgBlur: number;
+  /** 「深海蓝」纯色版的颜色（第九十二轮）：该预设从动态背景改为纯色自选，颜色存这里
+   *  （与显示偏好同路径、本机保存），背景面板点开即选色；默认 OCEAN_DEFAULT_COLOR。 */
+  oceanColor: string;
 }
+
+/** 「深海蓝」纯色版默认色 = 原渐变的主色 #0d2140（第九十二轮）：老用户升级后第一眼仍是深海蓝 */
+export const OCEAN_DEFAULT_COLOR = '#0d2140';
 
 const STORAGE_KEY = 'ainav-display-prefs-v1';
 
@@ -66,11 +72,18 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   widgetAlpha: legacyWidgetStrength(0.4),
   // 背景模糊默认 0.3 ↔ 6px，即第六十二轮前 App 遮罩层写死的 backdrop-blur-[6px]，观感不变
   bgBlur: 0.3,
+  oceanColor: OCEAN_DEFAULT_COLOR,
 };
 
 function normalizePrefs(raw: unknown): DisplayPrefs {
   if (raw && typeof raw === 'object') {
-    const p = raw as { theme?: unknown; groupCardAlpha?: unknown; widgetAlpha?: unknown; bgBlur?: unknown };
+    const p = raw as {
+      theme?: unknown;
+      groupCardAlpha?: unknown;
+      widgetAlpha?: unknown;
+      bgBlur?: unknown;
+      oceanColor?: unknown;
+    };
     const groupCardAlpha =
       typeof p.groupCardAlpha === 'number' && Number.isFinite(p.groupCardAlpha)
         ? clamp01(p.groupCardAlpha)
@@ -88,6 +101,11 @@ function normalizePrefs(raw: unknown): DisplayPrefs {
         typeof p.bgBlur === 'number' && Number.isFinite(p.bgBlur)
           ? clamp01(p.bgBlur)
           : DEFAULT_DISPLAY_PREFS.bgBlur,
+      // 第九十二轮迁移：老存档没有 oceanColor 时回落深海蓝原色；只接受 #rrggbb 并归一小写
+      oceanColor:
+        typeof p.oceanColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(p.oceanColor)
+          ? p.oceanColor.toLowerCase()
+          : OCEAN_DEFAULT_COLOR,
     };
   }
   return { ...DEFAULT_DISPLAY_PREFS };

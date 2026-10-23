@@ -52,8 +52,11 @@ export interface BackgroundSetting {
 export interface BackgroundPreset {
   id: string;
   name: string;
-  /** 完整的 CSS background 值（渐变/纯色），不引用任何图片资源 */
+  /** 完整的 CSS background 值（渐变/纯色），不引用任何图片资源；
+   *  动态预设下作面板缩略与画布挂载前的兜底底色 */
   css: string;
+  /** 动态背景（第九十二轮）：挂载对应的自研 Canvas 组件（components/backgrounds/） */
+  dynamic?: 'dappled' | 'tide';
 }
 
 /** 内置背景预设：全部纯 CSS 实现 */
@@ -64,19 +67,25 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     css: 'radial-gradient(1200px 800px at 85% -10%, rgba(139, 92, 246, 0.5), transparent 60%), radial-gradient(1000px 760px at 8% 108%, rgba(76, 29, 149, 0.6), transparent 55%), linear-gradient(155deg, #221344 0%, #150a2e 48%, #0a0a12 100%)',
   },
   {
-    id: 'space',
-    name: '深空灰',
-    css: 'linear-gradient(180deg, #17171c 0%, #101014 55%, #0b0b0e 100%)',
+    // 第九十二轮：「深空灰」下架，自研动态背景「斑驳光影」顶到它的位置（面板第 2 位）
+    id: 'dappled',
+    name: '斑驳光影',
+    dynamic: 'dappled',
+    css: 'radial-gradient(900px 620px at 10% -12%, rgba(153, 191, 255, 0.38), transparent 55%), linear-gradient(165deg, #101014 0%, #0a0a0a 60%, #060607 100%)',
   },
   {
+    // 第九十二轮：「深海蓝」改纯色自选——渲染色取 displayPrefs.oceanColor（默认即下面
+    // 渐变的首色 #0d2140），此 css 只作面板/兜底参考，不再直接上屏
     id: 'ocean',
     name: '深海蓝',
     css: 'radial-gradient(1100px 750px at 80% -10%, rgba(37, 99, 235, 0.38), transparent 60%), linear-gradient(160deg, #0d2140 0%, #081426 52%, #05070d 100%)',
   },
   {
-    id: 'forest',
-    name: '墨绿',
-    css: 'radial-gradient(1100px 750px at 15% -10%, rgba(16, 185, 129, 0.28), transparent 55%), linear-gradient(160deg, #0c2b21 0%, #071a13 55%, #040805 100%)',
+    // 第九十二轮：「墨绿」下架，自研动态背景「等高潮汐」顶到它的位置（面板第 4 位）
+    id: 'tide',
+    name: '等高潮汐',
+    dynamic: 'tide',
+    css: 'radial-gradient(1000px 700px at 72% 112%, rgba(110, 110, 128, 0.4), transparent 60%), linear-gradient(180deg, #0b0b0d 0%, #0a0a0a 55%, #060607 100%)',
   },
 ];
 
@@ -87,7 +96,9 @@ export function backgroundPresetOf(presetId: string): BackgroundPreset {
   return BACKGROUND_PRESETS.find((p) => p.id === presetId) ?? BACKGROUND_PRESETS[0];
 }
 
-/** 归一化背景设置：老数据无此字段时回落默认预设；presetId 必须是已知预设 */
+/** 归一化背景设置：老数据无此字段时回落默认预设；presetId 必须是已知预设。
+ *  第九十二轮迁移：已下架的 'space'（深空灰）/'forest'（墨绿）不在预设表内，自动回落
+ *  默认预设 'violet'（星云紫），其余设置不受影响；'ocean'（深海蓝）保留 id、渲染改纯色版。 */
 function normalizeBackground(raw: unknown): BackgroundSetting {
   if (raw && typeof raw === 'object') {
     const b = raw as { kind?: unknown; presetId?: unknown; localStamp?: unknown };
