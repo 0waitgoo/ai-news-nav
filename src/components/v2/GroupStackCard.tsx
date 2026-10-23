@@ -133,7 +133,12 @@ export function StackGroupIcon({ group, size = 30 }: { group: NavGroup; size?: n
           style={{ width: size * 0.63, height: size * 0.63 }}
           onError={(e) => {
             const target = e.target as HTMLImageElement;
-            target.style.display = 'none';
+            // 组头图标加载失败 → 回落首站站名首字字标（第八十四轮）；字标本身再失败才隐藏
+            if (!target.src.startsWith('data:')) {
+              target.src = siteLogoFallback(sortSites(group.sites)[0]?.name ?? group.name);
+            } else {
+              target.style.display = 'none';
+            }
           }}
         />
       ) : (
@@ -182,7 +187,7 @@ function SiteTile({ site }: { site: SiteEntry }) {
           className={`w-full h-full object-contain p-[16%] ${site.dead ? 'grayscale opacity-60' : ''}`}
           onError={(e) => {
             const target = e.target as HTMLImageElement;
-            if (!target.src.includes('dicebear')) target.src = siteLogoFallback(site.name);
+            if (!target.src.startsWith('data:')) target.src = siteLogoFallback(site.name);
           }}
         />
       </span>

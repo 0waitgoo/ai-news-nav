@@ -100,7 +100,8 @@ export function SiteLogo({
         style={{ width: imgSize, height: imgSize }}
         onError={(e) => {
           const target = e.target as HTMLImageElement;
-          if (!target.src.includes('dicebear')) target.src = siteLogoFallback(name);
+          // 兜底终点 = 站名首字字标（第八十四轮，siteLogoFallback 本地生成 data URI，不会再失败）
+          if (!target.src.startsWith('data:')) target.src = siteLogoFallback(name);
         }}
       />
     </div>

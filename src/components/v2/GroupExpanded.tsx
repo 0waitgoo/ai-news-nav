@@ -226,7 +226,7 @@ export function SiteForm({
             className="w-7 h-7 object-contain"
             onError={(e) => {
               const t = e.target as HTMLImageElement;
-              if (!t.src.includes('dicebear')) t.src = siteLogoFallback(name || '站点');
+              if (!t.src.startsWith('data:')) t.src = siteLogoFallback(name || '站点');
             }}
           />
         </span>
