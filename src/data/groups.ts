@@ -338,14 +338,6 @@ export function sortSites(sites: SiteEntry[]): SiteEntry[] {
   return [...pinned, ...normal];
 }
 
-export function pinnedCount(group: NavGroup): number {
-  return group.sites.filter((s) => s.pinned).length;
-}
-
-export function deadCount(group: NavGroup): number {
-  return group.sites.filter((s) => s.dead).length;
-}
-
 /** 编组图标：取组内频率最高站点的 logo */
 export function groupIcon(group: NavGroup): string {
   const sorted = sortSites(group.sites);
