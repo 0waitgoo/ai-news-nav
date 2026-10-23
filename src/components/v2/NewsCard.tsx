@@ -39,7 +39,7 @@ export default function NewsCard({
     <Card
       title="AI 资讯"
       icon={
-        <CardIconBadge className="bg-pink-500/20 text-pink-300">
+        <CardIconBadge className="bg-pink-500 text-white">
           <Newspaper size={14} />
         </CardIconBadge>
       }

@@ -135,7 +135,7 @@ export default function TaskCard({
         <div className="relative flex flex-col flex-1 min-h-0">
         {/* 头部：标题 + 今日进度 + AI 整理入口（第六十九轮：原「展开」按钮删除，面板层取消） */}
         <div className="flex items-center gap-2 mb-2.5 shrink-0">
-          <div className="w-7 h-7 rounded-full bg-indigo-500/35 text-indigo-100 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-full bg-indigo-500 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] ring-1 ring-black/20 flex items-center justify-center shrink-0">
             <ListTodo size={14} />
           </div>
           <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>
@@ -205,7 +205,7 @@ export default function TaskCard({
       <div className="relative flex flex-col flex-1 min-h-0">
       {/* 头部：标题 + 今日进度 */}
       <div className="flex items-center gap-2 mb-2.5 shrink-0">
-        <div className="w-7 h-7 rounded-full bg-indigo-500/35 text-indigo-100 flex items-center justify-center">
+        <div className="w-7 h-7 rounded-full bg-indigo-500 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] ring-1 ring-black/20 flex items-center justify-center shrink-0">
           <ListTodo size={14} />
         </div>
         <h3 className="font-semibold text-base sm:text-lg tracking-tight">计划</h3>

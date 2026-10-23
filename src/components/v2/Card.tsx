@@ -60,10 +60,11 @@ export function Card({
   );
 }
 
-/** 卡片标题左侧的圆形图标徽 */
-export function CardIconBadge({ children, className = 'bg-indigo-500/20 text-indigo-300' }: { children: React.ReactNode; className?: string }) {
+/** 卡片标题左侧的圆形图标徽（第八十二轮：改实底——各组件专属色满底 + 白 glyph +
+ * 深色细环与浅投影定轮廓；改前为 /20 半透明底 + -300 粉彩字，压在壁纸/渐变上几乎看不见） */
+export function CardIconBadge({ children, className = 'bg-indigo-500 text-white' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${className}`}>
+    <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 shadow-[0_1px_4px_rgba(0,0,0,0.3)] ring-1 ring-black/20 ${className}`}>
       {children}
     </div>
   );
@@ -87,7 +88,7 @@ export function SiteLogo({
 }) {
   return (
     <div
-      className={`rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0 ${className}`}
+      className={`site-icon-frame rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0 ${className}`}
       style={{ width: size, height: size }}
     >
       <img

@@ -41,7 +41,7 @@ export default function RankingCard({
     <Card
       title="AI 软件榜"
       icon={
-        <CardIconBadge className="bg-amber-500/20 text-amber-300">
+        <CardIconBadge className="bg-amber-500 text-white">
           <Trophy size={14} />
         </CardIconBadge>
       }

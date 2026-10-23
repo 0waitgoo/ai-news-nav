@@ -53,7 +53,7 @@ export default function FileToolsCard({
     <Card
       title="文件工具"
       icon={
-        <CardIconBadge className="bg-indigo-500/20 text-indigo-300">
+        <CardIconBadge className="bg-indigo-500 text-white">
           <Wrench size={14} />
         </CardIconBadge>
       }
@@ -85,7 +85,7 @@ export default function FileToolsCard({
               }`}
             >
               <span
-                className={`flex items-center justify-center bg-indigo-500/[0.16] text-indigo-200 shrink-0 ${
+                className={`flex items-center justify-center bg-indigo-500 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] ring-1 ring-black/20 shrink-0 ${
                   compact ? 'w-7 h-7 rounded-lg' : 'w-10 h-10 rounded-xl'
                 }`}
               >

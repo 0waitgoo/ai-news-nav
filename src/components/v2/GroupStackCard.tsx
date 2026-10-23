@@ -121,7 +121,7 @@ export function StackCardFrame({
 export function StackGroupIcon({ group, size = 30 }: { group: NavGroup; size?: number }) {
   return (
     <div
-      className="rounded-[9px] bg-white flex items-center justify-center overflow-hidden shrink-0"
+      className="site-icon-frame rounded-[9px] bg-white flex items-center justify-center overflow-hidden shrink-0"
       style={{ width: size, height: size }}
     >
       {group.sites.length > 0 ? (
@@ -174,7 +174,7 @@ function SiteTile({ site }: { site: SiteEntry }) {
       className="group/face shrink-0 rounded-[13px] hover:z-20"
       style={{ width: 'var(--face-tile-size)', height: 'var(--face-tile-size)' }}
     >
-      <span className="block w-full h-full rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
+      <span className="site-icon-frame block w-full h-full rounded-[13px] bg-white overflow-hidden transition-transform duration-150 group-hover/face:scale-110">
         <img
           src={siteIconSrc(site)}
           alt={site.name}

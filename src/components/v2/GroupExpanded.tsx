@@ -218,7 +218,7 @@ export function SiteForm({
       </div>
       {/* 图标编辑（第四十九轮）：大预览 + 三种来源切换（自动检索 / 文字 / 上传图片），保存才落盘 */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="w-10 h-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0">
+        <span className="site-icon-frame w-10 h-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shrink-0">
           <img
             src={previewSrc}
             alt=""
