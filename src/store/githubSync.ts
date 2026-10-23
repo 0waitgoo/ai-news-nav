@@ -7,6 +7,8 @@
  *   云端更新用云端、本地更新换新 sha 重试，仍失败交给用户手动裁决（见 DataMenu）。
  */
 
+import { API_BASE as SITE_API_BASE, IS_EXTENSION_BUILD } from '../services/apiBase';
+
 export interface GithubSyncConfig {
   owner: string;
   repo: string;
@@ -22,7 +24,8 @@ export interface GithubSyncMeta extends GithubSyncConfig {
   /** 本地与云端最后一次达成一致时的数据 updatedAt；本地 updatedAt 大于它 = 有待推送变更 */
   baseUpdatedAt: number;
   lastSyncedAt: number | null;
-  /** 凭证来源：第五十轮起只剩 'oauth'（GitHub 一键登录）；'pat' 仅为旧本机存储的遗留值，加载时按未登录处理 */
+  /** 凭证来源：网站版只剩 'oauth'（GitHub 一键登录），'pat' 在网站版加载时按未登录处理；
+   * 扩展构建走方案 B 粘贴令牌，'pat' 为其正式凭证来源（见 loadGithubSyncMeta） */
   authMode: 'pat' | 'oauth';
   /** OAuth 登录的 GitHub 用户名（authMode='oauth' 时有值，仅本机展示用） */
   oauthLogin: string;
@@ -50,20 +53,24 @@ export function loadGithubSyncMeta(): GithubSyncMeta {
     if (raw) {
       const p = JSON.parse(raw) as Partial<GithubSyncMeta>;
       const str = (v: unknown, fallback: string) => (typeof v === 'string' && v.trim() ? v : fallback);
-      /* 第五十轮：令牌（PAT）方式已下线。本机若存有旧 PAT 配置（authMode 非 'oauth'），
-       * 一律按未登录处理：丢弃凭证、关同步、不报错，用户改走 GitHub 登录即可。 */
+      /* 第五十轮：令牌（PAT）方式已在网站版下线。本机若存有旧 PAT 配置（authMode 非 'oauth'），
+       * 一律按未登录处理：丢弃凭证、关同步、不报错，用户改走 GitHub 登录即可。
+       * 扩展构建例外（扩展线方案 B）：扩展里 OAuth 回跳不可用，令牌直连是唯一同步方式，
+       * 故仅扩展构建接受 authMode='pat' 的本机配置；网站版行为与第五十轮完全一致。 */
       const isOauth = p.authMode === 'oauth';
+      const isPat = IS_EXTENSION_BUILD && p.authMode === 'pat';
+      const accepted = isOauth || isPat;
       return {
-        enabled: isOauth && p.enabled === true,
+        enabled: accepted && p.enabled === true,
         owner: str(p.owner, ''),
         repo: str(p.repo, ''),
         branch: str(p.branch, 'main'),
         path: str(p.path, 'ainav-data.json'),
-        token: isOauth && typeof p.token === 'string' ? p.token : '',
+        token: accepted && typeof p.token === 'string' ? p.token : '',
         lastSha: typeof p.lastSha === 'string' ? p.lastSha : null,
         baseUpdatedAt: typeof p.baseUpdatedAt === 'number' ? p.baseUpdatedAt : 0,
         lastSyncedAt: typeof p.lastSyncedAt === 'number' ? p.lastSyncedAt : null,
-        authMode: 'oauth',
+        authMode: isPat ? 'pat' : 'oauth',
         oauthLogin: isOauth && typeof p.oauthLogin === 'string' ? p.oauthLogin : '',
       };
     }
@@ -223,7 +230,7 @@ export function buildOAuthAuthorizeUrl(clientId: string, state: string): string 
 /** 从服务端拿公开配置（client_id）；拿不到/未配置一律 null */
 export async function fetchOAuthClientId(): Promise<string | null> {
   try {
-    const res = await fetch('/api/github-oauth?config=1');
+    const res = await fetch(`${SITE_API_BASE}/api/github-oauth?config=1`);
     if (!res.ok) return null;
     const body = (await res.json().catch(() => null)) as { clientId?: unknown } | null;
     return typeof body?.clientId === 'string' && body.clientId ? body.clientId : null;
@@ -236,7 +243,7 @@ export async function fetchOAuthClientId(): Promise<string | null> {
 export async function exchangeOAuthCode(code: string): Promise<{ token: string } | { error: string }> {
   let res: Response;
   try {
-    res = await fetch('/api/github-oauth', {
+    res = await fetch(`${SITE_API_BASE}/api/github-oauth`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
