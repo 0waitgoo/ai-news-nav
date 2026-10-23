@@ -141,7 +141,56 @@ function registerGlassBucket(w: number, h: number, radius: number): GlassBucket 
   bucketMap.set(key, bucket);
   bucketSnapshot = [...bucketMap.values()];
   registryListeners.forEach((fn) => fn());
+  rasterizeBucketMap(bucket);
   return bucket;
+}
+
+/* ---------- 第八十九轮：位移贴图改喂 PNG 光栅图（去除 C 卡中部横线） ----------
+ * 用户真机反馈（2026-10-24）：液态玻璃下编组卡/组合卡卡面中下部有一条横贯的亮线，
+ * 把身后壁纸的颜色勾出来；两张卡上线的相对位置一致（距卡身顶约同一偏移）。
+ * 排查（无头 SwiftShader，四组探针）：精确复刻滤镜链的隔离页（9 种变体）、真实应用
+ * 12 面逐行采样、注入全空玻璃面（平滑/硬条纹/高频三种幕布）、瓷砖间隙列采样、
+ * DPR 1/1.25/1.5——均无此缝；位移场数学上中部平滑、贴图中心采样符合灰值预期，
+ * tint/高光/叠层逐个证伪。只剩生产链与隔离探针的唯一差异未被覆盖：生产贴图是
+ * **SVG 文本**（feImage 直载 data:image/svg+xml，图内还嵌一层 feGaussianBlur），
+ * 隔离探针用的是 PNG 位图。真实 GPU（ANGLE/D3D）下 Chrome 对 SVG 图源的滤镜求值
+ * 走逐元素光栅化，该路径的图面分块/裁切会在卡面形成采样接缝——与第八十/八十三轮
+ * 「无头复现不出、真机才有」的 GPU 专属伪影同类。
+ * 修法：贴图定义仍由 generateDisplacementMap 的同一份 SVG 给出，但在浏览器里一次性
+ * 光栅化为 PNG（2× 超采样，喂回 feImage 时等比缩放，折射场像素级等价、参数不动），
+ * feImage 只接触普通位图纹理，绕开 SVG 图源的逐元素光栅化。光栅化完成前先用原 SVG
+ * 地址顶着（与旧版行为一致、首帧不缺折射），完成后按桶替换 mapUrl 并通知
+ * GlassDefsHost 重渲染全部宿主；光栅化失败则保持 SVG（旧行为），不抛错。 */
+const rasterizedBuckets = new Set<string>();
+function rasterizeBucketMap(bucket: GlassBucket): void {
+  if (typeof document === 'undefined' || rasterizedBuckets.has(bucket.id)) return;
+  rasterizedBuckets.add(bucket.id);
+  const SS = 2; // 超采样倍数：抵消高 DPR 下贴图被放大的软化，折射场形状不变
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(2048, bucket.w * SS);
+      canvas.height = Math.min(2048, bucket.h * SS);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const png = canvas.toDataURL('image/png');
+      if (png.startsWith('data:image/png') && bucket.mapUrl !== png) {
+        bucket.mapUrl = png;
+        bucketSnapshot = [...bucketMap.values()];
+        registryListeners.forEach((fn) => fn());
+      }
+    } catch {
+      /* 光栅化失败：保持 SVG 贴图（旧行为） */
+    }
+  };
+  img.src = bucket.mapUrl;
+}
+
+/** 自测/诊断用：已注册的桶是否全部换成 PNG 贴图 */
+export function glassBucketsAllPng(): boolean {
+  return bucketSnapshot.length > 0 && bucketSnapshot.every((b) => b.mapUrl.startsWith('data:image/png'));
 }
 
 function subscribeRegistry(fn: () => void): () => void {
