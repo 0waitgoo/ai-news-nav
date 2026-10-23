@@ -88,7 +88,11 @@ export default function DarkVeil({
     const parent = canvas.parentElement;
 
     const renderer = new Renderer({
-      dpr: Math.min(window.devicePixelRatio, 2),
+      // 第九十七轮：DPR 上限 2 → 1.5。本组件是全屏逐像素 CPPN 着色器，是整页
+      // 每帧开销的最大头（无头分解实测约占帧成本 75%），且其内容是低频平滑
+      // 极光渐变，1.5 以上的采样密度不携带可见信息；hueShift/speed/warp 等
+      // 效果参数一字未动。DPR 2 设备上画布像素数降为原来的 (1.5/2)² ≈ 56%。
+      dpr: Math.min(window.devicePixelRatio, 1.5),
       canvas
     });
 
@@ -121,24 +125,51 @@ export default function DarkVeil({
     window.addEventListener('resize', resize);
     resize();
 
-    const start = performance.now();
+    /* 第九十七轮：页面隐藏时停摆。用 elapsed 累积计时代替绝对时间差，恢复时
+     * 相位无缝续上（观感不变）；rAF 在真隐藏的标签页本会被浏览器节流，本开关
+     * 额外覆盖「窗口被遮挡但仍被判定可见」等 rAF 不停的场景。诊断计数写在
+     * canvas.__veilFrames 上（与 GlassSurface 的诊断导出同例），供自测断言
+     * 「隐藏后帧计数冻结、恢复后继续增长」。 */
+    let elapsed = 0;
+    let lastNow = performance.now();
     let frame = 0;
+    let running = true;
+    let veilFrames = 0;
 
     const loop = () => {
-      program.uniforms.uTime.value = ((performance.now() - start) / 1000) * speed;
+      if (!running) return;
+      const now = performance.now();
+      elapsed += now - lastNow;
+      lastNow = now;
+      program.uniforms.uTime.value = (elapsed / 1000) * speed;
       program.uniforms.uHueShift.value = hueShift;
       program.uniforms.uNoise.value = noiseIntensity;
       program.uniforms.uScan.value = scanlineIntensity;
       program.uniforms.uScanFreq.value = scanlineFrequency;
       program.uniforms.uWarp.value = warpAmount;
       renderer.render({ scene: mesh });
+      (canvas as unknown as { __veilFrames?: number }).__veilFrames = ++veilFrames;
       frame = requestAnimationFrame(loop);
     };
 
-    loop();
+    const onVisibility = () => {
+      if (document.hidden) {
+        running = false;
+        cancelAnimationFrame(frame);
+      } else if (!running) {
+        running = true;
+        lastNow = performance.now();
+        frame = requestAnimationFrame(loop);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    if (document.hidden) running = false;
+    else loop();
 
     return () => {
+      running = false;
       cancelAnimationFrame(frame);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', resize);
     };
 
