@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, ImagePlus, Trash2, Check, Moon, Sun, Droplets } from 'lucide-react';
+import { Image as ImageIcon, ImagePlus, Trash2, Check, Moon, Sun, Droplets, Pipette } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BACKGROUND_PRESETS, type LocalStore } from '../../store/localStore';
 import { deleteBgImage, saveBgImage } from '../../store/bgImageDb';
-import { setDisplayPrefs, useDisplayPrefs } from '../../store/displayPrefs';
+import { OCEAN_DEFAULT_COLOR, setDisplayPrefs, useDisplayPrefs } from '../../store/displayPrefs';
+
+/** 「深海蓝」纯色版的快捷色板（第九十二轮）：首个即默认深海蓝原色，其余为同气质的深色 */
+const OCEAN_SWATCHES = [OCEAN_DEFAULT_COLOR, '#13294b', '#0b2e2a', '#2a1030', '#30151a', '#1a1a20'];
 
 /**
  * 「背景」入口：顶栏左组第二位（LOGO 之后）；第六十四轮起触发钮与导航图标同款——
@@ -13,6 +16,8 @@ import { setDisplayPrefs, useDisplayPrefs } from '../../store/displayPrefs';
  */
 export default function BackgroundMenu({ store }: { store: LocalStore }) {
   const [open, setOpen] = useState(false);
+  // 「深海蓝」选色器展开态（第九十二轮）：点深海蓝条目时展开，选其他预设收起
+  const [oceanPickerOpen, setOceanPickerOpen] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -84,21 +89,29 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
             <div className="grid grid-cols-2 gap-2">
               {BACKGROUND_PRESETS.map((preset) => {
                 const active = !usingLocal && background.presetId === preset.id;
+                const isOcean = preset.id === 'ocean';
                 return (
                   <button
                     key={preset.id}
+                    data-bg-preset={preset.id}
                     onClick={() => {
                       store.setBackground({ kind: 'preset', presetId: preset.id });
+                      setOceanPickerOpen(isOcean);
                       setMessage(null);
                     }}
                     className={`group relative h-14 rounded-2xl overflow-hidden border text-left transition-all ${
                       active ? 'border-indigo-400/80 ring-1 ring-indigo-400/50' : 'border-white/10 hover:border-white/30'
                     }`}
-                    style={{ background: preset.css }}
+                    style={{ background: isOcean ? displayPrefs.oceanColor : preset.css }}
                   >
                     <span className="absolute left-2 bottom-1.5 text-[11px] font-medium text-white/90 drop-shadow">
                       {preset.name}
                     </span>
+                    {isOcean && (
+                      <span className="absolute right-1.5 bottom-1.5 text-white/60">
+                        <Pipette size={11} />
+                      </span>
+                    )}
                     {active && (
                       <span className="absolute right-1.5 top-1.5 w-[18px] h-[18px] rounded-full bg-indigo-500 flex items-center justify-center">
                         <Check size={11} className="text-white" />
@@ -108,6 +121,55 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
                 );
               })}
             </div>
+            {/* 「深海蓝」选色（第九十二轮）：纯色版点开即选——色板快捷色 + 系统取色器自定义，
+                选完即时生效并存本机显示偏好（ainav-display-prefs-v1），下次打开保持 */}
+            {oceanPickerOpen && !usingLocal && background.presetId === 'ocean' && (
+              <div data-ocean-picker className="mt-2.5 rounded-2xl border border-white/10 bg-white/[0.03] p-2.5">
+                <div className="flex items-center justify-between px-0.5 pb-2">
+                  <p className="text-[11px] text-white/60">深海蓝颜色</p>
+                  <span className="text-[11px] text-white/40 uppercase">{displayPrefs.oceanColor}</span>
+                </div>
+                <div className="flex items-center gap-2 px-0.5">
+                  {OCEAN_SWATCHES.map((c) => (
+                    <button
+                      key={c}
+                      data-ocean-swatch={c}
+                      title={c === OCEAN_DEFAULT_COLOR ? '深海蓝（默认）' : c}
+                      onClick={() => setDisplayPrefs({ oceanColor: c })}
+                      className={`w-7 h-7 rounded-full border transition-transform hover:scale-110 ${
+                        displayPrefs.oceanColor === c ? 'border-indigo-400 ring-2 ring-indigo-400/50' : 'border-white/20'
+                      }`}
+                      style={{ background: c }}
+                    />
+                  ))}
+                  <label
+                    title="自定义取色"
+                    className="relative w-7 h-7 rounded-full border border-white/20 overflow-hidden cursor-pointer transition-transform hover:scale-110"
+                    style={{
+                      background: 'conic-gradient(#f87171, #facc15, #4ade80, #38bdf8, #a78bfa, #f87171)',
+                    }}
+                  >
+                    <input
+                      type="color"
+                      data-ocean-color-input
+                      value={displayPrefs.oceanColor}
+                      onChange={(e) => setDisplayPrefs({ oceanColor: e.target.value })}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      aria-label="自定义深海蓝颜色"
+                    />
+                  </label>
+                </div>
+                {displayPrefs.oceanColor !== OCEAN_DEFAULT_COLOR && (
+                  <button
+                    data-ocean-reset
+                    onClick={() => setDisplayPrefs({ oceanColor: OCEAN_DEFAULT_COLOR })}
+                    className="mt-2 px-0.5 text-[11px] text-white/45 hover:text-white/80 transition-colors"
+                  >
+                    恢复深海蓝原色
+                  </button>
+                )}
+              </div>
+            )}
             <div className="my-3 border-t border-white/[0.07]" />
 
             <p className="px-1 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">外观模式</p>
