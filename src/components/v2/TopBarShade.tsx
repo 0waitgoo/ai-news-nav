@@ -16,6 +16,12 @@ import { useDisplayPrefs } from '../../store/displayPrefs';
  * 本已过亮的颜色继续往粉白色推，是配方里唯一可摘的放大项，本带的职责（糊住
  * 透上来的内容）只靠 blur 即成立。暗夜/白天档幕布里没有折射卡，保持原配方。
  * 层独立（translateZ(0)）在 index.css .topbar-shade 里，与本处配方调整配套。
+ * 第八十三轮（第 80 轮收敛后用户真机复验白带仍在，两招都在 index.css 里、本组件
+ * 配方不变）：① 玻璃档给本带垫极淡中性底 rgb(10 10 15 / 0.13) 压亮上限；
+ * ② 本带再加强隔离（isolation + will-change）。原第 3 招（滚动区预渐隐 mask）
+ * 验收时实证会吞掉 sticky 顶栏的绘制，已回退封死、勿重走（详见 index.css
+ * 第八十三轮第 3 招回退注）。逐招代理指标见 pwtest/test-r83-result.log；
+ * 吹白本体无头环境复现不出，真机效果待用户复验。
  */
 export default function TopBarShade({ variant = 'sub' }: { variant?: 'home' | 'sub' }) {
   const { theme } = useDisplayPrefs();
