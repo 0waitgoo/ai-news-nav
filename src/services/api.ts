@@ -1,3 +1,5 @@
+import { API_BASE } from './apiBase';
+
 export interface HealthInfo {
   status: string;
   newsCount: number;
@@ -59,7 +61,7 @@ export interface SoftwareRankingItem {
 
 export async function fetchNews(limit = 20, offset = 0): Promise<NewsItem[]> {
   try {
-    const response = await fetch(`/api?type=news&limit=${limit}&offset=${offset}`);
+    const response = await fetch(`${API_BASE}/api?type=news&limit=${limit}&offset=${offset}`);
     const data = await response.json();
     if (data.success) {
       return data.data;
@@ -73,7 +75,7 @@ export async function fetchNews(limit = 20, offset = 0): Promise<NewsItem[]> {
 
 export async function fetchTrends(): Promise<TrendsResult> {
   try {
-    const response = await fetch('/api?type=trends');
+    const response = await fetch(`${API_BASE}/api?type=trends`);
     const data = await response.json();
     if (data.success && Array.isArray(data.data)) {
       return { items: data.data, updatedAt: data.updatedAt ?? null, stale: !!data.stale };
@@ -88,7 +90,7 @@ export async function fetchTrends(): Promise<TrendsResult> {
 
 export async function fetchSoftwareRanking(): Promise<SoftwareRankingItem[]> {
   try {
-    const response = await fetch('/api?type=software-ranking');
+    const response = await fetch(`${API_BASE}/api?type=software-ranking`);
     const data = await response.json();
     if (data.success) {
       return data.data;
@@ -102,7 +104,7 @@ export async function fetchSoftwareRanking(): Promise<SoftwareRankingItem[]> {
 
 export async function syncNews(): Promise<{ success: boolean; newsCount?: number; trendsCount?: number }> {
   try {
-    const response = await fetch('/api?type=sync', {
+    const response = await fetch(`${API_BASE}/api?type=sync`, {
       method: 'GET'
     });
     const data = await response.json();
@@ -115,7 +117,7 @@ export async function syncNews(): Promise<{ success: boolean; newsCount?: number
 
 export async function fetchHealth(): Promise<HealthInfo | null> {
   try {
-    const response = await fetch('/api?type=health');
+    const response = await fetch(`${API_BASE}/api?type=health`);
     const data = await response.json();
     if (data.status === 'ok') {
       return data;
