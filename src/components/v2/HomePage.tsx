@@ -1137,6 +1137,13 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       }
     };
 
+    /** 第二指落下（双指缩放开始）：取消卡片拖拽的待命/进行中拖动（不落盘），缩放优先（第七十三轮）。
+     * 同一指自己的 pointerdown 先经 React 处理器登记（id 相同，不受影响）。 */
+    const onSecondPointerDown = (e: PointerEvent) => {
+      if (pendingDragRef.current && e.pointerId !== pendingDragRef.current.pointerId) pendingDragRef.current = null;
+      if (activeDragRef.current && e.pointerId !== activeDragRef.current.pointerId) endDrag(false);
+    };
+
     const onPointerUp = (e: PointerEvent) => {
       if (pendingDragRef.current && e.pointerId === pendingDragRef.current.pointerId) pendingDragRef.current = null;
       if (activeDragRef.current && e.pointerId === activeDragRef.current.pointerId) endDrag(true);
@@ -1149,11 +1156,13 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       if (e.key === 'Escape' && activeDragRef.current) endDrag(false);
     };
 
+    window.addEventListener('pointerdown', onSecondPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.removeEventListener('pointerdown', onSecondPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
@@ -1289,7 +1298,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
               style={{
                 gridColumn: `${(pos?.col ?? 0) + 1} / span ${span}`,
                 gridRow: `${(pos?.row ?? 0) + 1} / span ${heightUnits}`,
-                touchAction: 'pan-y',
+                // pan-y：单指纵向归浏览器滚动、横向留给指针拖拽；pinch-zoom（第七十三轮补）：
+                // 只写 pan-y 时双指手势不归浏览器处理、在卡片上起手缩不了，必须显式放行
+                touchAction: 'pan-y pinch-zoom',
               }}
               onPointerDown={(e) => handleCardPointerDown(e, key)}
               onContextMenu={

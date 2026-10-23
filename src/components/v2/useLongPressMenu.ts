@@ -89,6 +89,8 @@ export default function useLongPressMenu() {
     };
 
     const onPointerDown = (e: PointerEvent) => {
+      // 第二指落下（双指缩放开始）：取消进行中的长按判定，缩放优先（第七十三轮）
+      if (press && e.pointerId !== press.pointerId) cancelPress();
       if (!e.isPrimary || e.button !== 0) return;
       if (press || frozenPointerId !== null) return; // 已在追踪/已开菜单：第二指落下不启动
       const t = e.target as HTMLElement | null;

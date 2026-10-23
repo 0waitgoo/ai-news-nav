@@ -5,6 +5,7 @@ import { logoForSite, type LocalStore, type SiteDraft } from '../../store/localS
 import { SiteLogo } from './Card';
 import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteContextMenu';
 import { SITE_DRAG_PLACEHOLDER_STYLE, useSiteDragSort } from './useSiteDragSort';
+import SwipeableRow from './SwipeableRow';
 
 /** 站点名称 / 说明的长度上限（第十六轮⑦）：表单 maxLength + 计数，保存时再硬截断兜底 */
 export const SITE_NAME_MAX = 20;
@@ -407,15 +408,29 @@ function EditableSiteRow({
 export default function GroupExpandedBody({
   group,
   store,
+  editRequestId,
+  onEditRequestDone,
 }: {
   group: NavGroup;
   store: LocalStore;
   /** 兼容既有调用方传参：展开态列数已恒为 3 列，不再使用此值 */
   colSpan?: 1 | 2;
+  /** 收起态行左滑「编辑」的直达请求（第七十三轮）：展开挂载后打开该站点的编辑表单，随即回调清空 */
+  editRequestId?: string | null;
+  onEditRequestDone?: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState<SiteMenuState | null>(null);
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+  /** 左滑操作条当前打开的行（第七十三轮）：同列表只开一行 */
+  const [swipeOpenId, setSwipeOpenId] = useState<string | null>(null);
+
+  // 收起态左滑「编辑」直达：展开体挂载（或请求变更）时打开对应站点的编辑表单
+  React.useEffect(() => {
+    if (!editRequestId) return;
+    setEditingSiteId(editRequestId);
+    onEditRequestDone?.();
+  }, [editRequestId, onEditRequestDone]);
   const sorted = sortSites(group.sites);
   /** 组内拖动排序（第三十八轮）：行网格内拖动换位，置顶区/普通区不跨区；
    * 本区在 data-nodrag 滚动区内，按下不会触发整卡拖拽排序，两套手势互不干扰 */
@@ -442,22 +457,56 @@ export default function GroupExpandedBody({
         <div
           className="grid grid-cols-1 gap-x-2 content-start min-[480px]:grid-cols-3"
           data-expanded-grid
+          onPointerDownCapture={(e) => {
+            // 左滑操作条开着时，按到该行之外（别行/空白/加站格）先收起（第七十三轮）
+            if (!swipeOpenId) return;
+            const row = (e.target as HTMLElement).closest('[data-swipe-row]');
+            if (!row || row.getAttribute('data-swipe-row') !== swipeOpenId) setSwipeOpenId(null);
+          }}
           onPointerDown={siteDrag.onContainerPointerDown}
           onDragStart={siteDrag.onContainerDragStart}
         >
           {siteDrag.items.map((site) => (
             <React.Fragment key={site.id ?? site.name}>
-              <EditableSiteRow
-                site={site}
-                groupId={group.id}
-                store={store}
-                editing={editingSiteId !== null && editingSiteId === site.id}
-                onEndEdit={() => setEditingSiteId(null)}
-                onSiteMenu={handleSiteMenu}
-                formSpanCls="col-span-1 min-[480px]:col-span-3"
-                dragging={siteDrag.isDragging(site)}
-                guardClick={siteDrag.consumeSuppressClick}
-              />
+              {editingSiteId !== null && editingSiteId === site.id ? (
+                <EditableSiteRow
+                  site={site}
+                  groupId={group.id}
+                  store={store}
+                  editing
+                  onEndEdit={() => setEditingSiteId(null)}
+                  onSiteMenu={handleSiteMenu}
+                  formSpanCls="col-span-1 min-[480px]:col-span-3"
+                  dragging={siteDrag.isDragging(site)}
+                  guardClick={siteDrag.consumeSuppressClick}
+                />
+              ) : (
+                /* 左滑露出编辑/删除（第七十三轮）：与组内拖拽排序靠方向仲裁共存——
+                   横向占优归左滑（捕获阶段截断 move，排序 pending 不激活），纵向归排序/滚动 */
+                <SwipeableRow
+                  rowKey={site.id ?? site.name}
+                  openKey={swipeOpenId}
+                  onOpenKeyChange={setSwipeOpenId}
+                  onEdit={() => setEditingSiteId(site.id ?? null)}
+                  onDelete={() => {
+                    if (site.id) store.deleteSite(group.id, site.id);
+                  }}
+                >
+                  {(swipeGuard) => (
+                    <EditableSiteRow
+                      site={site}
+                      groupId={group.id}
+                      store={store}
+                      editing={false}
+                      onEndEdit={() => setEditingSiteId(null)}
+                      onSiteMenu={handleSiteMenu}
+                      formSpanCls="col-span-1 min-[480px]:col-span-3"
+                      dragging={siteDrag.isDragging(site)}
+                      guardClick={() => siteDrag.consumeSuppressClick() || swipeGuard()}
+                    />
+                  )}
+                </SwipeableRow>
+              )}
             </React.Fragment>
           ))}
           {/* 加站格子：紧跟最后一个站点，与站点行同尺寸的虚线框（唯一的加站入口） */}

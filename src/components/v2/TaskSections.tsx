@@ -180,6 +180,12 @@ function useTaskMergeDrag(onMerge: (sourceId: string, targetId: string) => void)
       }
     };
 
+    /** 第二指落下（双指缩放开始）：取消合并拖拽的待命/进行中拖动，缩放优先（第七十三轮） */
+    const onSecondPointerDown = (e: PointerEvent) => {
+      if (pendingRef.current && e.pointerId !== pendingRef.current.pointerId) pendingRef.current = null;
+      if (activeRef.current && e.pointerId !== activeRef.current.pointerId) endDrag(false);
+    };
+
     const onPointerUp = (e: PointerEvent) => {
       if (pendingRef.current && e.pointerId === pendingRef.current.pointerId) pendingRef.current = null;
       if (activeRef.current && e.pointerId === activeRef.current.pointerId) endDrag(true);
@@ -192,11 +198,13 @@ function useTaskMergeDrag(onMerge: (sourceId: string, targetId: string) => void)
       if (e.key === 'Escape' && activeRef.current) endDrag(false);
     };
 
+    window.addEventListener('pointerdown', onSecondPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.removeEventListener('pointerdown', onSecondPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);

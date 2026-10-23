@@ -165,6 +165,13 @@ export function useSiteDragSort({
       }
     };
 
+    /** 第二指落下（双指缩放开始）：取消本手势的待命/进行中拖动，缩放优先（第七十三轮）。
+     * 同一指自己的 pointerdown 在 React 容器处理器之后到达（id 相同，不受影响）。 */
+    const onSecondPointerDown = (e: PointerEvent) => {
+      if (pendingRef.current && e.pointerId !== pendingRef.current.pointerId) pendingRef.current = null;
+      if (activeRef.current && e.pointerId !== activeRef.current.pointerId) endDrag(false);
+    };
+
     const onPointerUp = (e: PointerEvent) => {
       if (pendingRef.current && e.pointerId === pendingRef.current.pointerId) pendingRef.current = null;
       if (activeRef.current && e.pointerId === activeRef.current.pointerId) endDrag(true);
@@ -177,11 +184,13 @@ export function useSiteDragSort({
       if (e.key === 'Escape' && activeRef.current) endDrag(false);
     };
 
+    window.addEventListener('pointerdown', onSecondPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.removeEventListener('pointerdown', onSecondPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);

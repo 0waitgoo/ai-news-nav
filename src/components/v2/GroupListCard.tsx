@@ -6,6 +6,7 @@ import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import GroupExpandedBody, { SiteTagBadge } from './GroupExpanded';
 import { useGlassBackdrop } from './GlassSurface';
+import SwipeableRow from './SwipeableRow';
 
 /**
  * B 型 · 编组列表卡（收起态占格由右键布局决定：默认 2 栏 × 2x）
@@ -52,6 +53,9 @@ export default function GroupListCard({
   const [renaming, setRenaming] = useState(false);
   const [groupName, setGroupName] = useState(group.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** 收起态行左滑（第七十三轮）：当前打开操作条的行 + 左滑「编辑」直达请求（展开后由展开体消费） */
+  const [swipeOpenId, setSwipeOpenId] = useState<string | null>(null);
+  const [editRequestId, setEditRequestId] = useState<string | null>(null);
 
   const stop = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -222,34 +226,69 @@ export default function GroupListCard({
       </div>
 
       {expanded ? (
-        <GroupExpandedBody group={group} store={store} colSpan={colSpan} />
+        <GroupExpandedBody
+          group={group}
+          store={store}
+          colSpan={colSpan}
+          editRequestId={editRequestId}
+          onEditRequestDone={() => setEditRequestId(null)}
+        />
       ) : (
         /* 收起态：只显示站点（无底部横线、无「展开全部」字样、无底部渐隐）；展开靠头部组名后的「展开」按钮，不靠整卡点击 */
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 overflow-hidden">
-          <div data-collapsed-grid className={`grid gap-x-2 content-start ${colSpan === 1 ? 'grid-cols-1' : 'grid-cols-1 min-[480px]:grid-cols-3'}`}>
+          <div
+            data-collapsed-grid
+            className={`grid gap-x-2 content-start ${colSpan === 1 ? 'grid-cols-1' : 'grid-cols-1 min-[480px]:grid-cols-3'}`}
+            onPointerDownCapture={(e) => {
+              // 左滑操作条开着时，按到该行之外先收起（第七十三轮）
+              if (!swipeOpenId) return;
+              const row = (e.target as HTMLElement).closest('[data-swipe-row]');
+              if (!row || row.getAttribute('data-swipe-row') !== swipeOpenId) setSwipeOpenId(null);
+            }}
+          >
             {rows.map((site) => (
-              <button
-                key={site.id ?? site.name}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.open(site.url, '_blank');
+              /* 左滑露出编辑/删除（第七十三轮）：横向认领在捕获阶段截断 move，主页整卡拖拽
+                 的 pending 不会误激活；「编辑」= 展开本卡并直达该站点的编辑表单（既有编辑入口） */
+              <React.Fragment key={site.id ?? site.name}>
+              <SwipeableRow
+                rowKey={site.id ?? site.name}
+                openKey={swipeOpenId}
+                onOpenKeyChange={setSwipeOpenId}
+                onEdit={() => {
+                  if (!site.id) return;
+                  setEditRequestId(site.id);
+                  onToggleExpand(group);
                 }}
-                className="flex items-center gap-2.5 px-2 py-[7px] rounded-2xl hover:bg-white/6 text-left transition-colors"
+                onDelete={() => {
+                  if (site.id) store.deleteSite(group.id, site.id);
+                }}
               >
-                <SiteLogo logo={siteIconSrc(site)} name={site.name} size={34} imgSize={23} grayscale={site.dead} />
-                <span className="flex-1 min-w-0">
-                  <span className="flex items-center gap-1.5">
-                    <span className={`text-[13px] font-semibold truncate ${site.dead ? 'text-white/45' : ''}`}>{site.name}</span>
-                    {site.pinned && <Pin size={11} className="text-amber-400 fill-amber-400 shrink-0" />}
-                    {site.dead && (
-                      <span className="text-[9px] font-medium text-red-300 bg-red-500/15 px-1.5 py-0.5 rounded shrink-0">失效</span>
-                    )}
-                  </span>
-                  <span className="block text-[11px] text-white/45 truncate mt-0.5">{site.description}</span>
-                </span>
-                <SiteTagBadge site={site} />
-              </button>
+                {(swipeGuard) => (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (swipeGuard()) return;
+                      window.open(site.url, '_blank');
+                    }}
+                    className="flex items-center gap-2.5 px-2 py-[7px] w-full rounded-2xl hover:bg-white/6 text-left transition-colors"
+                  >
+                    <SiteLogo logo={siteIconSrc(site)} name={site.name} size={34} imgSize={23} grayscale={site.dead} />
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-1.5">
+                        <span className={`text-[13px] font-semibold truncate ${site.dead ? 'text-white/45' : ''}`}>{site.name}</span>
+                        {site.pinned && <Pin size={11} className="text-amber-400 fill-amber-400 shrink-0" />}
+                        {site.dead && (
+                          <span className="text-[9px] font-medium text-red-300 bg-red-500/15 px-1.5 py-0.5 rounded shrink-0">失效</span>
+                        )}
+                      </span>
+                      <span className="block text-[11px] text-white/45 truncate mt-0.5">{site.description}</span>
+                    </span>
+                    <SiteTagBadge site={site} />
+                  </button>
+                )}
+              </SwipeableRow>
+              </React.Fragment>
             ))}
           </div>
           </div>
