@@ -292,11 +292,14 @@ export function GroupPanelSection({
           </div>
         )}
 
-        {siteDrag.items.length === 0 && !showForm ? (
-          <div className="py-10 text-center text-sm text-white/40">
+        {siteDrag.items.length === 0 && !showForm && (
+          <div className="pt-10 pb-4 text-center text-sm text-white/40">
             这个编组还没有网站，点下方「+ 添加网站」加上第一个吧
           </div>
-        ) : (
+        )}
+        {/* 网格（含「+ 添加网站」瓷砖）空态也要渲染（第一百轮修复）：此前空态走三元另一支，
+            只有提示文案、没有添加入口，新建文件夹组永远加不了第一个站 */}
+        {(siteDrag.items.length > 0 || !showForm) && (
           <div
             className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2"
             onPointerDown={siteDrag.onContainerPointerDown}
