@@ -56,7 +56,7 @@ export interface BackgroundPreset {
    *  动态预设下作面板缩略与画布挂载前的兜底底色 */
   css: string;
   /** 动态背景（第九十二轮）：挂载对应的自研 Canvas 组件（components/backgrounds/） */
-  dynamic?: 'dappled' | 'tide';
+  dynamic?: 'dappled';
 }
 
 /** 内置背景预设：全部纯 CSS 实现 */
@@ -80,13 +80,6 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
     name: '深海蓝',
     css: 'radial-gradient(1100px 750px at 80% -10%, rgba(37, 99, 235, 0.38), transparent 60%), linear-gradient(160deg, #0d2140 0%, #081426 52%, #05070d 100%)',
   },
-  {
-    // 第九十二轮：「墨绿」下架，自研动态背景「等高潮汐」顶到它的位置（面板第 4 位）
-    id: 'tide',
-    name: '等高潮汐',
-    dynamic: 'tide',
-    css: 'radial-gradient(1000px 700px at 72% 112%, rgba(110, 110, 128, 0.4), transparent 60%), linear-gradient(180deg, #0b0b0d 0%, #0a0a0a 55%, #060607 100%)',
-  },
 ];
 
 export const DEFAULT_BACKGROUND: BackgroundSetting = { kind: 'preset', presetId: 'violet' };
@@ -96,14 +89,23 @@ export function backgroundPresetOf(presetId: string): BackgroundPreset {
   return BACKGROUND_PRESETS.find((p) => p.id === presetId) ?? BACKGROUND_PRESETS[0];
 }
 
+/** 已下架的背景预设 id（显式名单，不靠「不在预设表」兜底碰运气）：
+ *  'space'（深空灰）/'forest'（墨绿）第九十二轮下架；'tide'（等高潮汐）第一百零一轮按用户要求删除。
+ *  选中这些 id 的老存档在归一化时一律回落默认预设 'violet'（星云紫），其余设置不受影响。 */
+const RETIRED_BACKGROUND_PRESET_IDS: readonly string[] = ['space', 'forest', 'tide'];
+
 /** 归一化背景设置：老数据无此字段时回落默认预设；presetId 必须是已知预设。
- *  第九十二轮迁移：已下架的 'space'（深空灰）/'forest'（墨绿）不在预设表内，自动回落
- *  默认预设 'violet'（星云紫），其余设置不受影响；'ocean'（深海蓝）保留 id、渲染改纯色版。 */
+ *  迁移：已下架预设（见 RETIRED_BACKGROUND_PRESET_IDS）自动回落 'violet'；
+ *  'ocean'（深海蓝）保留 id、渲染为纯色版。 */
 function normalizeBackground(raw: unknown): BackgroundSetting {
   if (raw && typeof raw === 'object') {
     const b = raw as { kind?: unknown; presetId?: unknown; localStamp?: unknown };
     const presetId =
-      typeof b.presetId === 'string' && BACKGROUND_PRESETS.some((p) => p.id === b.presetId) ? b.presetId : 'violet';
+      typeof b.presetId === 'string' &&
+      !RETIRED_BACKGROUND_PRESET_IDS.includes(b.presetId) &&
+      BACKGROUND_PRESETS.some((p) => p.id === b.presetId)
+        ? b.presetId
+        : 'violet';
     return {
       kind: b.kind === 'local' ? 'local' : 'preset',
       presetId,
