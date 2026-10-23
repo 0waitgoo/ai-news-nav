@@ -71,6 +71,7 @@ const toolsByCategory = {
     { name: 'ChatGPT', logo: getLogo('chatgpticon'), description: 'OpenAI推出的AI对话助手', url: 'https://chat.openai.com', needVpn: true },
     { name: 'Claude', logo: getLogo('claude'), description: 'Anthropic推出的智能助手', url: 'https://claude.ai', needVpn: true },
     { name: 'Gemini', logo: getLogo('gemini'), description: 'Google多模态AI模型', url: 'https://gemini.google.com', needVpn: true },
+    { name: 'Chatgot', logo: getLogo('Chatgot'), description: '多模型AI聊天聚合平台', url: 'https://start.chatgot.io', needVpn: true },
   ],
   '图像生成': [
     { name: 'Liblib', logo: getLogo('liblib'), description: '国产AI图像生成平台', url: 'https://www.liblib.art', needVpn: false },
@@ -82,6 +83,11 @@ const toolsByCategory = {
     { name: 'Firefly', logo: getLogo('firefly'), description: 'Adobe创意AI工具', url: 'https://www.adobe.com/firefly', needVpn: true },
     { name: 'Nano Banana', logo: getLogo('nano-banana'), description: 'AI图像生成平台', url: 'https://nanobanana.com', needVpn: false },
     { name: 'Flowith', logo: getLogo('flowith'), description: 'AI图像工作流平台', url: 'https://flowith.com', needVpn: false },
+    { name: 'Remove.bg', logo: getLogo('Remove.bg'), description: 'AI一键抠图工具', url: 'https://www.remove.bg', needVpn: true },
+    { name: 'Bigjpg', logo: getLogo('Bigjpg'), description: 'AI图片无损放大工具', url: 'https://bigjpg.com', needVpn: false },
+    { name: 'Fotor', logo: getLogo('Fotor'), description: '国产AI图片编辑平台', url: 'https://www.fotor.com/cn/', needVpn: false },
+    { name: 'PicsArt', logo: getLogo('PicsArt'), description: 'AI修图与创意编辑平台', url: 'https://picsart.com', needVpn: true },
+    { name: '美图秀秀', logo: getLogo('美图秀秀'), description: '美图AI修图工具', url: 'https://xiuxiu.web.meitu.com', needVpn: false },
   ],
   '视频生成': [
     { name: '可灵', logo: getLogo('keling'), description: '快手AI视频生成', url: 'https://kling.kuaishou.com', needVpn: false },
@@ -90,6 +96,8 @@ const toolsByCategory = {
     { name: 'Runway', logo: getLogo('Runwayml'), description: '专业AI视频编辑平台', url: 'https://runwayml.com', needVpn: true },
     { name: 'Sora', logo: getLogo('Sora'), description: 'OpenAI视频生成模型', url: 'https://openai.com/sora', needVpn: true },
     { name: 'Pika', logo: getLogo('pika'), description: '快速AI视频创作', url: 'https://pika.art', needVpn: true },
+    { name: 'Kapwing', logo: getLogo('Kapwing'), description: '在线AI视频编辑平台', url: 'https://www.kapwing.com', needVpn: true },
+    { name: '来画', logo: getLogo('来画'), description: 'AI数字人视频创作平台', url: 'https://www.laihua.com', needVpn: false },
   ],
   '音频生成': [
     { name: '剪映', logo: getLogo('jianying'), description: '字节跳动AI视频剪辑', url: 'https://www.capcut.cn', needVpn: false },
@@ -97,6 +105,7 @@ const toolsByCategory = {
     { name: 'Suno', logo: getLogo('suno'), description: 'AI音乐生成热门工具', url: 'https://suno.ai', needVpn: true },
     { name: 'Udio', logo: getLogo('udio'), description: '专业AI音乐创作平台', url: 'https://udio.com', needVpn: true },
     { name: 'ElevenLabs', logo: getLogo('suno'), description: '逼真AI语音合成', url: 'https://elevenlabs.io', needVpn: true },
+    { name: 'LALAL.AI', logo: getLogo('LALAL.AI'), description: 'AI人声伴奏分离工具', url: 'https://www.lalal.ai', needVpn: true },
   ],
   '编程工具': [
     { name: '通义灵码', logo: getLogo('tongyi'), description: '阿里AI编程助手', url: 'https://tongyi.aliyun.com/lingma', needVpn: false },
@@ -106,6 +115,8 @@ const toolsByCategory = {
     { name: 'GitHub Copilot', logo: getLogo('github'), description: 'GitHub AI编程助手', url: 'https://github.com/features/copilot', needVpn: true },
     { name: 'Cursor', logo: getLogo('cursor'), description: 'AI驱动代码编辑器', url: 'https://cursor.sh', needVpn: true },
     { name: 'Windsurf', logo: getLogo('windsurf'), description: '现代AI代码编辑器', url: 'https://codeium.com/windsurf', needVpn: true },
+    { name: 'Replit', logo: getLogo('Replit'), description: '在线AI编程平台', url: 'https://replit.com', needVpn: true },
+    { name: 'StackBlitz', logo: getLogo('StackBlitz'), description: '浏览器在线开发环境', url: 'https://stackblitz.com', needVpn: true },
   ],
   'Agent工具': [
     { name: '有道龙虾', logo: getLogo('有道龙虾'), description: '网易有道AI智能体', url: 'https://www.youdao.com', needVpn: false },
@@ -120,6 +131,8 @@ const toolsByCategory = {
     { name: '秘塔写作猫', logo: getLogo('秘塔写作'), description: '基于GPT的中文写作工具', url: 'https://xiezuocat.com', needVpn: false },
     { name: '毕业宝AI论文降重', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=bi yebao&backgroundColor=14b8a6', description: '论文降重神器！学生都在用的AI论文降重辅助AI工具', url: 'https://www.biyebao.com', needVpn: false },
     { name: 'Copy AI', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=copyai&backgroundColor=8b5cf6', description: 'AI社交媒体文案写作助手', url: 'https://www.copy.ai', needVpn: true },
+    { name: 'Grammarly', logo: getLogo('Grammarly'), description: 'AI英文写作助手', url: 'https://www.grammarly.com', needVpn: true },
+    { name: 'QuillBot', logo: getLogo('QuillBot'), description: 'AI英文改写润色工具', url: 'https://quillbot.com', needVpn: true },
   ],
 };
 
