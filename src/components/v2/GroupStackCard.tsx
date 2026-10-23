@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { groupIcon, siteIconSrc, siteLogoFallback, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
-import { useGlassBackdrop } from './GlassSurface';
 
 /**
  * C 型 · 编组堆叠卡（默认 1 栏 × 1X）——「极简文件夹」卡面（第十二轮，用户在第三轮线稿中选定方案四）
@@ -62,9 +61,6 @@ export function StackCardFrame({
   rootProps?: Record<string, string>;
 }) {
   const color = tabColor?.trim() ? tabColor.trim() : '';
-  // 液态玻璃（第五十八轮）：卡身圆角 22px，玻璃档且浏览器支持时 hook 注入 --glass-bg 并命令式
-  //直写 backdrop-filter:url() 真实折射（压过下方内联 blur）；不支持时走 index.css 的 CSS 回退玻璃
-  const { ref: glassRef, style: glassStyle } = useGlassBackdrop<HTMLDivElement>(22);
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -81,14 +77,12 @@ export function StackCardFrame({
           悬停只提亮描边，不改变底色 */}
       <div
         data-stack-body
-        ref={glassRef}
         style={{
           background: 'rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4))',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
           /* 第五十三轮：卡身作容器查询上下文，卡面瓷砖尺寸变量（--face-tile-size）里的 cqw 以卡宽为基准解析 */
           containerType: 'inline-size',
-          ...glassStyle,
         }}
         className="group-card-scope absolute inset-x-0 bottom-0 top-[13px] z-10 rounded-[22px] border border-white/10 transition-colors group-hover/card:border-white/[0.18] px-4 pt-3.5 pb-4 flex flex-col overflow-hidden"
       >
@@ -97,12 +91,9 @@ export function StackCardFrame({
 
       {/* 小角（标签凸起）：从卡身上沿探出，与卡身同色系一体；设了 tabColor 时按组色填充（含同色描边，避免浮在亮背景上丢边）。
           clipPath 裁掉下 7px：只保留卡身上沿以上的可见轮廓（小角可见部分与卡身零重叠，造型号与位置一字未动）。
-          第九十六轮：小角改在卡身**之后**绘制（z-20 压卡身 z-10）。原先小角垫在卡身背后绘制，属于卡身
-          backdrop-filter 的采样内容；真机 GPU 下玻璃折射场的纵向折叠采样会把小角色带拉进卡面中下部，
-          压成一条横贯卡宽的小角色细线（用户真机两张截图实证：线色 = 本卡小角色 ×约 0.35、只出现在
-          卡面背景层、瓷砖本体干净）。绘制顺序后移后小角成为前景，不再进入 backdrop，鬼线源头消除；
-          玻璃折射参数与卡面观感不动。无头 SwiftShader 的 backdrop 寻址与真机 GPU 不同、复现不出此线，
-          本修法的验证在采样层与结构层（见 test-r96）。 */}
+          第九十六轮：小角改在卡身**之后**绘制（z-20 压卡身 z-10），不进入卡身 backdrop-filter
+          的采样内容（当时是为已删除的液态玻璃折射鬼线而改，第一百零二轮玻璃删除后此绘制
+          顺序保持不变，几何与观感不动）。 */}
       {tabEars ? (
         <>
           <ComboTabBump color={tabEars[0]} side="left" />

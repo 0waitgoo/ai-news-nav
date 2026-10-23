@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, ImagePlus, Trash2, Check, Moon, Sun, Droplets, Pipette } from 'lucide-react';
+import { Image as ImageIcon, ImagePlus, Trash2, Check, Moon, Sun, Pipette } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BACKGROUND_PRESETS, type LocalStore } from '../../store/localStore';
 import { deleteBgImage, saveBgImage } from '../../store/bgImageDb';
@@ -173,12 +173,11 @@ export default function BackgroundMenu({ store }: { store: LocalStore }) {
             <div className="my-3 border-t border-white/[0.07]" />
 
             <p className="px-1 pb-1.5 text-[10px] tracking-wider text-white/40 uppercase">外观模式</p>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               {(
                 [
                   { id: 'dark', label: '暗夜', Icon: Moon },
                   { id: 'light', label: '白天', Icon: Sun },
-                  { id: 'glass', label: '液态玻璃', Icon: Droplets },
                 ] as const
               ).map(({ id, label, Icon }) => {
                 const active = displayPrefs.theme === id;

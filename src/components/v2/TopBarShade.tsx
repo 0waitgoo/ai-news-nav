@@ -1,5 +1,4 @@
 import React from 'react';
-import { useDisplayPrefs } from '../../store/displayPrefs';
 
 /**
  * 吸顶栏遮挡带（第五十九轮）：顶栏背后的糊化层，滚动时挡住透进顶栏区域的卡片。
@@ -9,23 +8,14 @@ import { useDisplayPrefs } from '../../store/displayPrefs';
  * 高度按「页面上垫 + 栏高 + 30px 渐隐」推导（主页栏带 -mt-1，用 --home 变体减 4px）。
  * backdrop 模糊只能走内联——样式表里的标准 backdrop-filter 会被 Lightning CSS
  * 删得只剩 -webkit- 形式，而单剩 -webkit- 形式在 Chromium 里不生效（r59 探针
- * 实证），故与第五十八轮 GlassSurface 的 url() 滤镜同理，写在元素行内样式上。
- * 第八十轮：玻璃档下本带只用 blur、去掉 saturate(150%)——用户实测玻璃档滚动时
- * 本带整带吹白（发白区域与本带足迹逐像素吻合、连卡间空隙一起白，判定为本带
- * backdrop 在滚动重绘时采样含 SVG 折射卡的幕布快照所致）；saturate 会把快照里
- * 本已过亮的颜色继续往粉白色推，是配方里唯一可摘的放大项，本带的职责（糊住
- * 透上来的内容）只靠 blur 即成立。暗夜/白天档幕布里没有折射卡，保持原配方。
- * 层独立（translateZ(0)）在 index.css .topbar-shade 里，与本处配方调整配套。
- * 第八十三轮（第 80 轮收敛后用户真机复验白带仍在，两招都在 index.css 里、本组件
- * 配方不变）：① 玻璃档给本带垫极淡中性底 rgb(10 10 15 / 0.13) 压亮上限；
- * ② 本带再加强隔离（isolation + will-change）。原第 3 招（滚动区预渐隐 mask）
- * 验收时实证会吞掉 sticky 顶栏的绘制，已回退封死、勿重走（详见 index.css
- * 第八十三轮第 3 招回退注）。逐招代理指标见 pwtest/test-r83-result.log；
- * 吹白本体无头环境复现不出，真机效果待用户复验。
+ * 实证），故写在元素行内样式上。
+ * 层独立（translateZ(0)）在 index.css .topbar-shade 里。
+ * （历史：第八十/八十三轮曾为已删除的液态玻璃档单独收敛本带配方——只 blur、
+ * 垫极淡中性底等；第一百零二轮玻璃整体删除后，那些玻璃专属分支与规则一并
+ * 移除，本带回到两档统一配方 blur(18px) saturate(150%)，即原暗夜/白天配方。）
  */
 export default function TopBarShade({ variant = 'sub' }: { variant?: 'home' | 'sub' }) {
-  const { theme } = useDisplayPrefs();
-  const backdrop = theme === 'glass' ? 'blur(18px)' : 'blur(18px) saturate(150%)';
+  const backdrop = 'blur(18px) saturate(150%)';
   return (
     <div
       aria-hidden

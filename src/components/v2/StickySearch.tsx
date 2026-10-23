@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'motion/react';
 import { siteIconSrc, type NavGroup } from '../../data/groups';
 import { searchAll } from '../../utils/search';
 import { SiteLogo } from './Card';
-import { useGlassBackdrop } from './GlassSurface';
 
 /**
  * 搜索（吸顶由 HomePage 的 sticky 容器负责，本组件只管搜索本身）。
@@ -22,8 +21,6 @@ export default function StickySearch({
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // 液态玻璃（第五十八轮）：搜索面圆角 16px（rounded-2xl），玻璃档且浏览器支持时 hook 直写真实折射
-  const { ref: glassRef, style: glassStyle } = useGlassBackdrop<HTMLDivElement>(16);
 
   const results = useMemo(() => searchAll(query, groups), [query, groups]);
   const hasResults = results.sites.length > 0 || results.groups.length > 0;
@@ -70,11 +67,10 @@ export default function StickySearch({
     <div ref={containerRef} className="relative flex-1 min-w-0">
       <div className="relative">
         {/* 底色与 C 卡卡面同源：.card-glass-surface 走 --group-card-rgb/alpha + 同款磨砂。
-            主题口径（第五十八轮收敛）：暗夜/液态玻璃两档跟随卡面底色系统（玻璃档由 hook 注入
-            --glass-* 变量走真实折射）；白天**不**翻白——index.css 有专门规则把本面钉回暗夜深色值，
+            主题口径（第五十八轮收敛）：白天**不**翻白——index.css 有专门规则把本面钉回暗夜深色值，
             故本面不再挂 .group-card-scope（白天翻深文字的作用域标记）。
             下拉面板是本 div 的兄弟节点，不在作用域内，保持实色不动 */}
-        <div ref={glassRef} style={glassStyle} className="card-glass-surface flex items-center gap-2 sm:gap-3 h-12 sm:h-13 px-3 sm:px-4 rounded-2xl border border-white/10 focus-within:border-indigo-400/40 transition-colors">
+        <div className="card-glass-surface flex items-center gap-2 sm:gap-3 h-12 sm:h-13 px-3 sm:px-4 rounded-2xl border border-white/10 focus-within:border-indigo-400/40 transition-colors">
           <Search size={18} className="text-white/40 shrink-0" />
           <input
             ref={inputRef}

@@ -3,7 +3,6 @@ import { Database, Download, Upload, RotateCcw, Save, FolderOpen, RefreshCw, X, 
 import { AnimatePresence, motion } from 'motion/react';
 import { IS_EXTENSION_BUILD } from '../../services/apiBase';
 import type { LocalStore } from '../../store/localStore';
-import { useGlassBackdrop } from './GlassSurface';
 import {
   beginOAuthState,
   buildOAuthAuthorizeUrl,
@@ -48,10 +47,6 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  // 液态玻璃（第五十八轮）：数据按钮与搜索框同为 .card-glass-surface（圆角 16px），玻璃档走真实折射；
-  //白天口径同搜索框——不翻白（index.css 钉回暗夜深色值），故不挂 .group-card-scope
-  const { ref: glassRef, style: glassStyle } = useGlassBackdrop<HTMLButtonElement>(16);
-
   /* ---- 本地文件保存 ---- */
   const [supported] = useState(fsAccessSupported);
   const [handle, setHandle] = useState<FsFileHandle | null>(null);
@@ -534,8 +529,6 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   return (
     <div ref={containerRef} className="relative shrink-0">
       <button
-        ref={glassRef}
-        style={glassStyle}
         onClick={() => {
           setOpen((v) => !v);
           setMessage(null);

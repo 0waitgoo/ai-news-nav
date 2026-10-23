@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import { siteLogoFallback } from '../../data/groups';
 import type { WidgetTint } from '../../store/localStore';
 import WidgetTintLayer from './WidgetTint';
-import { useGlassBackdrop } from './GlassSurface';
 
 /** A 型小组件卡的统一卡壳：标题行（图标 + 标题 + 右侧操作） + 内容区；
  *  传入 tint 时在内容之下叠一层专属底色（渐变 + 居中 Emoji 水印，第二十三轮/第三十六轮） */
@@ -30,13 +29,10 @@ export function Card({
   /** 水印字符（按卡片语义传入的 Emoji，居中渲染，第三十六轮） */
   watermark?: string;
 }) {
-  // 第七十八轮：基底改与编组卡同款的面（.widget-panel，跟随整体外观三档 + 玻璃折射，
-  // 圆角与卡自身一致 28px）；根挂 .group-card-scope 让白天翻字规则表命中（C 卡同款接法）
-  const { ref: glassRef, style: glassStyle } = useGlassBackdrop<HTMLDivElement>(28);
+  // 第七十八轮：基底改与编组卡同款的面（.widget-panel，跟随整体外观两档）；
+  // 根挂 .group-card-scope 让白天翻字规则表命中（C 卡同款接法）
   return (
     <motion.div
-      ref={glassRef}
-      style={glassStyle}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}

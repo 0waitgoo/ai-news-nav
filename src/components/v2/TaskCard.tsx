@@ -15,7 +15,6 @@ import {
 } from '../../store/localStore';
 import { AiView, PlansSection, TasksSection } from './TaskSections';
 import WidgetTintLayer from './WidgetTint';
-import { useGlassBackdrop } from './GlassSurface';
 
 /**
  * A 型 · 计划任务卡（第十八轮，替换原「今日任务」占位卡；第十九轮加待办分组）
@@ -125,11 +124,6 @@ export default function TaskCard({
   const bothEmpty = tasks.length === 0 && plans.length === 0;
   const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="📋" watermarkOpacity={bothEmpty ? 0.1 : 0} /> : null;
 
-  /* 第七十八轮：基底改与编组卡同款的面（.widget-panel + .group-card-scope 翻字作用域，
-   * 见 index.css）；1x/2x 两壳互斥渲染，各挂一份玻璃折射 hook（圆角同为 28px） */
-  const glassFull = useGlassBackdrop<HTMLDivElement>(28);
-  const glassMini = useGlassBackdrop<HTMLDivElement>(28);
-
   /* 「打开计划页」入口（第八十八轮，1x/2x 两壳共用；语言仿资讯卡头部的「进入资讯页 >」：
    * 11px 弱化文字 + ChevronRight，靠右排在进度之后） */
   const planPageEntry = onOpenPlanPage ? (
@@ -147,8 +141,6 @@ export default function TaskCard({
   if (heightUnits === 2) {
     return (
       <motion.div
-        ref={glassFull.ref}
-        style={glassFull.style}
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay }}
@@ -235,8 +227,6 @@ export default function TaskCard({
   /* ---------- 高 1x：简洁卡面（只展示与勾选；点标题展开全文，不再打开任何面板） ---------- */
   return (
     <motion.div
-      ref={glassMini.ref}
-      style={glassMini.style}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}
