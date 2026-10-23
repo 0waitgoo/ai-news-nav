@@ -774,8 +774,6 @@ export function validateStoreData(raw: unknown): StoreData | null {
       if (!site || typeof site.name !== 'string' || typeof site.url !== 'string') return null;
       if (typeof site.description !== 'string') site.description = '';
       if (typeof site.logo !== 'string' || !site.logo) site.logo = logoForSite(site.name, site.url);
-      // 存量迁移（第八十四轮）：旧版本写进存档的 DiceBear 随机图 logo 一律洗成站名首字字标
-      else if (site.logo.includes('dicebear.com')) site.logo = siteLogoFallback(site.name);
       if (typeof site.frequency !== 'number') site.frequency = 0;
       // 图标配置（第四十九轮）：只保留合法组合，脏数据（模式不对/图片不是 data URL/体积失控）整组丢弃回 auto
       if (site.iconMode !== 'text' && site.iconMode !== 'upload') {
