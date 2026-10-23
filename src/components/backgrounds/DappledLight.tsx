@@ -65,6 +65,13 @@ export default function DappledLight({ className, style }: DappledLightProps) {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
     let running = true;
+    /* 第一百零三轮：与 DarkVeil 同口径的绘制节流——30fps 上限 + 滚动冻结 200ms。
+     * 本组件相位全部由绝对时间 t 驱动，跳帧无相位跳变、单帧画面不变；
+     * reduced-motion 的静态单帧不受节流影响（见 draw 开头豁免）。 */
+    let lastDraw = 0;
+    let lastScrollAt = -Infinity;
+    const onScroll = () => { lastScrollAt = performance.now(); };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
     let w = 0;
     let h = 0;
     let dpr = 1;
@@ -175,6 +182,11 @@ export default function DappledLight({ className, style }: DappledLightProps) {
     ro.observe(canvas);
 
     const draw = (now: number) => {
+      if (!reduced && (now - lastDraw < 1000 / 30 || now - lastScrollAt < 200)) {
+        if (running) raf = requestAnimationFrame(draw);
+        return;
+      }
+      lastDraw = now;
       const t = now / 1000;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.globalCompositeOperation = 'source-over';
@@ -264,6 +276,7 @@ export default function DappledLight({ className, style }: DappledLightProps) {
       cancelAnimationFrame(raf);
       ro.disconnect();
       document.removeEventListener('visibilitychange', onVis);
+      document.removeEventListener('scroll', onScroll, { capture: true });
     };
   }, []);
 
