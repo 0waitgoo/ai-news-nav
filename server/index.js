@@ -26,31 +26,108 @@ const aiNewsData = [
   { title: 'Meta开源LLaMA 4：性能超越闭源模型', description: 'Meta新一代开源大模型参数规模达千亿级别', source: '虎嗅', category: '语言模型', url: 'https://www.huxiu.com/' },
 ];
 
-const aiTrendsData = [
-  { topic: '#Sora', volume: '12.4万', color: 'text-blue-400' },
-  { topic: '#Kimi', volume: '9.8万', color: 'text-purple-400' },
-  { topic: '#可灵', volume: '4.5万', color: 'text-emerald-400' },
-  { topic: '#Suno', volume: '3.2万', color: 'text-orange-400' },
-  { topic: '#GPT-5', volume: '2.8万', color: 'text-green-400' },
-  { topic: '#Claude', volume: '2.5万', color: 'text-yellow-400' },
-  { topic: '#Midjourney', volume: '2.1万', color: 'text-pink-400' },
-  { topic: '#Gemini', volume: '1.9万', color: 'text-red-400' },
-];
-
 function initializeData() {
   cachedNews = aiNewsData.map((item, idx) => ({
     ...item,
     id: idx + 1,
     publishedAt: new Date(Date.now() - idx * 3600000).toISOString()
   }));
-  cachedTrends = aiTrendsData.map((item, idx) => ({
-    ...item,
-    id: idx + 1
-  }));
   lastUpdate = new Date().toISOString();
 }
 
 initializeData();
+
+/* ---------- 热门话题：真实热榜聚合（第九十五轮，与 api/index.js 等价实现） ----------
+ * 数据源：百度热搜（hotScore）+ 微博热搜（num），heat 均为源站真实热度原值。
+ * 双源交错合并、缓存 10 分钟、失败用最近成功缓存并标 stale；旧版写死的
+ * #Sora/12.4万 等模拟数据已删除，拉不到就返回空，绝不编造。 */
+let trendsUpdatedAt = null;
+let trendsStale = false;
+const TRENDS_TTL_MS = 10 * 60 * 1000;
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
+function formatHeat(heat) {
+  if (typeof heat !== 'number' || !isFinite(heat)) return '';
+  if (heat >= 10000) {
+    const v = Math.round(heat / 1000) / 10;
+    return `${Number.isInteger(v) ? v.toFixed(0) : v}万`;
+  }
+  return `${heat}`;
+}
+
+async function fetchJSONVia(url, headers = {}) {
+  const text = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', ...headers } }, 8000);
+  return JSON.parse(text);
+}
+
+async function fetchBaiduTrends() {
+  const json = await fetchJSONVia('https://top.baidu.com/api/board?tab=realtime');
+  const content = json?.data?.cards?.[0]?.content || [];
+  return content
+    .filter((it) => it && it.word && it.hotScore != null && !it.isTop)
+    .slice(0, 15)
+    .map((it) => ({
+      topic: it.word,
+      heat: Number(it.hotScore),
+      source: '百度热搜',
+      url: it.url || it.appUrl || 'https://top.baidu.com/board?tab=realtime',
+    }));
+}
+
+async function fetchWeiboTrends() {
+  const json = await fetchJSONVia('https://weibo.com/ajax/side/hotSearch', { Referer: 'https://weibo.com/' });
+  const realtime = json?.data?.realtime || [];
+  return realtime
+    .filter((it) => it && (it.note || it.word) && typeof it.num === 'number')
+    .slice(0, 15)
+    .map((it) => ({
+      topic: it.note || it.word,
+      heat: it.num,
+      source: '微博热搜',
+      url: `https://s.weibo.com/weibo?q=${encodeURIComponent(it.word_scheme || `#${it.word}#`)}`,
+    }));
+}
+
+function interleaveTrends(a, b) {
+  const out = [];
+  const n = Math.max(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    if (a[i]) out.push(a[i]);
+    if (b[i]) out.push(b[i]);
+  }
+  return out;
+}
+
+let trendsRefreshing = null;
+async function refreshTrends() {
+  if (trendsRefreshing) return trendsRefreshing;
+  trendsRefreshing = (async () => {
+    const [weibo, baidu] = await Promise.allSettled([fetchWeiboTrends(), fetchBaiduTrends()]);
+    const weiboItems = weibo.status === 'fulfilled' ? weibo.value : [];
+    const baiduItems = baidu.status === 'fulfilled' ? baidu.value : [];
+    if (weibo.status === 'rejected') console.log('微博热搜抓取失败:', weibo.reason?.message);
+    if (baidu.status === 'rejected') console.log('百度热搜抓取失败:', baidu.reason?.message);
+    const merged = interleaveTrends(weiboItems, baiduItems);
+    if (merged.length > 0) {
+      cachedTrends = merged.map((it, idx) => ({ ...it, id: idx + 1, heatText: formatHeat(it.heat) }));
+      trendsUpdatedAt = new Date().toISOString();
+      trendsStale = false;
+      console.log(`Trends synced: 微博 ${weiboItems.length} + 百度 ${baiduItems.length}`);
+    } else if (cachedTrends.length > 0) {
+      trendsStale = true;
+      console.log('Trends refresh failed, serving stale cache');
+    }
+    return cachedTrends;
+  })();
+  try { await trendsRefreshing; } finally { trendsRefreshing = null; }
+  return cachedTrends;
+}
+
+async function ensureTrends() {
+  const fresh = trendsUpdatedAt && Date.now() - new Date(trendsUpdatedAt).getTime() < TRENDS_TTL_MS;
+  if (!fresh) await refreshTrends();
+  return cachedTrends;
+}
 
 function fetchWithTimeout(url, options = {}, timeout = 15000) {
   return new Promise((resolve, reject) => {
@@ -151,11 +228,6 @@ async function syncNews() {
     }));
   }
   
-  cachedTrends = aiTrendsData.map((item, idx) => ({
-    ...item,
-    id: idx + 1
-  }));
-  
   lastUpdate = new Date().toISOString();
   console.log(`Synced ${cachedNews.length} news items`);
   return { newsCount: cachedNews.length, trendsCount: cachedTrends.length };
@@ -170,9 +242,9 @@ function shuffleArray(array) {
   return shuffled;
 }
 
-app.get('/api', (req, res) => {
+app.get('/api', async (req, res) => {
   const { type, limit = 20, offset = 0 } = req.query;
-  
+
   if (type === 'news') {
     const shuffled = shuffleArray(cachedNews);
     return res.status(200).json({
@@ -181,12 +253,23 @@ app.get('/api', (req, res) => {
       lastUpdate
     });
   }
-  
+
   if (type === 'trends') {
+    const data = await ensureTrends();
+    if (data.length === 0) {
+      return res.status(200).json({
+        success: false,
+        data: [],
+        updatedAt: trendsUpdatedAt,
+        stale: false,
+        error: '热榜源暂时不可达'
+      });
+    }
     return res.status(200).json({
       success: true,
-      data: cachedTrends,
-      lastUpdate
+      data,
+      updatedAt: trendsUpdatedAt,
+      stale: trendsStale
     });
   }
   
@@ -200,10 +283,12 @@ app.get('/api', (req, res) => {
   }
   
   if (type === 'sync') {
-    syncNews().then(result => {
+    syncNews().then(async (result) => {
+      await refreshTrends();
       return res.status(200).json({
         success: true,
         ...result,
+        trendsCount: cachedTrends.length,
         lastUpdate
       });
     }).catch(error => {
@@ -215,10 +300,11 @@ app.get('/api', (req, res) => {
     return;
   }
   
+  const trends = await ensureTrends();
   return res.status(200).json({
     success: true,
     news: shuffleArray(cachedNews).slice(0, 10),
-    trends: cachedTrends,
+    trends,
     lastUpdate
   });
 });
