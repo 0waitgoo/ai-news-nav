@@ -405,8 +405,14 @@ body {
      真实 GPU 浏览器里出现过整带吹白的快照伪影（用户实测、带几何与遮挡带足迹
      逐像素吻合）；translateZ(0) 让合成器给本带独立的层与 backdrop 纹理管理，
      不再随滚动层树逐帧重栅，是这类 fixed backdrop 闪白的常规收敛手段。
-     本元素无子元素，transform 造包含块无副作用；模糊配方本身在 TopBarShade 里。 */
+     本元素无子元素，transform 造包含块无副作用；模糊配方本身在 TopBarShade 里。
+     第八十三轮 · 第 2 招（加强成层隔离）：在 translateZ(0) 之上再加 isolation 与
+     will-change——isolation 让本带自成层叠上下文、与下方卡片的滤镜层彻底分家，
+     will-change 提示合成器常驻保留本层与其 backdrop 纹理，避免滚动中反复
+     升降层导致 backdrop 快照在「含折射卡的中间合成结果」上重取。 */
   transform: translateZ(0);
+  isolation: isolate;
+  will-change: transform;
   mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
 }
@@ -423,6 +429,27 @@ body {
 @media (min-width: 768px) {
   .topbar-shade--home { height: 114px; }
 }
+
+/* 第八十三轮 · 第 1 招（仅玻璃档）：遮挡带垫一层极淡的中性深底压亮上限。
+   第 80 轮收敛（去 saturate + 独立成层 + 滤镜外扩）后用户真机复验白带仍在——
+   机理：本带 backdrop 采样到的下层内容本身带液态玻璃 SVG 滤镜的边缘高光，
+   二次模糊后高光峰值被摊成整条过曝亮带。本底 rgb(10 10 15 / 0.13) 压在模糊
+   结果之上：峰值白 1.0 被拉到约 0.87，静止态带内亮度只降约 0.02–0.03（花壁纸
+   采样口径），肉眼几乎看不出色块、更不是第六十二轮删掉的那种实色黑底；
+   模糊仍是本带的主体职责。红线同第六十二轮：无投影、不压黑、只玻璃档加，
+   暗夜/白天档 background 保持全透明原样。mask 渐隐对本底同样生效（尾段随
+   模糊一起淡出，不留横线）。最终去留以本轮逐招采样为准（test-r83）。 */
+[data-theme="glass"] .topbar-shade {
+  background: rgb(10 10 15 / 0.13);
+}
+
+/* 第八十三轮 · 第 3 招（滚动区预渐隐 mask）——已回退，不许重走：
+   原方案给 .main-scroller 在玻璃档挂尾段渐隐 mask（内容进遮挡带采样区前
+   先淡掉），代理指标确实单调向好（带近白占比压到 0）；但验收截图实证：
+   mask 在位时滚动区内的 sticky 顶栏整条不绘制（布局 rect 正常、纯合成
+   绘制被 mask 层吞掉），摘掉 mask 立刻恢复（probe-r83-ab A/B 实证）。
+   顶栏消失是比白带严重得多的回归，此路在本 DOM 结构下封死；白带收敛
+   最终只保留第 1 招（极淡中性底）+ 第 2 招（成层隔离）。 */
 
 /* ---------- 第七十轮：长按手势的移动端原生冲突修复 ----------
  * iOS Safari 长按会选中文字（蓝选区+放大镜）并弹系统 callout 菜单，抢在自定义
