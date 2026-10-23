@@ -88,7 +88,7 @@ export default function NavWidget({ onNavigate }: NavWidgetProps) {
             onClick={() => handleClick(tool.url)}
             className="flex items-center gap-2 p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 transition-all group cursor-pointer relative"
           >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 bg-white">
+            <div className="site-icon-frame w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0 bg-white">
               <img 
                 src={tool.logo} 
                 alt={tool.name}

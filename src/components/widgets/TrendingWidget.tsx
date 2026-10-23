@@ -49,8 +49,8 @@ export default function TrendingWidget({
   const header = (
     <div className="flex items-center justify-between mb-3 sm:mb-4 shrink-0">
       <div className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-full bg-indigo-500/20 flex items-center justify-center">
-          <TrendingUp size={14} className="text-indigo-400" />
+        <div className="w-7 h-7 rounded-full bg-indigo-500 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] ring-1 ring-black/20 flex items-center justify-center shrink-0">
+          <TrendingUp size={14} />
         </div>
         <h3 className="font-semibold text-base sm:text-lg tracking-tight">热门话题</h3>
       </div>
@@ -95,7 +95,7 @@ export default function TrendingWidget({
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 flex-1 min-h-0">
           {displayTrends.slice(0, 8).map((trend, idx) => (
-            <div key={idx} className="bg-white/5 rounded-2xl p-2.5 sm:p-3 flex flex-col justify-center border border-white/5">
+            <div key={idx} data-trend-tile className="bg-white/5 rounded-2xl p-2.5 sm:p-3 flex flex-col justify-center border border-white/5">
               <span className={`text-sm font-bold ${trend.color || 'text-white'} mb-1 truncate`}>{trend.topic}</span>
               <span className="text-xs font-medium text-white/50 truncate">{trend.volume} 帖子</span>
             </div>
