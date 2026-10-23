@@ -13,6 +13,7 @@ import { applyDisplayPrefs, bgBlurPx, useDisplayPrefs } from './store/displayPre
 const NewsPage = React.lazy(() => import('./components/pages/NewsPage'));
 const NavPage = React.lazy(() => import('./components/pages/NavPage'));
 const WidgetStorePage = React.lazy(() => import('./components/pages/WidgetStorePage'));
+const PlanPage = React.lazy(() => import('./components/pages/PlanPage'));
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
@@ -77,15 +78,19 @@ export default function App() {
       case 'store':
         // 组件商店（第七十四轮）：主页「添加组件」入口升级为整页商店，与其他子页面同一顶栏
         return <WidgetStorePage store={store} onNavigate={handlePageChange} />;
+      case 'plan':
+        // 计划全窗页（第八十八轮）：计划卡卡头入口进入，与卡面同源数据（同一 store）
+        return <PlanPage store={store} />;
       default:
         return <HomePage onNavigate={handlePageChange} store={store} />;
     }
   };
 
   const showLocalImage = background.kind === 'local' && !!localUrl;
-  // 子页面（资讯/导航/商店）：顶栏由 App 渲染、内容走 lazy 页；主页栏在 HomePage 内自理
+  // 子页面（资讯/导航/商店/计划）：顶栏由 App 渲染、内容走 lazy 页；主页栏在 HomePage 内自理
   // （独立工具页已于第八十六轮删除，文件工具并入主页组件，不再是子页面）
-  const isSubPage = currentPage === 'news' || currentPage === 'nav' || currentPage === 'store';
+  const isSubPage =
+    currentPage === 'news' || currentPage === 'nav' || currentPage === 'store' || currentPage === 'plan';
   // 「深海蓝」预设换成 Binary Orbits 动态背景（第四十四轮）：只在该预设被选中时挂载，
   // 底色用与组件一致的深蓝 #030b1f 兜底（组件加载前/画布外不露其他预设色）
   const showOceanDynamics = background.kind === 'preset' && background.presetId === 'ocean';
