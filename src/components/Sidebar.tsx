@@ -25,12 +25,25 @@ export function TopLogo({ onClick }: { onClick: () => void }) {
  * 入口只保留小组件内的「进入资讯页」；三页（主页/资讯/AI导航）共用同一套顶栏渲染，位置不再漂移。
  * 第六十一轮：指南针旁新增「工具」入口（PDF 格式转换工具页），同一 TopNav 组件渲染，
  * 所有页面的顶栏自动同步出现，图标组位置不变。
+ * 第八十六轮：独立工具页删除、功能并入主页文件工具组件，扳手随之改为动作按钮
+ * （回主页定位组件并打开工作区），不再有「工具页」这个页面与选中态。
  * 第六十四轮：按用户要求全部按钮去底色——不再有主页钮的紫色渐变填充、选中态的白底、
  * hover 底色，只剩白色图标本体；选中/未选中改用不透明度区分（当前页纯白、其余 55%）。
  * 第六十七轮：「主页」（房子）按钮按用户要求删除——回主页统一点左上角 LOGO（第六十四轮已实现）；
  * 主页上没有任何导航钮高亮是预期结果，子页面上当前页图标仍照常纯白高亮。
  */
-export function TopNav({ onPageChange, currentPage }: { onPageChange: (page: string) => void; currentPage: string }) {
+export function TopNav({
+  onPageChange,
+  currentPage,
+  onToolsClick,
+}: {
+  onPageChange: (page: string) => void;
+  currentPage: string;
+  /** 扳手（文件工具）点击行为（第八十六轮）：独立工具页删除后，扳手不再跳页，
+   * 改为「回主页 → 定位文件工具组件并打开工作区」（组件不在主页时先添加），
+   * 由持有 store 与页面状态的一方（App / HomePage）注入实现 */
+  onToolsClick?: () => void;
+}) {
   return (
     <nav className="flex items-center gap-1.5 sm:gap-2">
       <NavItem
@@ -41,28 +54,49 @@ export function TopNav({ onPageChange, currentPage }: { onPageChange: (page: str
       />
       <NavItem
         icon={<Wrench size={20} />}
-        label="工具"
-        active={currentPage === 'tools'}
-        onClick={() => onPageChange('tools')}
+        label="文件工具"
+        testId="topnav-tools"
+        onClick={onToolsClick}
       />
     </nav>
   );
 }
 
-export default function Sidebar({ onPageChange, currentPage }: { onPageChange: (page: string) => void, currentPage: string }) {
+export default function Sidebar({
+  onPageChange,
+  currentPage,
+  onToolsClick,
+}: {
+  onPageChange: (page: string) => void;
+  currentPage: string;
+  onToolsClick?: () => void;
+}) {
   return (
     <div className="flex items-center justify-center gap-4 py-4 w-full shrink-0">
-      <TopNav onPageChange={onPageChange} currentPage={currentPage} />
+      <TopNav onPageChange={onPageChange} currentPage={currentPage} onToolsClick={onToolsClick} />
     </div>
   );
 }
 
-function NavItem({ icon, active = false, onClick, label }: { icon: React.ReactNode, active?: boolean, onClick?: () => void, label?: string }) {
+function NavItem({
+  icon,
+  active = false,
+  onClick,
+  label,
+  testId,
+}: {
+  icon: React.ReactNode;
+  active?: boolean;
+  onClick?: () => void;
+  label?: string;
+  testId?: string;
+}) {
   return (
     <button
       onClick={onClick}
       aria-label={label}
       title={label}
+      data-testid={testId}
       className={`p-2 sm:p-2.5 rounded-xl transition-all duration-300 flex items-center justify-center ${active
         ? 'text-white'
         : 'text-white/55 hover:text-white'}`}
