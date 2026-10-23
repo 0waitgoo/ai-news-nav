@@ -26,8 +26,10 @@ import { useDisplayPrefs } from '../../store/displayPrefs';
  */
 
 /** 色板色提饱和（第七十九轮）：hex → HSL，保持色相，压明度上限 + 托饱和下限，再转回 hex。
- *  只在本层的渲染口径里生效，色板常量本身不动。 */
-function vivid(hex: string, maxL: number, minS: number): string {
+ *  只在本层的渲染口径里生效，色板常量本身不动。
+ *  第九十一轮：导出供右键选色面板的预览条共用——面板预览与卡面渲染走同一个 vivid，
+ *  用户在面板里看到的就是实际上卡的效果（含浅色被压明度托饱和的对比保护）。 */
+export function vivid(hex: string, maxL: number, minS: number): string {
   const n = hex.replace('#', '');
   const r = parseInt(n.slice(0, 2), 16) / 255;
   const g = parseInt(n.slice(2, 4), 16) / 255;

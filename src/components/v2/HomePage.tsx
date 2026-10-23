@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { LayoutGrid, FolderPlus, X, Check, List, Folder, Unlink, Combine, Palette, LogOut } from 'lucide-react';
+import { LayoutGrid, FolderPlus, X, Check, List, Folder, Unlink, Combine, Palette, LogOut, ChevronDown } from 'lucide-react';
 import { GROUP_NAME_MAX, clampGroupName, textCharCount, type GroupDisplay, type NavGroup } from '../../data/groups';
 import {
   cardFaceStyleOf,
@@ -15,6 +15,7 @@ import {
   widgetStackCardKey,
   widgetTintOf,
   WIDGET_STACK_MAX,
+  WIDGET_TINTS,
   type CardFaceStyle,
   type ComboItem,
   type LocalStore,
@@ -36,6 +37,7 @@ import GroupPanel from './GroupPanel';
 import ComboCard from './ComboCard';
 import ComboPanel from './ComboPanel';
 import WidgetStackCard from './WidgetStackCard';
+import { vivid } from './WidgetTint';
 import { GlassDefsHost } from './GlassSurface';
 import useLongPressMenu from './useLongPressMenu';
 
@@ -50,6 +52,60 @@ import useLongPressMenu from './useLongPressMenu';
  * - 第三十四轮：排放改为按栏锚定（见 laneLayout.ts）——卡片钉在自己的栏里往下排，
  *   空栏留空、不再自动往左边收；拖拽落点按指针所在栏 + 栏内插入位决定，只动被拖卡的锚点
  */
+
+/** 「换个底色」选色面板的一行（第九十一轮）：色名 + 原生取色块 + 色值 + 一排预设色板快捷点。
+ *  取色块用原生 input[type=color]（值须小写 #rrggbb），点选/取色都即时回调落盘，
+ *  卡面与面板预览条同步变色（同一条渲染链）。 */
+function TintColorRow({
+  slot,
+  label,
+  value,
+  swatches,
+  onPick,
+}: {
+  slot: 'from' | 'to';
+  label: string;
+  value: string;
+  swatches: string[];
+  onPick: (hex: string) => void;
+}) {
+  const lower = value.toLowerCase();
+  return (
+    <div className="pb-2">
+      <div className="flex items-center gap-2 pb-1.5">
+        <span className="w-9 shrink-0 text-[11px] text-white/60">{label}</span>
+        <label
+          className="relative h-6 w-9 shrink-0 cursor-pointer overflow-hidden rounded-md border border-white/25"
+          style={{ backgroundColor: lower }}
+          title="点开取色器自选颜色"
+        >
+          <input
+            type="color"
+            data-tint-input={slot}
+            value={lower}
+            onChange={(e) => onPick(e.target.value)}
+            className="absolute inset-0 cursor-pointer opacity-0"
+          />
+        </label>
+        <span className="text-[10px] uppercase tracking-wide text-white/40">{lower}</span>
+      </div>
+      <div className="flex gap-1 pl-11">
+        {swatches.map((hex) => (
+          <button
+            key={hex}
+            data-tint-swatch={`${slot}:${hex.toLowerCase()}`}
+            onClick={() => onPick(hex)}
+            title={hex}
+            className={`h-4 w-4 rounded-full border transition-transform hover:scale-110 ${
+              lower === hex.toLowerCase() ? 'border-white ring-1 ring-white/70' : 'border-white/25'
+            }`}
+            style={{ backgroundColor: hex }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** 两个虚线入口块在放置计算里的伪 key（不算卡、无锚点，回落到最矮栏末尾） */
 const TILE_ADD_KEY = '__tile_add__';
@@ -107,6 +163,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     | { kind: 'wstack'; id: string };
   const [sizeMenu, setSizeMenu] = useState<(SizeMenuTarget & { x: number; y: number }) | null>(null);
   const sizeMenuRef = useRef<HTMLDivElement>(null);
+  /** 「换个底色」选色面板的展开状态（第九十一轮）：记卡片 key，菜单关掉/换个目标自然对不上即收起 */
+  const [tintPanelFor, setTintPanelFor] = useState<string | null>(null);
   /** 空白处右键菜单（第二十七轮）：新建组合 / 添加组件；只在非卡片、非弹窗、非顶栏区域触发 */
   const [blankMenu, setBlankMenu] = useState<{ x: number; y: number } | null>(null);
   const blankMenuRef = useRef<HTMLDivElement>(null);
@@ -215,6 +273,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   );
 
   /* ---------- 右键尺寸菜单（原生组件与 B 型编组共用） ---------- */
+  /* 选色面板展开态随菜单关闭复位（第九十一轮）：任何路径关掉菜单后重开都是收起态 */
+  useEffect(() => {
+    if (!sizeMenu) setTintPanelFor(null);
+  }, [sizeMenu]);
   useEffect(() => {
     if (!sizeMenu) return;
     const onPointerDown = (e: MouseEvent) => {
@@ -323,13 +385,14 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     e.stopPropagation();
     const MENU_W = 208;
     // 任务卡的菜单多一节「卡面样式」、组合卡多一项「拆分组合」，更高一些；
-    // A 型组件还多一项「换个底色」（第二十三轮），再加一截；
+    // A 型组件还多一项「换个底色」（第二十三轮），再加一截；第九十一轮起该项可展开
+    // 选色面板（预览条 + 双色行 + 按钮行约 +190），按展开后的高度预留，免得贴底开菜单时面板溢出；
     // 组件/组件摞再多一节「合并到…」目标列表（第七十二轮），摞另有拆分/移出两项
     const MENU_H =
       target.kind === 'widget'
         ? target.id === 'task'
-          ? 528
-          : 432
+          ? 718
+          : 622
         : target.kind === 'combo'
           ? 244
           : target.kind === 'wstack'
@@ -1741,29 +1804,84 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 );
               })}
             </div>
-            {/* A 型组件专属：换个底色（第二十三轮）——重抽一色（避开当前色与其余组件已用色）并落盘 */}
-            {sizeMenu.kind === 'widget' && (
-              <>
-                <div className="my-2.5 h-px bg-white/10" />
-                <button
-                  data-reroll-tint
-                  onClick={() => {
-                    const key = widgetCardKey(sizeMenu.id);
-                    // 排除全部已用色（含本卡当前色）：重抽必换色，且不与同屏其他组件撞色
-                    const exclude: number[] = [];
-                    for (const w of store.data.widgets) {
-                      const v = store.data.widgetTints[widgetCardKey(w)];
-                      if (typeof v === 'number') exclude.push(v);
-                    }
-                    store.setWidgetTint(key, pickWidgetTintIndex(exclude));
-                    setSizeMenu(null);
-                  }}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
-                >
-                  <Palette size={12} /> 换个底色
-                </button>
-              </>
-            )}
+            {/* A 型组件专属：换个底色（第二十三轮随机重抽；第九十一轮展开选色面板——
+                双色自定义边选边存边预览，随机/恢复默认保留为面板内按钮） */}
+            {sizeMenu.kind === 'widget' &&
+              (() => {
+                const key = widgetCardKey(sizeMenu.id);
+                const current = widgetTintOf(store.data.widgetTints, key);
+                const from = current?.from ?? WIDGET_TINTS[0].from;
+                const to = current?.to ?? WIDGET_TINTS[0].to;
+                const panelOpen = tintPanelFor === key;
+                // 排除全部已用色（含本卡当前色）：重抽必换色，且不与同屏其他组件撞色
+                const reroll = () => {
+                  const exclude: number[] = [];
+                  for (const w of store.data.widgets) {
+                    const v = store.data.widgetTints[widgetCardKey(w)];
+                    if (typeof v === 'number') exclude.push(v);
+                  }
+                  store.setWidgetTint(key, pickWidgetTintIndex(exclude));
+                  setSizeMenu(null);
+                };
+                return (
+                  <>
+                    <div className="my-2.5 h-px bg-white/10" />
+                    <button
+                      data-tint-panel-toggle
+                      onClick={() => setTintPanelFor(panelOpen ? null : key)}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                    >
+                      <Palette size={12} /> 换个底色
+                      <ChevronDown
+                        size={12}
+                        className={`transition-transform ${panelOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                    {panelOpen && (
+                      <div data-tint-panel className="pt-2">
+                        {/* 预览条：与卡面同一 vivid 处理 + 同一组 alpha 档，压在与卡面基底近色的深底上 */}
+                        <div
+                          data-tint-preview
+                          className="mb-2.5 h-7 rounded-lg border border-white/10"
+                          style={{
+                            background: `linear-gradient(140deg, ${vivid(from, 0.6, 0.85)}57 0%, ${vivid(to, 0.74, 0.85)}31 52%, ${vivid(to, 0.74, 0.85)}15 100%), #26262e`,
+                          }}
+                        />
+                        <TintColorRow
+                          slot="from"
+                          label="起点色"
+                          value={from}
+                          swatches={WIDGET_TINTS.map((t) => t.from)}
+                          onPick={(hex) => store.setWidgetTintCustom(key, hex, to)}
+                        />
+                        <TintColorRow
+                          slot="to"
+                          label="终点色"
+                          value={to}
+                          swatches={WIDGET_TINTS.map((t) => t.to)}
+                          onPick={(hex) => store.setWidgetTintCustom(key, from, hex)}
+                        />
+                        <div className="flex gap-1 pt-0.5">
+                          <button
+                            data-reroll-tint
+                            onClick={reroll}
+                            className="flex-1 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                          >
+                            随机一款
+                          </button>
+                          <button
+                            data-tint-reset
+                            onClick={reroll}
+                            className="flex-1 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                          >
+                            恢复默认
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             {/* 组合卡专属：拆分组合（原位还原成左右两张普通 C 卡） */}
             {sizeMenu.kind === 'combo' && (
               <>
