@@ -173,8 +173,18 @@ export function findMappedLogo(name: string): string | null {
   return null;
 }
 
-const logoFallback = (name: string) =>
-  `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(name.toLowerCase())}&backgroundColor=6366f1`;
+/**
+ * 无真实图标时的统一字标（第八十四轮，用户口径）：站名首字——中文名取第一个汉字、
+ * 英文名取首字母（大写），本地生成 SVG data URI。取代旧 DiceBear 随机矢量图：
+ * 拿不到真实图标的站点一律出首字字标，不再用随机图/占位图顶替。
+ */
+export function siteLetterIcon(name: string): string {
+  const ch = [...(name ?? '').trim()][0] ?? '?';
+  const label = /[a-z]/i.test(ch) ? ch.toUpperCase() : ch;
+  return letterIconDataUri(label);
+}
+
+const logoFallback = (name: string) => siteLetterIcon(name);
 
 export const siteLogoFallback = logoFallback;
 
