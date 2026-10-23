@@ -6,12 +6,12 @@ import TopBarShade from './components/v2/TopBarShade';
 import BinaryOrbits from './components/BinaryOrbits';
 import DarkVeil from './components/DarkVeil';
 import { backgroundPresetOf, useLocalStore } from './store/localStore';
+import { requestToolsWorkspace } from './store/toolsWorkspace';
 import { loadBgImage } from './store/bgImageDb';
 import { applyDisplayPrefs, bgBlurPx, useDisplayPrefs } from './store/displayPrefs';
 
 const NewsPage = React.lazy(() => import('./components/pages/NewsPage'));
 const NavPage = React.lazy(() => import('./components/pages/NavPage'));
-const ToolsPage = React.lazy(() => import('./components/pages/ToolsPage'));
 const WidgetStorePage = React.lazy(() => import('./components/pages/WidgetStorePage'));
 
 export default function App() {
@@ -56,6 +56,16 @@ export default function App() {
     setCurrentPage(page);
   };
 
+  /* 顶栏扳手（第八十六轮）：独立工具页已删除，扳手改为「回主页定位文件工具组件
+   * 并打开其工作区」。组件不在主页上时先按商店添加的同一路径加上（setWidgetVisible），
+   * 再切回主页并发打开请求——定位滚动与摞内切成员由 HomePage 监听请求序号执行。
+   * 在主页上点扳手时 HomePage 顶栏有自己的同款处理（不经这里）。 */
+  const handleToolsClick = () => {
+    if (!store.data.widgets.includes('tools')) store.setWidgetVisible('tools', true);
+    setCurrentPage('home');
+    requestToolsWorkspace();
+  };
+
   const renderCurrentPage = () => {
     switch (currentPage) {
       case 'home':
@@ -64,8 +74,6 @@ export default function App() {
         return <NewsPage />;
       case 'nav':
         return <NavPage />;
-      case 'tools':
-        return <ToolsPage />;
       case 'store':
         // 组件商店（第七十四轮）：主页「添加组件」入口升级为整页商店，与其他子页面同一顶栏
         return <WidgetStorePage store={store} onNavigate={handlePageChange} />;
@@ -75,8 +83,9 @@ export default function App() {
   };
 
   const showLocalImage = background.kind === 'local' && !!localUrl;
-  // 子页面（资讯/导航/工具）：顶栏由 App 渲染、内容走 lazy 页；主页栏在 HomePage 内自理
-  const isSubPage = currentPage === 'news' || currentPage === 'nav' || currentPage === 'tools' || currentPage === 'store';
+  // 子页面（资讯/导航/商店）：顶栏由 App 渲染、内容走 lazy 页；主页栏在 HomePage 内自理
+  // （独立工具页已于第八十六轮删除，文件工具并入主页组件，不再是子页面）
+  const isSubPage = currentPage === 'news' || currentPage === 'nav' || currentPage === 'store';
   // 「深海蓝」预设换成 Binary Orbits 动态背景（第四十四轮）：只在该预设被选中时挂载，
   // 底色用与组件一致的深蓝 #030b1f 兜底（组件加载前/画布外不露其他预设色）
   const showOceanDynamics = background.kind === 'preset' && background.presetId === 'ocean';
@@ -171,7 +180,7 @@ export default function App() {
                   <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
                     <TopLogo onClick={() => handlePageChange('home')} />
                     <BackgroundMenu store={store} />
-                    <TopNav onPageChange={handlePageChange} currentPage={currentPage} />
+                    <TopNav onPageChange={handlePageChange} currentPage={currentPage} onToolsClick={handleToolsClick} />
                   </div>
                   <div className="col-span-1 lg:col-span-2" />
                 </div>
