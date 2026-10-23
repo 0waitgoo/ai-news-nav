@@ -128,7 +128,7 @@ export default function DarkVeil({
     /* 第九十七轮：页面隐藏时停摆。用 elapsed 累积计时代替绝对时间差，恢复时
      * 相位无缝续上（观感不变）；rAF 在真隐藏的标签页本会被浏览器节流，本开关
      * 额外覆盖「窗口被遮挡但仍被判定可见」等 rAF 不停的场景。诊断计数写在
-     * canvas.__veilFrames 上（与 GlassSurface 的诊断导出同例），供自测断言
+     * canvas.__veilFrames 上，供自测断言
      * 「隐藏后帧计数冻结、恢复后继续增长」。 */
     let elapsed = 0;
     let lastNow = performance.now();
