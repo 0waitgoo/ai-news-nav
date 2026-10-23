@@ -16,7 +16,6 @@ import {
   widgetSizeLabel,
   type WidgetCategory,
 } from '../v2/widgetRegistry';
-import { GlassDefsHost, useGlassBackdrop } from '../v2/GlassSurface';
 import { useDisplayPrefs } from '../../store/displayPrefs';
 
 /**
@@ -98,20 +97,15 @@ export default function WidgetStorePage({
     return () => clearTimeout(t);
   }, [justAdded]);
 
-  /* 第七十七轮 · 外观三档接入：商店大面（列表块/详情块/预览外框/操作条）归编组卡同源
-     表面——挂 .store-panel 走 index.css 的三档底色/材质（暗夜沿用写死 #17171d 不变、
-     白天同 B 卡变量翻白、玻璃同 GlassSurface 材质，tint 同归 groupCardAlpha）；
+  /* 第七十七轮 · 外观接入：商店大面（列表块/详情块/预览外框/操作条）归编组卡同源
+     表面——挂 .store-panel 走 index.css 的底色口径（暗夜沿用写死 #17171d 不变、
+     白天同 B 卡变量翻白，tint 同归 groupCardAlpha）；
      列表块/详情块/操作条另挂 .group-card-scope 复用白天翻字作用域（C 卡同款接法）。
      预览外框**不挂** scope：里面的组件本体是 A 型组件、与主页一样永不进编组卡作用域，
      外框自有文字（标题/尺寸标注/脚注）改按 theme 条件类在白天翻深（下方 light 变量）。
-     玻璃折射四面各挂 useGlassBackdrop(24)（商店面圆角 24，与 B 卡 28/C 卡 22 同理取
-     宿主自身圆角）；非玻璃档 hook 自动 inert（不设变量、不动 backdrop），三档共用此路径。 */
+     （第一百零二轮：原玻璃档的折射接法已随液态玻璃整体删除。） */
   const { theme } = useDisplayPrefs();
   const light = theme === 'light';
-  const listGlass = useGlassBackdrop<HTMLElement>(24);
-  const detailGlass = useGlassBackdrop<HTMLDivElement>(24);
-  const previewGlass = useGlassBackdrop<HTMLDivElement>(24);
-  const barGlass = useGlassBackdrop<HTMLDivElement>(24);
 
   const addedIds = store.data.widgets;
   const def = widgetDefOf(selectedId);
@@ -159,9 +153,6 @@ export default function WidgetStorePage({
 
   return (
     <div data-widget-store data-store-root className="flex flex-col gap-4">
-      {/* 玻璃滤镜定义宿主：主页 HomePage 也挂了一份，商店是独立子页面（主页不挂载），
-          本页自挂一份才能让四面的 url(#桶) 折射引用可解析（同 id 分桶，两页不会同屏） */}
-      <GlassDefsHost />
       {/* 页头：标题 + 仓库链接（规范 5.4：项目级热度信号链回 GitHub） */}
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
@@ -181,8 +172,6 @@ export default function WidgetStorePage({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
         {/* 左区：列表块（分类 + 搜索在块顶，两列瓷砖，块内滚动） */}
         <section
-          ref={listGlass.ref}
-          style={listGlass.style}
           data-store-list
           className="group-card-scope store-panel rounded-[24px] bg-[#17171d] border border-white/12 flex flex-col overflow-hidden h-[400px] lg:h-auto lg:min-h-[560px]"
         >
@@ -275,8 +264,6 @@ export default function WidgetStorePage({
         {/* 右区：上详情、下预览 */}
         <section className="flex flex-col gap-4 min-w-0">
           <div
-            ref={detailGlass.ref}
-            style={detailGlass.style}
             data-store-detail
             className="group-card-scope store-panel rounded-[24px] bg-[#17171d] border border-white/12 p-4"
           >
@@ -348,8 +335,6 @@ export default function WidgetStorePage({
           </div>
 
           <div
-            ref={previewGlass.ref}
-            style={previewGlass.style}
             data-store-preview
             className="store-panel rounded-[24px] bg-[#17171d] border border-white/12 p-4"
           >
@@ -384,8 +369,6 @@ export default function WidgetStorePage({
           不用做悬浮」）——故 sticky/bottom/z/深影全部收进 sm: 前缀，<sm 无任何定位类。
           本页没有为悬浮预留过额外底部 padding/占位（sticky 本就占自身文档位），无需清理。 */}
       <div
-        ref={barGlass.ref}
-        style={barGlass.style}
         data-store-actionbar
         className="group-card-scope store-panel rounded-[24px] bg-[#17171d] border border-white/12 px-3 py-3 sm:px-4 flex items-center gap-2.5 flex-wrap sm:sticky sm:bottom-3 sm:z-10 sm:shadow-2xl sm:shadow-black/50"
       >
