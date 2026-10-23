@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { LayoutGrid, FolderPlus, X, Check, List, Folder, Unlink, Combine, Palette } from 'lucide-react';
+import { LayoutGrid, FolderPlus, X, Check, List, Folder, Unlink, Combine, Palette, LogOut } from 'lucide-react';
 import { GROUP_NAME_MAX, clampGroupName, textCharCount, type GroupDisplay, type NavGroup } from '../../data/groups';
 import {
   cardFaceStyleOf,
@@ -12,12 +12,16 @@ import {
   resolveCardOrder,
   stackLayoutOf,
   widgetCardKey,
+  widgetStackCardKey,
   widgetTintOf,
+  WIDGET_STACK_MAX,
   type CardFaceStyle,
   type ComboItem,
   type LocalStore,
   type WidgetId,
   type WidgetLayout,
+  type WidgetMergeEntity,
+  type WidgetStackItem,
 } from '../../store/localStore';
 import { placeInLanes, simulateDenseFlow, type LaneItemSpec } from './laneLayout';
 import StickySearch from './StickySearch';
@@ -30,6 +34,7 @@ import GroupStackCard, { StackGroupIcon } from './GroupStackCard';
 import GroupPanel from './GroupPanel';
 import ComboCard from './ComboCard';
 import ComboPanel from './ComboPanel';
+import WidgetStackCard from './WidgetStackCard';
 import { GlassDefsHost } from './GlassSurface';
 import useLongPressMenu from './useLongPressMenu';
 
@@ -91,7 +96,11 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDisplay, setNewGroupDisplay] = useState<GroupDisplay>('stack');
   /** 右键尺寸菜单的目标：原生组件 / 编组 / 组合卡（共用同一套菜单，组合卡多一项「拆分组合」） */
-  type SizeMenuTarget = { kind: 'widget'; id: WidgetId } | { kind: 'group'; id: string } | { kind: 'combo'; id: string };
+  type SizeMenuTarget =
+    | { kind: 'widget'; id: WidgetId }
+    | { kind: 'group'; id: string }
+    | { kind: 'combo'; id: string }
+    | { kind: 'wstack'; id: string };
   const [sizeMenu, setSizeMenu] = useState<(SizeMenuTarget & { x: number; y: number }) | null>(null);
   const sizeMenuRef = useRef<HTMLDivElement>(null);
   /** 空白处右键菜单（第二十七轮）：新建组合 / 添加组件；只在非卡片、非弹窗、非顶栏区域触发 */
@@ -100,10 +109,17 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   /** 新建组合选择器：勾选恰好 2 个候选组后生成组合卡 */
   const [showComboPicker, setShowComboPicker] = useState(false);
   const [pickerSelected, setPickerSelected] = useState<string[]>([]);
-  /** 拖拽合并提示（充能完成后压住的目标卡），由拖拽逻辑写入、渲染层在目标卡上画高亮 */
-  const [mergeUi, setMergeUi] = useState<{ targetKey: string; progress: number; ready: boolean } | null>(null);
-  /** 拖拽充能进度（拖影上的提示条），仅可合并的 stack 卡拖拽时出现 */
-  const [chargeUi, setChargeUi] = useState<{ progress: number; ready: boolean } | null>(null);
+  /** 拖拽合并提示（充能完成后压住的目标卡），由拖拽逻辑写入、渲染层在目标卡上画高亮；
+   *  kind 区分编组组合与组件摞两套合并（第七十二轮），full = 目标是摞但已满 4 个（拒绝反馈） */
+  const [mergeUi, setMergeUi] = useState<{
+    targetKey: string;
+    progress: number;
+    ready: boolean;
+    kind?: 'group' | 'widget';
+    full?: boolean;
+  } | null>(null);
+  /** 拖拽充能进度（拖影上的提示条），可合并的卡（编组 stack 卡 / 小组件 / 组件摞）拖拽时出现 */
+  const [chargeUi, setChargeUi] = useState<{ progress: number; ready: boolean; kind?: 'group' | 'widget' } | null>(null);
   /** tab 拖出时的拖影来源：把被拖组的普通 C 卡渲染到屏外，取其 HTML 作拖拽快照 */
   const [tabSnap, setTabSnap] = useState<{
     group: NavGroup;
@@ -131,6 +147,20 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const memberIds = useMemo(() => new Set(validCombos.flatMap((c) => c.groupIds)), [validCombos]);
   /** 未入组合的 stack 组才单独成卡（组合成员由组合卡代表） */
   const singleStackGroups = useMemo(() => stackGroups.filter((g) => !memberIds.has(g.id)), [stackGroups, memberIds]);
+
+  /* ---------- A 型组件摞（第七十二轮）：归一化已保证成员都在 widgets 内、2–4 个且不重叠；
+     渲染侧再兜一层防御过滤（成员不在 widgets 的摞不渲染，成员按普通组件出现） ---------- */
+  const validWidgetStacks = useMemo(
+    () =>
+      store.data.widgetStacks.filter(
+        (s) => s.widgetIds.length >= 2 && s.widgetIds.every((id) => widgets.includes(id)),
+      ),
+    [store.data.widgetStacks, widgets],
+  );
+  const stackedMemberIds = useMemo(
+    () => new Set(validWidgetStacks.flatMap((s) => s.widgetIds)),
+    [validWidgetStacks],
+  );
   const [stackA, stackB, stackC, ...stackRest] = singleStackGroups;
   const hasWidget = (id: WidgetId) => widgets.includes(id);
   const panelGroup = panelGroupId ? (groups.find((g) => g.id === panelGroupId) ?? null) : null;
@@ -257,15 +287,18 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     e.stopPropagation();
     const MENU_W = 208;
     // 任务卡的菜单多一节「卡面样式」、组合卡多一项「拆分组合」，更高一些；
-    // A 型组件还多一项「换个底色」（第二十三轮），再加一截
+    // A 型组件还多一项「换个底色」（第二十三轮），再加一截；
+    // 组件/组件摞再多一节「合并到…」目标列表（第七十二轮），摞另有拆分/移出两项
     const MENU_H =
       target.kind === 'widget'
         ? target.id === 'task'
-          ? 338
-          : 242
+          ? 528
+          : 432
         : target.kind === 'combo'
           ? 244
-          : 196;
+          : target.kind === 'wstack'
+            ? 470
+            : 196;
     setSizeMenu({
       ...target,
       x: Math.max(8, Math.min(e.clientX, window.innerWidth - MENU_W - 8)),
@@ -280,10 +313,12 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       ? widgetLayouts[sizeMenu.id]
       : sizeMenu.kind === 'combo'
         ? stackLayoutOf(groupLayouts, comboCardKey(sizeMenu.id))
-        : (() => {
-            const g = groups.find((gr) => gr.id === sizeMenu.id);
-            return g?.display === 'stack' ? stackLayoutOf(groupLayouts, sizeMenu.id) : groupLayoutOf(groupLayouts, sizeMenu.id);
-          })()
+        : sizeMenu.kind === 'wstack'
+          ? stackLayoutOf(groupLayouts, widgetStackCardKey(sizeMenu.id))
+          : (() => {
+              const g = groups.find((gr) => gr.id === sizeMenu.id);
+              return g?.display === 'stack' ? stackLayoutOf(groupLayouts, sizeMenu.id) : groupLayoutOf(groupLayouts, sizeMenu.id);
+            })()
     : null;
   const sizeMenuTitle = sizeMenu
     ? sizeMenu.kind === 'widget'
@@ -294,13 +329,50 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
             const names = c ? c.groupIds.map((gid) => groups.find((g) => g.id === gid)?.name ?? '').join(' + ') : '';
             return `${names} · 组合尺寸`;
           })()
-        : `${groups.find((g) => g.id === sizeMenu.id)?.name ?? ''} · 编组尺寸`
+        : sizeMenu.kind === 'wstack'
+          ? (() => {
+              const s = validWidgetStacks.find((ss) => ss.id === sizeMenu.id);
+              const names = s ? s.widgetIds.map((wid) => widgetDefOf(wid).name).join(' + ') : '';
+              return `${names} · 组件摞`;
+            })()
+          : `${groups.find((g) => g.id === sizeMenu.id)?.name ?? ''} · 编组尺寸`
     : '';
   const applySizeMenuLayout = (patch: Partial<WidgetLayout>) => {
     if (!sizeMenu) return;
     if (sizeMenu.kind === 'widget') store.setWidgetLayout(sizeMenu.id, patch);
     else if (sizeMenu.kind === 'combo') store.setComboLayout(sizeMenu.id, patch);
+    else if (sizeMenu.kind === 'wstack') store.setWidgetStackLayout(sizeMenu.id, patch);
     else store.setGroupLayout(sizeMenu.id, patch);
+  };
+
+  /* 「合并到…」的目标清单（第七十二轮，组件/组件摞右键菜单共用）：主页上其他未入摞的
+   * 单个组件 + 其他摞；并完超过上限 4 的目标置灰标「已满」。编组卡不参与（两套体系） */
+  const mergeTargetsFor = (
+    source: WidgetMergeEntity,
+  ): { entity: WidgetMergeEntity; label: string; sub: string; full: boolean }[] => {
+    const sourceSize =
+      source.type === 'widget' ? 1 : (validWidgetStacks.find((s) => s.id === source.id)?.widgetIds.length ?? 0);
+    const out: { entity: WidgetMergeEntity; label: string; sub: string; full: boolean }[] = [];
+    for (const s of validWidgetStacks) {
+      if (source.type === 'stack' && source.id === s.id) continue;
+      out.push({
+        entity: { type: 'stack', id: s.id },
+        label: s.widgetIds.map((wid) => widgetDefOf(wid).name).join(' + '),
+        sub: `组件摞 ${s.widgetIds.length}/${WIDGET_STACK_MAX}`,
+        full: sourceSize + s.widgetIds.length > WIDGET_STACK_MAX,
+      });
+    }
+    for (const def of WIDGET_DEFINITIONS) {
+      if (!widgets.includes(def.id) || stackedMemberIds.has(def.id)) continue;
+      if (source.type === 'widget' && source.id === def.id) continue;
+      out.push({
+        entity: { type: 'widget', id: def.id },
+        label: def.name,
+        sub: '单个组件',
+        full: sourceSize + 1 > WIDGET_STACK_MAX,
+      });
+    }
+    return out;
   };
 
   /* 尺寸菜单可选项（第七十四轮，组件规范 2.2 声明机制）：A 型组件只列注册表 supportedSizes
@@ -439,9 +511,23 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     for (const c of validCombos) order.push(comboCardKey(c.id));
     if (hasWidget('trending')) order.push(widgetCardKey('trending'));
     if (hasWidget('tools')) order.push(widgetCardKey('tools'));
-    return order;
+    /* 组件摞（第七十二轮）：成员 key 全部摘掉，摞 key 落在成员中最靠前的位置。
+     * 这只是 cardOrder 为空/对齐时的回落位——合并/拆分动作都会把摞的真实位置写进 cardOrder */
+    let result = order;
+    for (const s of validWidgetStacks) {
+      const memberKeys = s.widgetIds.map((wid) => widgetCardKey(wid));
+      const firstIdx = result.findIndex((k) => memberKeys.includes(k));
+      const filtered = result.filter((k) => !memberKeys.includes(k));
+      if (firstIdx < 0) filtered.push(widgetStackCardKey(s.id));
+      else {
+        const before = result.slice(0, firstIdx).filter((k) => !memberKeys.includes(k)).length;
+        filtered.splice(before, 0, widgetStackCardKey(s.id));
+      }
+      result = filtered;
+    }
+    return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listGroups, stackA, stackB, stackC, stackRest, widgets, validCombos]);
+  }, [listGroups, stackA, stackB, stackC, stackRest, widgets, validCombos, validWidgetStacks]);
 
   const baseOrder = useMemo(
     () => resolveCardOrder(store.data.cardOrder, defaultOrder),
@@ -459,14 +545,18 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   };
 
   const itemByKey = useMemo(() => {
-    const map = new Map<string, { group?: NavGroup; widgetId?: WidgetId; combo?: ComboItem }>();
+    const map = new Map<
+      string,
+      { group?: NavGroup; widgetId?: WidgetId; combo?: ComboItem; widgetStack?: WidgetStackItem }
+    >();
     for (const g of groups) map.set(groupCardKey(g.id), { group: g });
     for (const c of validCombos) map.set(comboCardKey(c.id), { combo: c });
     for (const w of WIDGET_DEFINITIONS) {
-      if (widgets.includes(w.id)) map.set(widgetCardKey(w.id), { widgetId: w.id });
+      if (widgets.includes(w.id) && !stackedMemberIds.has(w.id)) map.set(widgetCardKey(w.id), { widgetId: w.id });
     }
+    for (const s of validWidgetStacks) map.set(widgetStackCardKey(s.id), { widgetStack: s });
     return map;
-  }, [groups, widgets, validCombos]);
+  }, [groups, widgets, validCombos, validWidgetStacks, stackedMemberIds]);
 
   /* ---------- 栏位布局（第三十四轮）：卡片占格只由（栏锚点 + 顺序 + 宽高）经 placeInLanes 算出，
      渲染时用显式 gridColumn/gridRow 钉死，不再让浏览器 dense 流自动收拢 ---------- */
@@ -483,6 +573,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     }
     if (item.combo) {
       const layout = stackLayoutOf(groupLayouts, comboCardKey(item.combo.id));
+      return { span: clampColSpan(layout.colSpan), height: layout.heightUnits };
+    }
+    if (item.widgetStack) {
+      const layout = stackLayoutOf(groupLayouts, widgetStackCardKey(item.widgetStack.id));
       return { span: clampColSpan(layout.colSpan), height: layout.heightUnits };
     }
     const layout = widgetLayouts[item.widgetId as WidgetId];
@@ -611,6 +705,26 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       if (n === 0) return 150;
       return Math.round(86 + Math.ceil(n / perRow) * (tile + 10));
     };
+    /** 单个组件的手机估算高（按组件类型与高度档；组件摞按当前成员复用同一口径） */
+    const widgetPhoneH = (id: WidgetId, lay: WidgetLayout): number => {
+      switch (id) {
+        case 'task':
+          return lay.heightUnits === 2
+            ? Math.min(600, Math.max(320, 250 + store.data.tasks.length * 40 + store.data.plans.length * 48))
+            : 172;
+        case 'news':
+          return lay.heightUnits === 2 ? 336 : 172;
+        case 'ranking':
+          return lay.heightUnits === 2 ? 376 : 172;
+        case 'trending':
+          return 344;
+        case 'tools':
+          // 文件工具卡（第六十八轮）：手机全宽走 1 栏排布——1x 横排瓷砖 2 行、2x 放大瓷砖 3 行
+          return lay.heightUnits === 2 ? 300 : 196;
+        default:
+          return 172;
+      }
+    };
     itemByKey.forEach((item, key) => {
       if (item.group) {
         const g = item.group;
@@ -634,32 +748,13 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         map.set(key, comboH(active?.sites.length ?? 0, lay.heightUnits));
         return;
       }
-      const lay = widgetLayouts[item.widgetId as WidgetId];
-      switch (item.widgetId) {
-        case 'task':
-          map.set(
-            key,
-            lay.heightUnits === 2
-              ? Math.min(600, Math.max(320, 250 + store.data.tasks.length * 40 + store.data.plans.length * 48))
-              : 172,
-          );
-          break;
-        case 'news':
-          map.set(key, lay.heightUnits === 2 ? 336 : 172);
-          break;
-        case 'ranking':
-          map.set(key, lay.heightUnits === 2 ? 376 : 172);
-          break;
-        case 'trending':
-          map.set(key, 344);
-          break;
-        case 'tools':
-          // 文件工具卡（第六十八轮）：手机全宽走 1 栏排布——1x 横排瓷砖 2 行、2x 放大瓷砖 3 行
-          map.set(key, lay.heightUnits === 2 ? 300 : 196);
-          break;
-        default:
-          map.set(key, 172);
+      if (item.widgetStack) {
+        // 组件摞（第七十二轮）：按当前成员的估算高 + 标题排一行（约 38px）
+        const lay = stackLayoutOf(groupLayouts, widgetStackCardKey(item.widgetStack.id));
+        map.set(key, widgetPhoneH(item.widgetStack.activeWidgetId, lay) + 38);
+        return;
       }
+      map.set(key, widgetPhoneH(item.widgetId as WidgetId, widgetLayouts[item.widgetId as WidgetId]));
     });
     map.set(TILE_ADD_KEY, 132);
     map.set(TILE_NEW_KEY, 132);
@@ -745,6 +840,20 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         />
       );
     }
+    if (item.widgetStack) {
+      // 组件摞（第七十二轮）：整摞一张卡，尺寸/底色/成员渲染都在 WidgetStackCard 内收口
+      const layout = stackLayoutOf(groupLayouts, widgetStackCardKey(item.widgetStack.id));
+      return (
+        <WidgetStackCard
+          stack={item.widgetStack}
+          store={store}
+          onNavigate={onNavigate}
+          layout={layout}
+          delay={delay}
+          phone={phoneViewport}
+        />
+      );
+    }
     /* A 型组件渲染（第七十四轮起走统一注册表）：按 id 查注册定义渲染其适配组件，
      * 统一 props 的映射与原 switch 逐项一致（尺寸感知组件吃布局、手机单列宽按 1 栏） */
     const def = widgetDefOf(item.widgetId);
@@ -796,6 +905,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const chargeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** 充能完成后指针压住的合并目标卡 key（松手即合并） */
   const mergeTargetRef = useRef<string | null>(null);
+  /** 组件合并的悬停提示现状（第七十二轮）：key + 是否已满；与 mergeTargetRef 分开——已满只给反馈、不落合并 */
+  const widgetHintRef = useRef<{ key: string; full: boolean } | null>(null);
   const baseOrderRef = useRef<string[]>(baseOrder);
   baseOrderRef.current = baseOrder;
   const storeRef = useRef(store);
@@ -887,6 +998,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       }
       chargeRef.current = null;
       mergeTargetRef.current = null;
+      widgetHintRef.current = null;
       setChargeUi(null);
       setMergeUi(null);
     };
@@ -899,6 +1011,40 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       if (!g || g.display !== 'stack') return null;
       if (data.combos.some((c) => c.groupIds.includes(gid))) return null;
       return g;
+    };
+
+    /* ---------- 组件摞合并判定（第七十二轮，与编组合并并行的一套） ----------
+     * 手势与编组完全同构：拖动满 2 秒充能点亮，此后压住目标松手即合并，未点亮前全程只是排序；
+     * 这样拖拽排序必然要「路过」其他卡也不会误合，缝隙/卡身的区分由充能意图承担。 */
+    const widgetIdFromKey = (key: string): WidgetId | null =>
+      key.startsWith('widget:') ? (key.slice('widget:'.length) as WidgetId) : null;
+    const widgetStackIdFromKey = (key: string): string | null =>
+      key.startsWith('wstack:') ? key.slice('wstack:'.length) : null;
+
+    /** 卡 key → 组件合并参与方：未入摞的单个组件 / 一整摞；入摞成员没有独立卡面，不是参与方 */
+    const widgetEntityOfKey = (key: string): WidgetMergeEntity | null => {
+      const data = storeRef.current.data;
+      const wid = widgetIdFromKey(key);
+      if (wid) {
+        if (!data.widgets.includes(wid)) return null;
+        if (data.widgetStacks.some((s) => s.widgetIds.includes(wid))) return null;
+        return { type: 'widget', id: wid };
+      }
+      const sid = widgetStackIdFromKey(key);
+      if (sid && data.widgetStacks.some((s) => s.id === sid)) return { type: 'stack', id: sid };
+      return null;
+    };
+    const widgetEntitySize = (e: WidgetMergeEntity): number =>
+      e.type === 'widget'
+        ? 1
+        : (storeRef.current.data.widgetStacks.find((s) => s.id === e.id)?.widgetIds.length ?? 0);
+    /** 两组件实体可否合并：ok = 可并；full = 目标合法但并完超上限 4；null = 不是可合并目标 */
+    const widgetMergeVerdict = (dragKey: string, targetKey: string): 'ok' | 'full' | null => {
+      if (dragKey === targetKey) return null;
+      const drag = widgetEntityOfKey(dragKey);
+      const target = widgetEntityOfKey(targetKey);
+      if (!drag || !target) return null;
+      return widgetEntitySize(drag) + widgetEntitySize(target) > WIDGET_STACK_MAX ? 'full' : 'ok';
     };
 
     /** 充能完成后复核指针压住的合并目标（无目标/不可合并时清掉提示） */
@@ -931,15 +1077,66 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       }
       if (found.key !== mergeTargetRef.current) {
         mergeTargetRef.current = found.key;
-        setMergeUi(found.key ? { targetKey: found.key, progress: 1, ready: true } : null);
+        setMergeUi(found.key ? { targetKey: found.key, progress: 1, ready: true, kind: 'group' } : null);
       }
     };
 
-    /** 拖拽激活时若被拖卡可合并则开始充能计时 */
+    /** 组件合并目标复核（第七十二轮，机理同编组版：现矩形优先、拖拽开始时矩形兜底）：
+     * 并完超上限的摞也算命中但标 full——只给红色拒绝反馈，mergeTargetRef 不落它，松手只排序 */
+    const updateWidgetMergeTarget = (x: number, y: number) => {
+      const d = activeDragRef.current;
+      if (!d || !chargeRef.current?.ready || !widgetEntityOfKey(d.key)) {
+        if (widgetHintRef.current) {
+          widgetHintRef.current = null;
+          mergeTargetRef.current = null;
+          setMergeUi(null);
+        }
+        return;
+      }
+      let hit: { key: string; full: boolean } | null = null;
+      wrapperRefs.current.forEach((el, key) => {
+        if (hit || key === d.key) return;
+        const verdict = widgetMergeVerdict(d.key, key);
+        if (!verdict) return;
+        const r = el.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = { key, full: verdict === 'full' };
+      });
+      if (!hit && d.startRects) {
+        d.startRects.forEach((r, key) => {
+          if (hit || key === d.key) return;
+          const verdict = widgetMergeVerdict(d.key, key);
+          if (!verdict) return;
+          if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = { key, full: verdict === 'full' };
+        });
+      }
+      const prev = widgetHintRef.current;
+      if (hit?.key !== prev?.key || hit?.full !== prev?.full) {
+        widgetHintRef.current = hit;
+        mergeTargetRef.current = hit && !hit.full ? hit.key : null;
+        setMergeUi(
+          hit ? { targetKey: hit.key, progress: 1, ready: true, kind: 'widget', full: hit.full } : null,
+        );
+      }
+    };
+
+    /** 合并目标复核分发：被拖卡是哪套体系走哪套判定（编组与组件互不干扰） */
+    const updateAnyMergeTarget = (x: number, y: number) => {
+      const d = activeDragRef.current;
+      if (!d) return;
+      if (widgetEntityOfKey(d.key)) updateWidgetMergeTarget(x, y);
+      else updateMergeTarget(x, y);
+    };
+
+    /** 拖拽激活时若被拖卡可合并则开始充能计时（编组 stack 卡与小组件/组件摞共用，kind 决定提示文案） */
     const startChargeIfEligible = (dragKey: string) => {
-      if (!mergeableGroup(groupIdFromKey(dragKey))) return;
+      const kind: 'group' | 'widget' | null = mergeableGroup(groupIdFromKey(dragKey))
+        ? 'group'
+        : widgetEntityOfKey(dragKey)
+          ? 'widget'
+          : null;
+      if (!kind) return;
       chargeRef.current = { startAt: Date.now(), ready: false };
-      setChargeUi({ progress: 0, ready: false });
+      setChargeUi({ progress: 0, ready: false, kind });
       chargeTimerRef.current = setInterval(() => {
         const c = chargeRef.current;
         const d = activeDragRef.current;
@@ -951,15 +1148,15 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         if (progress >= 1) {
           if (!c.ready) {
             c.ready = true;
-            setChargeUi({ progress: 1, ready: true });
+            setChargeUi({ progress: 1, ready: true, kind });
           }
           // 点亮后不停止计时器：持续复核指针压住的合并目标——拖拽预览重排会让卡片在
           // 静止指针下方滑动，单靠 pointermove/点亮瞬间的一次复核会漏判（压着目标却没提示）；
           // 每 60ms 按当前布局复核一次，目标变化时才更新 UI，无额外渲染负担
-          updateMergeTarget(d.lastX, d.lastY);
+          updateAnyMergeTarget(d.lastX, d.lastY);
           return;
         }
-        setChargeUi({ progress, ready: false });
+        setChargeUi({ progress, ready: false, kind });
       }, 60);
     };
 
@@ -993,7 +1190,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       const chargeReady = !!chargeRef.current?.ready;
       // 落手瞬间按最终指针位置与当前布局再复核一次合并目标（预览重排后目标可能刚滑入/滑出指针下方）
       if (commit && chargeReady) {
-        updateMergeTarget(activeDragRef.current.lastX, activeDragRef.current.lastY);
+        updateAnyMergeTarget(activeDragRef.current.lastX, activeDragRef.current.lastY);
       }
       const mergeTarget = mergeTargetRef.current;
       clearCharge();
@@ -1013,11 +1210,18 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       let handled = false;
       if (commit && !tabExtract && chargeReady && mergeTarget) {
         // 充能完成且压着合并目标松手：执行合并而不是排序落盘（基于当前已存顺序计算落点）
-        const dragGid = groupIdFromKey(dragKeyNow);
-        const targetGid = groupIdFromKey(mergeTarget);
-        if (dragGid && targetGid) {
-          storeRef.current.mergeCombo(dragGid, targetGid, baseOrderRef.current);
+        const dragEnt = widgetEntityOfKey(dragKeyNow);
+        const targetEnt = widgetEntityOfKey(mergeTarget);
+        if (dragEnt && targetEnt) {
+          storeRef.current.mergeWidgetEntities(dragEnt, targetEnt, baseOrderRef.current);
           handled = true;
+        } else {
+          const dragGid = groupIdFromKey(dragKeyNow);
+          const targetGid = groupIdFromKey(mergeTarget);
+          if (dragGid && targetGid) {
+            storeRef.current.mergeCombo(dragGid, targetGid, baseOrderRef.current);
+            handled = true;
+          }
         }
       }
       if (!handled && commit && tabExtract && finalOrder) {
@@ -1121,7 +1325,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         d.lastY = e.clientY;
         positionClone(e.clientX, e.clientY);
         updatePreviewTarget(e.clientX, e.clientY);
-        updateMergeTarget(e.clientX, e.clientY);
+        updateAnyMergeTarget(e.clientX, e.clientY);
       }
     };
 
@@ -1296,25 +1500,40 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                   ? (e) => openSizeMenu(e, { kind: 'group', id: item.group!.id })
                   : item.combo
                     ? (e) => openSizeMenu(e, { kind: 'combo', id: item.combo!.id })
-                    : wid
-                      ? (e) => openSizeMenu(e, { kind: 'widget', id: wid })
-                      : undefined
+                    : item.widgetStack
+                      ? (e) => openSizeMenu(e, { kind: 'wstack', id: item.widgetStack!.id })
+                      : wid
+                        ? (e) => openSizeMenu(e, { kind: 'widget', id: wid })
+                        : undefined
               }
             >
               <div className={dragKey === key ? 'h-full invisible' : 'h-full'}>{renderCardItem(key, i)}</div>
               {dragKey === key && (
                 <div className="absolute inset-0 z-10 rounded-[26px] border-2 border-dashed border-indigo-400/60 bg-indigo-500/10 pointer-events-none" />
               )}
-              {/* 合并提示（第二十一轮修订）：充能完成后拖影压住的目标卡——描边高亮 + 「松开合并文件夹」，出现即松手合并 */}
+              {/* 合并提示（第二十一轮修订）：充能完成后拖影压住的目标卡——描边高亮 + 「松开合并」，出现即松手合并；
+                  组件摞已满时为红色拒绝态（第七十二轮）：只反馈、不落合并，松手按普通排序处理 */}
               {dragKey && mergeUi && mergeUi.targetKey === key && (
                 <div
-                  data-merge-hint="ready"
-                  className="absolute inset-0 z-20 rounded-[26px] border-2 border-indigo-400 bg-indigo-500/15 pointer-events-none flex flex-col items-center justify-end overflow-hidden"
+                  data-merge-hint={mergeUi.full ? 'full' : 'ready'}
+                  className={`absolute inset-0 z-20 rounded-[26px] border-2 pointer-events-none flex flex-col items-center justify-end overflow-hidden ${
+                    mergeUi.full ? 'border-red-400 bg-red-500/15' : 'border-indigo-400 bg-indigo-500/15'
+                  }`}
                 >
                   <div className="m-2 w-[calc(100%-16px)] rounded-xl bg-[#17171d]/95 border border-white/15 px-3 py-2">
-                    <p className="text-[11px] font-medium text-white/85 text-center">松开合并文件夹</p>
+                    <p className="text-[11px] font-medium text-white/85 text-center">
+                      {mergeUi.full
+                        ? `已满（最多 ${WIDGET_STACK_MAX} 个），松开取消合并`
+                        : mergeUi.kind === 'widget'
+                          ? '松开合并组件'
+                          : '松开合并文件夹'}
+                    </p>
                     <div className="mt-1.5 h-1 rounded-full bg-white/10 overflow-hidden">
-                      <div data-merge-progress className="h-full bg-indigo-400" style={{ width: '100%' }} />
+                      <div
+                        data-merge-progress
+                        className={`h-full ${mergeUi.full ? 'bg-red-400' : 'bg-indigo-400'}`}
+                        style={{ width: '100%' }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1362,7 +1581,13 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 className="absolute inset-x-3 bottom-3 z-10 rounded-xl bg-[#17171d]/95 border border-white/15 px-3 py-2"
               >
                 <p className={`text-[11px] font-medium text-center ${chargeUi.ready ? 'text-indigo-300' : 'text-white/75'}`}>
-                  {chargeUi.ready ? '可合并文件夹：压住另一张文件夹卡松手即合并' : '充能中…保持拖动，满 2 秒可合并文件夹'}
+                  {chargeUi.ready
+                    ? chargeUi.kind === 'widget'
+                      ? '可合并组件：压住另一张组件卡松手即合并'
+                      : '可合并文件夹：压住另一张文件夹卡松手即合并'
+                    : chargeUi.kind === 'widget'
+                      ? '充能中…保持拖动，满 2 秒可合并组件'
+                      : '充能中…保持拖动，满 2 秒可合并文件夹'}
                 </p>
                 <div className="mt-1.5 h-1 rounded-full bg-white/10 overflow-hidden">
                   <div
@@ -1496,6 +1721,74 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                 </button>
               </>
             )}
+            {/* 组件摞专属：移出当前成员 / 拆分整摞（第七十二轮） */}
+            {sizeMenu.kind === 'wstack' &&
+              (() => {
+                const stack = validWidgetStacks.find((s) => s.id === sizeMenu.id);
+                if (!stack) return null;
+                return (
+                  <>
+                    <div className="my-2.5 h-px bg-white/10" />
+                    <button
+                      data-wstack-extract
+                      onClick={() => {
+                        store.extractWidgetFromStack(stack.id, stack.activeWidgetId, baseOrder);
+                        setSizeMenu(null);
+                      }}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                    >
+                      <LogOut size={12} /> 移出「{widgetDefOf(stack.activeWidgetId).name}」
+                    </button>
+                    <button
+                      data-wstack-split
+                      onClick={() => {
+                        store.splitWidgetStack(stack.id, baseOrder);
+                        setSizeMenu(null);
+                      }}
+                      className="mt-1 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                    >
+                      <Unlink size={12} /> 拆分组件摞
+                    </button>
+                  </>
+                );
+              })()}
+            {/* 合并到…（第七十二轮，组件与组件摞共用）：列出主页上其他组件/摞，
+                并完超过上限 4 个的目标置灰；这是拖拽合并之外的辅助入口（含移动端长按菜单） */}
+            {(sizeMenu.kind === 'widget' || sizeMenu.kind === 'wstack') &&
+              (() => {
+                const source: WidgetMergeEntity =
+                  sizeMenu.kind === 'widget' ? { type: 'widget', id: sizeMenu.id } : { type: 'stack', id: sizeMenu.id };
+                const targets = mergeTargetsFor(source);
+                if (targets.length === 0) return null;
+                return (
+                  <>
+                    <div className="my-2.5 h-px bg-white/10" />
+                    <p className="px-1 pb-1 text-[10px] tracking-wider text-white/40 uppercase">合并到…</p>
+                    <div className="flex flex-col gap-0.5 max-h-[168px] overflow-y-auto">
+                      {targets.map((t) => (
+                        <button
+                          key={`${t.entity.type}:${t.entity.id}`}
+                          data-merge-target={`${t.entity.type}:${t.entity.id}`}
+                          disabled={t.full}
+                          onClick={() => {
+                            store.mergeWidgetEntities(source, t.entity, baseOrder);
+                            setSizeMenu(null);
+                          }}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors ${
+                            t.full
+                              ? 'text-white/30 cursor-not-allowed'
+                              : 'text-white/75 hover:bg-white/8 hover:text-white'
+                          }`}
+                        >
+                          <Combine size={13} className="shrink-0 text-white/40" />
+                          <span className="flex-1 min-w-0 truncate">{t.label}</span>
+                          <span className="text-[10px] text-white/35 shrink-0">{t.full ? '已满' : t.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             {/* 计划卡专属：卡面样式切换（列表式/焦点式，按卡片存 cardFaceStyles） */}
             {sizeMenu.kind === 'widget' && sizeMenu.id === 'task' && (
               <>
