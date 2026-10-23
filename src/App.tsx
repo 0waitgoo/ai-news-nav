@@ -140,7 +140,7 @@ export default function App() {
         {/* DarkVeil Background（仅默认预设：三档外观都在，背景层不随主题变的口径下与暗夜一致） */}
         {background.kind === 'preset' && background.presetId === 'violet' && (
           <div className="absolute inset-0 z-1">
-            <DarkVeil hueShift={0} noiseIntensity={0} scanlineIntensity={0} speed={1} scanlineFrequency={0} warpAmount={2} />
+            <DarkVeil hueShift={0} noiseIntensity={0} scanlineIntensity={0} speed={1} scanlineFrequency={0} warpAmount={2} resolutionScale={0.6} />
           </div>
         )}
         {/* 第九十二轮自研动态背景「斑驳光影」：与 DarkVeil 同位（压黑遮罩之上、近黑底色不影响文字可读）；
