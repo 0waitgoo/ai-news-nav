@@ -103,11 +103,13 @@ const NewsWidget: React.ComponentType<WidgetRenderProps> = ({ onNavigate, tint, 
   <NewsCard onNavigate={onNavigate} delay={delay} tint={tint} />
 );
 
-const RankingWidget: React.ComponentType<WidgetRenderProps> = ({ tint, delay = 0 }) => (
-  <RankingCard delay={delay} tint={tint} />
+const RankingWidget: React.ComponentType<WidgetRenderProps> = ({ tint, delay = 0, layout }) => (
+  <RankingCard delay={delay} tint={tint} heightUnits={layout.heightUnits} />
 );
 
-const TrendingWidgetAdapter: React.ComponentType<WidgetRenderProps> = ({ tint }) => <TrendingWidget tint={tint} />;
+const TrendingWidgetAdapter: React.ComponentType<WidgetRenderProps> = ({ tint, layout }) => (
+  <TrendingWidget tint={tint} heightUnits={layout.heightUnits} />
+);
 
 const ToolsWidget: React.ComponentType<WidgetRenderProps> = ({ tint, layout, delay = 0, phone }) => (
   <FileToolsCard
@@ -151,25 +153,25 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
   {
     id: 'ranking',
     name: 'AI 软件榜',
-    desc: 'Product Hunt 每周更新榜单',
+    desc: 'Product Hunt 本周真实票数榜',
     category: 'tools',
     icon: Trophy,
     watermark: '🏆',
     supportedSizes: ALL_SIZES,
     defaultLayout: DEFAULT_WIDGET_LAYOUTS.ranking,
-    // 运行时零联网：数据是构建期静态文件（api/ranking-data.js，GitHub Actions 每周更新），故无 network 声明
+    // 运行时零联网：数据是构建期静态文件（api/ranking-data.js，GitHub Actions 每周从 Product Hunt 官方 API 生成），故无 network 声明
     component: RankingWidget,
   },
   {
     id: 'trending',
     name: '热门话题',
-    desc: '社区热门话题帖子数',
+    desc: '微博 / 百度真实热榜',
     category: 'tools',
     icon: TrendingUp,
     watermark: '🔥',
     supportedSizes: ALL_SIZES,
     defaultLayout: DEFAULT_WIDGET_LAYOUTS.trending,
-    network: [{ endpoint: '/api?type=trends', purpose: '本站话题接口：只读拉取对所有人一致的公共热门话题' }],
+    network: [{ endpoint: '/api?type=trends', purpose: '本站话题接口：服务端聚合微博热搜与百度热搜的公开热榜，热度为源站真实值' }],
     component: TrendingWidgetAdapter,
   },
   {
