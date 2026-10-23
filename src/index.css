@@ -266,22 +266,20 @@ body {
     linear-gradient(rgb(9 9 16 / calc(0.09 + var(--group-card-alpha, 0.4) * 0.14)), rgb(9 9 16 / calc(0.09 + var(--group-card-alpha, 0.4) * 0.14)))) !important;
   backdrop-filter: blur(20px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border-color: rgb(255 255 255 / 0.38) !important;
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.5),
-    inset 0 -1px 1px rgb(255 255 255 / 0.07),
-    inset 1px 0 0 rgb(255 255 255 / 0.1),
-    inset -1px 0 0 rgb(255 255 255 / 0.1);
+  /* 第八十轮（用户原话：液态玻璃的白色描边删掉）：玻璃面不再有白色边框线与
+     inset 边缘高光线——border 只保留宿主的 1px 宽度占位（几何不变）、颜色钉透明，
+     box-shadow 整组关闭；玻璃的边缘辨认交给折射本体。改前实测 rim 亮度约为卡面
+     内部的 2.5 倍（顶边行 0.52 / 内高光行 0.61 / 内部 0.22，probe-r80c）。 */
+  border-color: transparent !important;
+  box-shadow: none;
 }
 [data-theme="glass"] :is(.group-card-panel-hover, .widget-panel-hover):hover {
-  border-color: rgb(255 255 255 / 0.55) !important;
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.65),
-    inset 0 -1px 1px rgb(255 255 255 / 0.1),
-    inset 1px 0 0 rgb(255 255 255 / 0.16),
-    inset -1px 0 0 rgb(255 255 255 / 0.16);
+  border-color: transparent !important;
+  box-shadow: none;
 }
-[data-theme="glass"] .card-glass-surface:focus-within { border-color: rgb(255 255 255 / 0.6) !important; }
+/* focus 白边同删；搜索框的焦点反馈改用宿主自带的 indigo 边色（StickySearch 的
+   focus-within:border-indigo-400/40），不再压白色 */
+[data-theme="glass"] .card-glass-surface:focus-within { border-color: rgb(129 140 248 / 0.4) !important; }
 
 /* ---------- 第五十九轮：吸顶栏遮挡带 ---------- */
 /* 顶栏本体全透明（控件自带底、浮在背景上），滚动时下方卡片会透进顶栏的元素间隙与
@@ -319,6 +317,12 @@ body {
   pointer-events: none;
   /* 第六十二轮：去掉原深色 tint 渐变（rgb(3 3 7 / 0.84→0.8)），背景全透明、只留模糊 */
   background: transparent;
+  /* 第八十轮：独立成层——本带的 backdrop 在滚动时要采样含 SVG 折射卡的幕布，
+     真实 GPU 浏览器里出现过整带吹白的快照伪影（用户实测、带几何与遮挡带足迹
+     逐像素吻合）；translateZ(0) 让合成器给本带独立的层与 backdrop 纹理管理，
+     不再随滚动层树逐帧重栅，是这类 fixed backdrop 闪白的常规收敛手段。
+     本元素无子元素，transform 造包含块无副作用；模糊配方本身在 TopBarShade 里。 */
+  transform: translateZ(0);
   mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 30px), transparent 100%);
 }
