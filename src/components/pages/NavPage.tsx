@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
+import { siteLogoFallback } from '../../data/groups';
 
 const iconMap: Record<string, string> = {
   'KIMI': '/icon_APP/KIMI.svg',
@@ -125,12 +126,12 @@ const toolsByCategory = {
     { name: 'Copaw', logo: getLogo('copaw'), description: 'AI智能体工具', url: 'https://copaw.ai', needVpn: true },
   ],
   'AI写作': [
-    { name: '字语未来', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=ziyuweilai&backgroundColor=8b5cf6', description: '用AI创造有价值的文案，让新一代智能办公更简单', url: 'https://www.ziyuweilai.com', needVpn: false },
+    { name: '字语未来', logo: siteLogoFallback('字语未来'), description: '用AI创造有价值的文案，让新一代智能办公更简单', url: 'https://www.ziyuweilai.com', needVpn: false },
     { name: 'Notion AI', logo: getLogo('notion'), description: 'AI写作神器！比你想得更多！写得更快', url: 'https://www.notion.so', needVpn: true },
-    { name: '火山写作', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=huoshan&backgroundColor=ff4785', description: '字节跳动AI写作工具，高效提升文案创作', url: 'https://writingo.volcengine.com', needVpn: false },
+    { name: '火山写作', logo: siteLogoFallback('火山写作'), description: '字节跳动AI写作工具，高效提升文案创作', url: 'https://writingo.volcengine.com', needVpn: false },
     { name: '秘塔写作猫', logo: getLogo('秘塔写作'), description: '基于GPT的中文写作工具', url: 'https://xiezuocat.com', needVpn: false },
-    { name: '毕业宝AI论文降重', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=bi yebao&backgroundColor=14b8a6', description: '论文降重神器！学生都在用的AI论文降重辅助AI工具', url: 'https://www.biyebao.com', needVpn: false },
-    { name: 'Copy AI', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=copyai&backgroundColor=8b5cf6', description: 'AI社交媒体文案写作助手', url: 'https://www.copy.ai', needVpn: true },
+    { name: '毕业宝AI论文降重', logo: siteLogoFallback('毕业宝AI论文降重'), description: '论文降重神器！学生都在用的AI论文降重辅助AI工具', url: 'https://www.biyebao.com', needVpn: false },
+    { name: 'Copy AI', logo: siteLogoFallback('Copy AI'), description: 'AI社交媒体文案写作助手', url: 'https://www.copy.ai', needVpn: true },
     { name: 'Grammarly', logo: getLogo('Grammarly'), description: 'AI英文写作助手', url: 'https://www.grammarly.com', needVpn: true },
     { name: 'QuillBot', logo: getLogo('QuillBot'), description: 'AI英文改写润色工具', url: 'https://quillbot.com', needVpn: true },
   ],
@@ -171,7 +172,8 @@ function NavPage() {
                       className="w-7 h-7 sm:w-8 sm:h-8 object-contain"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        target.src = `https://api.dicebear.com/7.x/shapes/svg?seed=${tool.name.toLowerCase()}&backgroundColor=6366f1`;
+                        // 无真实图标 → 站名首字字标（第八十四轮），不再用 DiceBear 随机图
+                        if (!target.src.startsWith('data:')) target.src = siteLogoFallback(tool.name);
                       }}
                     />
                   </div>
