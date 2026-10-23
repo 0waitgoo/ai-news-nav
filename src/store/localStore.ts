@@ -745,6 +745,36 @@ function normalizeGroupLayouts(raw: unknown): Record<string, WidgetLayout> {
   return out;
 }
 
+/**
+ * 图标路径迁移（第一百轮）：中文名图标文件已改 ASCII 名（扩展包不解码非 ASCII 路径），
+ * 另 minimax 误引用 .png 一并纠正。老存档里存的旧路径在校验时统一重写——
+ * 加载/导入/同步共用 validateStoreData 一条路径，三处同时生效。
+ */
+const LEGACY_LOGO_PATHS: Record<string, string> = {
+  '/icon_APP/元气AI.png': '/icon_APP/yuanqi-ai.png',
+  '/元气AI.png': '/yuanqi-ai.png',
+  '/icon_APP/有道龙虾.svg': '/icon_APP/youdao-longxia.svg',
+  '/有道龙虾.svg': '/youdao-longxia.svg',
+  '/icon_APP/海螺.png': '/icon_APP/hailuo.png',
+  '/icon_APP/盒豚生活.png': '/icon_APP/hetun-life.png',
+  '/icon_APP/秘塔写作.png': '/icon_APP/mita-writing.png',
+  '/icon_APP/腾讯混元.svg': '/icon_APP/tencent-hunyuan.svg',
+  '/icon_APP/minimax.png': '/icon_APP/minimax.svg',
+};
+
+/** 旧图标路径 → 新路径（存的是百分号编码形式时先解码再查表） */
+export function migrateLegacyLogoPath(logo: string): string {
+  const direct = LEGACY_LOGO_PATHS[logo];
+  if (direct) return direct;
+  try {
+    const decoded = decodeURIComponent(logo);
+    if (decoded !== logo) return LEGACY_LOGO_PATHS[decoded] ?? logo;
+  } catch {
+    // 编码非法时原样保留
+  }
+  return logo;
+}
+
 /** 校验任意来源（localStorage / 导入文件）的数据结构，合法则归一化返回，否则 null */
 export function validateStoreData(raw: unknown): StoreData | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -774,6 +804,8 @@ export function validateStoreData(raw: unknown): StoreData | null {
       if (!site || typeof site.name !== 'string' || typeof site.url !== 'string') return null;
       if (typeof site.description !== 'string') site.description = '';
       if (typeof site.logo !== 'string' || !site.logo) site.logo = logoForSite(site.name, site.url);
+      // 图标路径迁移（第一百轮）：老存档的中文名/误引用路径重写为现行路径
+      site.logo = migrateLegacyLogoPath(site.logo);
       if (typeof site.frequency !== 'number') site.frequency = 0;
       // 图标配置（第四十九轮）：只保留合法组合，脏数据（模式不对/图片不是 data URL/体积失控）整组丢弃回 auto
       if (site.iconMode !== 'text' && site.iconMode !== 'upload') {
