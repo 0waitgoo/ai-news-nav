@@ -3,7 +3,8 @@ import { TopLogo, TopNav } from './components/Sidebar';
 import BackgroundMenu from './components/v2/BackgroundMenu';
 import HomePage from './components/v2/HomePage';
 import TopBarShade from './components/v2/TopBarShade';
-import BinaryOrbits from './components/BinaryOrbits';
+import DappledLight from './components/backgrounds/DappledLight';
+import ContourTide from './components/backgrounds/ContourTide';
 import DarkVeil from './components/DarkVeil';
 import { backgroundPresetOf, useLocalStore } from './store/localStore';
 import { requestToolsWorkspace } from './store/toolsWorkspace';
@@ -91,22 +92,23 @@ export default function App() {
   // （独立工具页已于第八十六轮删除，文件工具并入主页组件，不再是子页面）
   const isSubPage =
     currentPage === 'news' || currentPage === 'nav' || currentPage === 'store' || currentPage === 'plan';
-  // 「深海蓝」预设换成 Binary Orbits 动态背景（第四十四轮）：只在该预设被选中时挂载，
-  // 底色用与组件一致的深蓝 #030b1f 兜底（组件加载前/画布外不露其他预设色）
-  const showOceanDynamics = background.kind === 'preset' && background.presetId === 'ocean';
+  // 「深海蓝」第九十二轮改纯色自选：底色 = displayPrefs.oceanColor（默认 #0d2140 原深海蓝）；
+  // 第四十四轮的 Binary Orbits 动态背景随之整体下线（本轮口径覆盖旧队列，不再挂载）
+  const isOceanSolid = background.kind === 'preset' && background.presetId === 'ocean';
 
   return (
     <div className="relative min-h-screen w-full text-white bg-black">
       {/* 全页固定背景层：底层永远是当前预设（纯 CSS），本地图片就绪后淡入覆盖其上，
           再压深色遮罩保证卡片文字可读；默认预设额外保留 DarkVeil 纹理层，维持原观感。
-          纯装饰层：pointer-events-none 全穿透（第六十五轮）——子层两个动态背景均已关交互
-          （BinaryOrbits interactive/clickRipple=false、DarkVeil 无交互），本层不许再挡任何
-          点按/滚轮命中（原先它盖满视口，是左右空白区滚轮死区的命中层之一） */}
+          纯装饰层：pointer-events-none 全穿透（第六十五轮），本层不许再挡任何
+          点按/滚轮命中（原先它盖满视口，是左右空白区滚轮死区的命中层之一）；
+          第九十二轮的两个自研动态背景（斑驳光影/等高潮汐）同样只作装饰层渲染，
+          等高潮汐的交互走 window 级监听、不经本层命中 */}
       <div
+        data-background-layer
         className="pointer-events-none fixed inset-0 z-0 overflow-hidden transition-all duration-700"
-        style={{ background: showOceanDynamics ? '#030b1f' : preset.css }}
+        style={{ background: isOceanSolid ? displayPrefs.oceanColor : preset.css }}
       >
-        {showOceanDynamics && <BinaryOrbits interactive={false} clickRipple={false} className="absolute inset-0" />}
         {showLocalImage && (
           <img
             src={localUrl}
@@ -140,6 +142,18 @@ export default function App() {
         {background.kind === 'preset' && background.presetId === 'violet' && (
           <div className="absolute inset-0 z-1">
             <DarkVeil hueShift={0} noiseIntensity={0} scanlineIntensity={0} speed={1} scanlineFrequency={0} warpAmount={2} />
+          </div>
+        )}
+        {/* 第九十二轮自研动态背景：与 DarkVeil 同位（压黑遮罩之上、近黑底色不影响文字可读）；
+            只在对应预设被选中时挂载，组件内部管 DPR 封顶与隐藏暂停 */}
+        {background.kind === 'preset' && preset.dynamic === 'dappled' && (
+          <div className="absolute inset-0 z-1">
+            <DappledLight className="absolute inset-0" />
+          </div>
+        )}
+        {background.kind === 'preset' && preset.dynamic === 'tide' && (
+          <div className="absolute inset-0 z-1">
+            <ContourTide className="absolute inset-0" />
           </div>
         )}
       </div>
