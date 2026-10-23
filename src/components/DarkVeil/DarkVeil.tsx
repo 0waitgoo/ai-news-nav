@@ -119,7 +119,16 @@ export default function DarkVeil({
       const w = parent.clientWidth,
         h = parent.clientHeight;
       renderer.setSize(w * resolutionScale, h * resolutionScale);
-      program.uniforms.uResolution.value.set(w, h);
+      // ogl 的 setSize 会把画布 CSS 尺寸写成行内像素值（优先级高于 .darkveil-canvas
+      // 的 100% 类规则），降采样时必须显式改回 100%，否则画布只显示在左上角
+      // resolutionScale 比例的区域内（第一百零三轮自测冻结相位比对实锤）。
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      // 第一百零三轮：uResolution 必须与绘制缓冲同比例缩放——fragCoord/uResolution
+      // 的比值与 scale=1 时逐点一致，图案（CPPN 场）零变化，只是采样密度降低、
+      // 由 CSS 拉满全屏（.darkveil-canvas{width/height:100%}）。此前 uResolution
+      // 恒为 (w,h)，scale≠1 时图案会被裁切缩放，故旧 prop 实际不可用。
+      program.uniforms.uResolution.value.set(w * resolutionScale, h * resolutionScale);
     };
 
     window.addEventListener('resize', resize);
@@ -136,19 +145,33 @@ export default function DarkVeil({
     let running = true;
     let veilFrames = 0;
 
+    /* 第一百零三轮：绘制节流（只改「何时画」，不改单帧画面与任何效果参数）。
+     * ① 帧率上限 30fps：uTime 由 elapsed 累积驱动，跳帧不改变动画速度与相位，
+     *    只是采样率减半——慢速星云无可见差异，每秒着色器绘制次数减半。
+     * ② 滚动冻结：滚动期间不绘制（背景纹理停在最后一帧），滚动帧不再与全屏
+     *    着色器抢占绘制管线；停滚 200ms 后自动恢复，elapsed 连续、相位无跳变。
+     * 无头归因（test-r103）：背景着色约占滚动帧成本六成，此二项为主要对策。 */
+    let lastDraw = 0;
+    let lastScrollAt = -Infinity;
+    const onScroll = () => { lastScrollAt = performance.now(); };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+
     const loop = () => {
       if (!running) return;
       const now = performance.now();
       elapsed += now - lastNow;
       lastNow = now;
-      program.uniforms.uTime.value = (elapsed / 1000) * speed;
-      program.uniforms.uHueShift.value = hueShift;
-      program.uniforms.uNoise.value = noiseIntensity;
-      program.uniforms.uScan.value = scanlineIntensity;
-      program.uniforms.uScanFreq.value = scanlineFrequency;
-      program.uniforms.uWarp.value = warpAmount;
-      renderer.render({ scene: mesh });
-      (canvas as unknown as { __veilFrames?: number }).__veilFrames = ++veilFrames;
+      if (now - lastDraw >= 1000 / 30 && now - lastScrollAt >= 200) {
+        lastDraw = now;
+        program.uniforms.uTime.value = (elapsed / 1000) * speed;
+        program.uniforms.uHueShift.value = hueShift;
+        program.uniforms.uNoise.value = noiseIntensity;
+        program.uniforms.uScan.value = scanlineIntensity;
+        program.uniforms.uScanFreq.value = scanlineFrequency;
+        program.uniforms.uWarp.value = warpAmount;
+        renderer.render({ scene: mesh });
+        (canvas as unknown as { __veilFrames?: number }).__veilFrames = ++veilFrames;
+      }
       frame = requestAnimationFrame(loop);
     };
 
@@ -170,6 +193,7 @@ export default function DarkVeil({
       running = false;
       cancelAnimationFrame(frame);
       document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('scroll', onScroll, { capture: true });
       window.removeEventListener('resize', resize);
     };
 
