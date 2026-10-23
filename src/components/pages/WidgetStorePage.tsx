@@ -1,0 +1,394 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Minus, Plus, Search, Star } from 'lucide-react';
+import {
+  WIDGET_TINTS,
+  widgetCardKey,
+  widgetTintOf,
+  type LocalStore,
+  type WidgetId,
+  type WidgetLayout,
+} from '../../store/localStore';
+import {
+  WIDGET_CATEGORIES,
+  WIDGET_DEFINITIONS,
+  sameWidgetSize,
+  widgetDefOf,
+  widgetSizeLabel,
+  type WidgetCategory,
+} from '../v2/widgetRegistry';
+
+/**
+ * 组件商店页（第七十四轮，按已定稿线稿落地）：
+ * - 左区：列表块——分类页签（全部 / 精选 / 工具 / 外观）+ 搜索在块顶，组件两列网格瓷砖，块内滚动，选中描边；
+ * - 右区：上详情（名称/简介/分类/支持尺寸/联网与数据声明）、下预览——按真实尺寸渲染活的组件本体，
+ *   切尺寸时预览真实变形并标注当前尺寸；预览区只展示不可操作（pointer-events-none），防误触改到真实数据；
+ * - 底部全宽操作条：尺寸选择与预览联动；未添加 → 「添加到主页」按所选尺寸添加并留在本页给反馈
+ *   （瓷砖与详情同步出现「已添加」、操作条出现确认提示）；已添加 → 尺寸选择即时同步主页布局（与右键
+ *   尺寸菜单同一通道），另有「移除」（沿用 setWidgetVisible 口径：移除不删数据，重加原样恢复）。
+ * 组件全集、分类、尺寸声明一律读统一注册表（widgetRegistry），本页不自带组件清单。
+ * 热度信号按规范 5.4：只有维护者精选 featured 与页脚的 GitHub 仓库链接，不做评分/下载量。
+ */
+
+type StoreTab = 'all' | 'featured' | WidgetCategory;
+
+const TABS: { id: StoreTab; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'featured', label: '精选' },
+  ...WIDGET_CATEGORIES.map((c) => ({ id: c.id as StoreTab, label: c.label })),
+];
+
+/** 预览的自然像素尺寸：按桌面网格参考值（栏宽 368 + 间距 16、行高 176/368）折算，
+ * 舞台按容器实际宽度等比缩放（见 PreviewStage），任何视口下不溢出、不裁切 */
+function naturalSize(layout: WidgetLayout): { w: number; h: number } {
+  return { w: layout.colSpan === 2 ? 752 : 368, h: layout.heightUnits === 2 ? 368 : 176 };
+}
+
+/** 预览舞台：内层按自然尺寸渲染组件本体，外层测宽后等比缩放（transform），高度按缩放后折算 */
+function PreviewStage({ layout, children }: { layout: WidgetLayout; children: React.ReactNode }) {
+  const { w, h } = naturalSize(layout);
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setScale(Math.min(1, el.clientWidth / w));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [w]);
+  return (
+    <div ref={ref} data-store-stage className="w-full overflow-hidden" style={{ height: Math.round(h * scale) }}>
+      <div
+        className="pointer-events-none select-none"
+        style={{ width: w, height: h, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function WidgetStorePage({
+  store,
+  onNavigate,
+}: {
+  store: LocalStore;
+  onNavigate: (page: string) => void;
+}) {
+  const [tab, setTab] = useState<StoreTab>('all');
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<WidgetId>(
+    () => (WIDGET_DEFINITIONS.find((d) => d.featured) ?? WIDGET_DEFINITIONS[0]).id,
+  );
+  /** 用户在本页手动选过的尺寸（按组件记）；未选过时：已添加取主页现行尺寸、未添加取注册默认尺寸 */
+  const [sizePick, setSizePick] = useState<Partial<Record<WidgetId, WidgetLayout>>>({});
+  /** 刚添加成功的组件 id（操作条确认提示，数秒后自动收起；瓷砖/详情的「已添加」标识是常驻反馈） */
+  const [justAdded, setJustAdded] = useState<WidgetId | null>(null);
+  useEffect(() => {
+    if (!justAdded) return;
+    const t = setTimeout(() => setJustAdded(null), 4000);
+    return () => clearTimeout(t);
+  }, [justAdded]);
+
+  const addedIds = store.data.widgets;
+  const def = widgetDefOf(selectedId);
+  const isAdded = addedIds.includes(def.id);
+  const currentLayout = store.data.widgetLayouts[def.id] ?? def.defaultLayout;
+  const activeSize = sizePick[def.id] ?? (isAdded ? currentLayout : def.defaultLayout);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return WIDGET_DEFINITIONS.filter((d) => {
+      if (tab === 'featured' && !d.featured) return false;
+      if ((tab === 'tools' || tab === 'appearance') && d.category !== tab) return false;
+      if (q && !`${d.name} ${d.desc}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [tab, query]);
+
+  /** 预览底色：已分配的用已分配的；未添加组件尚未分配底色，预览临时挑一个同屏未用色（不落盘，
+   * 真正添加后由主页的补抽逻辑正式分配，颜色可能与预览不同——底色本就是首次出现时随机抽的） */
+  const previewTint = useMemo(() => {
+    const assigned = widgetTintOf(store.data.widgetTints, widgetCardKey(def.id));
+    if (assigned) return assigned;
+    const used = new Set<number>();
+    for (const id of addedIds) {
+      const v = store.data.widgetTints[widgetCardKey(id)];
+      if (typeof v === 'number') used.add(v);
+    }
+    const free = WIDGET_TINTS.findIndex((_, i) => !used.has(i));
+    return WIDGET_TINTS[free >= 0 ? free : 0];
+  }, [def.id, store.data.widgetTints, addedIds]);
+
+  const pickSize = (layout: WidgetLayout) => {
+    setSizePick((prev) => ({ ...prev, [def.id]: layout }));
+    // 已添加组件：在商店里改尺寸即时同步主页（与主页右键尺寸菜单同一条 store 通道）
+    if (isAdded) store.setWidgetLayout(def.id, layout);
+  };
+
+  const addSelected = () => {
+    store.setWidgetLayout(def.id, activeSize);
+    store.setWidgetVisible(def.id, true);
+    setJustAdded(def.id);
+  };
+
+  const PreviewComp = def.component;
+
+  return (
+    <div data-widget-store className="flex flex-col gap-4">
+      {/* 页头：标题 + 仓库链接（规范 5.4：项目级热度信号链回 GitHub） */}
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">组件商店</h2>
+          <p className="text-xs sm:text-sm text-white/45 mt-1">给主页挑组件：左边选，右边看真实预览，选好尺寸一键添加。</p>
+        </div>
+        <a
+          href="https://github.com/0waitgoo/zabox"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 text-xs text-white/55 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-2.5 py-1.5 transition-colors"
+        >
+          <Star size={13} /> GitHub 仓库
+        </a>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        {/* 左区：列表块（分类 + 搜索在块顶，两列瓷砖，块内滚动） */}
+        <section
+          data-store-list
+          className="rounded-[24px] bg-[#17171d] border border-white/12 flex flex-col overflow-hidden h-[400px] lg:h-auto lg:min-h-[560px]"
+        >
+          <div className="p-3 pb-2.5 border-b border-white/8 shrink-0">
+            <div className="flex gap-1.5 overflow-x-auto pb-2.5" data-store-tabs>
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  data-store-tab={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
+                    tab === t.id ? 'bg-indigo-500/85 text-white font-medium' : 'bg-white/5 text-white/55 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/35 pointer-events-none" />
+              <input
+                data-store-search
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="搜索组件名称或简介"
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-sm outline-none focus:border-indigo-400/50 placeholder:text-white/30"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            {filtered.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2.5">
+                {filtered.map((d) => {
+                  const selected = d.id === selectedId;
+                  const added = addedIds.includes(d.id);
+                  const Icon = d.icon;
+                  return (
+                    <button
+                      key={d.id}
+                      data-store-tile={d.id}
+                      onClick={() => setSelectedId(d.id)}
+                      className={`text-left rounded-2xl border p-3 transition-colors ${
+                        selected
+                          ? 'border-indigo-400/80 bg-indigo-500/12 ring-1 ring-indigo-400/50'
+                          : 'border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.05]'
+                      }`}
+                    >
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="w-9 h-9 rounded-xl bg-white/8 flex items-center justify-center text-white/85 shrink-0">
+                          <Icon size={17} />
+                        </span>
+                        <span className="flex flex-col items-end gap-1">
+                          {d.featured && (
+                            <span className="flex items-center gap-0.5 text-[10px] text-amber-300 bg-amber-400/10 border border-amber-300/25 rounded-full px-1.5 py-0.5">
+                              <Star size={9} /> 精选
+                            </span>
+                          )}
+                          {added && (
+                            <span data-store-added-badge className="flex items-center gap-0.5 text-[10px] text-emerald-300">
+                              <Check size={10} /> 已添加
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      <span className="block mt-2 text-sm font-medium leading-tight">{d.name}</span>
+                      <span className="block mt-0.5 text-[11px] text-white/40 leading-snug line-clamp-2">{d.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center px-6 py-10">
+                <p className="text-sm text-white/50">
+                  {tab === 'appearance' && !query.trim() ? '外观类组件即将到来' : '没有符合条件的组件'}
+                </p>
+                <p className="text-[11px] text-white/35 mt-1.5 leading-relaxed">
+                  {tab === 'appearance' && !query.trim()
+                    ? '视觉效果、背景美化这类社区贡献会归到「外观」类，上架后会出现在这里。'
+                    : '换个分类或清空搜索词试试。'}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* 右区：上详情、下预览 */}
+        <section className="flex flex-col gap-4 min-w-0">
+          <div data-store-detail className="rounded-[24px] bg-[#17171d] border border-white/12 p-4">
+            <div className="flex items-center gap-3">
+              <span className="w-11 h-11 rounded-2xl bg-white/8 flex items-center justify-center text-white/90 shrink-0">
+                <def.icon size={20} />
+              </span>
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 flex-wrap">
+                  <span className="text-base font-semibold">{def.name}</span>
+                  <span className="text-[10px] text-white/60 bg-white/8 border border-white/10 rounded-full px-2 py-0.5">
+                    {WIDGET_CATEGORIES.find((c) => c.id === def.category)?.label}
+                  </span>
+                  {def.featured && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-amber-300 bg-amber-400/10 border border-amber-300/25 rounded-full px-2 py-0.5">
+                      <Star size={9} /> 维护者精选
+                    </span>
+                  )}
+                  {isAdded && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-emerald-300 bg-emerald-400/10 border border-emerald-300/25 rounded-full px-2 py-0.5">
+                      <Check size={9} /> 已在主页
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-white/45 mt-0.5">{def.desc}</p>
+              </div>
+            </div>
+            <div className="mt-3.5 flex flex-col gap-2 text-[11px] leading-relaxed">
+              <p className="flex gap-2 flex-wrap">
+                <span className="text-white/35 shrink-0">支持尺寸</span>
+                <span className="flex gap-1.5 flex-wrap">
+                  {def.supportedSizes.map((s) => (
+                    <span
+                      key={`${s.colSpan}x${s.heightUnits}`}
+                      className={`rounded-md px-1.5 py-0.5 border ${
+                        sameWidgetSize(s, activeSize)
+                          ? 'border-indigo-400/60 text-indigo-200 bg-indigo-500/15'
+                          : 'border-white/12 text-white/55 bg-white/[0.04]'
+                      }`}
+                    >
+                      {widgetSizeLabel(s)}
+                    </span>
+                  ))}
+                </span>
+              </p>
+              <p className="flex gap-2">
+                <span className="text-white/35 shrink-0">默认尺寸</span>
+                <span className="text-white/65">{widgetSizeLabel(def.defaultLayout)}</span>
+              </p>
+              <p className="flex gap-2">
+                <span className="text-white/35 shrink-0">联网声明</span>
+                <span className="text-white/65">
+                  {def.network
+                    ? def.network.map((n) => `${n.endpoint} — ${n.purpose}`).join('；')
+                    : '不联网，不上传任何用户数据'}
+                </span>
+              </p>
+              <p className="flex gap-2">
+                <span className="text-white/35 shrink-0">数据存放</span>
+                <span className="text-white/65">
+                  {def.storage && typeof def.storage === 'object'
+                    ? `独立存储 ${def.storage.own}（${def.storage.reason}）`
+                    : def.storage === 'device'
+                      ? '本机显示偏好（不进同步/导出）'
+                      : '本机本地存储（随数据导出 / GitHub 同步一起走，不经过官方服务器）'}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          <div data-store-preview className="rounded-[24px] bg-[#17171d] border border-white/12 p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <p className="text-xs font-medium text-white/60">实时预览（组件本体）</p>
+              <span data-store-size-label className="text-[11px] text-indigo-200 bg-indigo-500/15 border border-indigo-400/40 rounded-full px-2 py-0.5">
+                当前尺寸：{widgetSizeLabel(activeSize)}
+              </span>
+            </div>
+            <PreviewStage layout={activeSize}>
+              <PreviewComp
+                key={`${def.id}-${activeSize.colSpan}x${activeSize.heightUnits}`}
+                store={store}
+                onNavigate={onNavigate}
+                tint={previewTint}
+                layout={activeSize}
+              />
+            </PreviewStage>
+            <p className="text-[10px] text-white/30 mt-2.5">预览只展示、不响应点击；添加后在主页里正常使用。</p>
+          </div>
+        </section>
+      </div>
+
+      {/* 底部全宽操作条：尺寸选择（与预览联动） + 添加/移除 */}
+      <div
+        data-store-actionbar
+        className="rounded-[24px] bg-[#17171d] border border-white/12 px-3 py-3 sm:px-4 flex items-center gap-2.5 flex-wrap sticky bottom-3 z-10 shadow-2xl shadow-black/50"
+      >
+        <span className="text-xs text-white/50 shrink-0">{isAdded ? '主页尺寸' : '添加尺寸'}</span>
+        <div className="flex gap-1.5 flex-wrap">
+          {def.supportedSizes.map((s) => {
+            const selected = sameWidgetSize(s, activeSize);
+            return (
+              <button
+                key={`${s.colSpan}x${s.heightUnits}`}
+                data-store-size={`${s.colSpan}x${s.heightUnits}`}
+                onClick={() => pickSize(s)}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                  selected ? 'bg-indigo-500/85 text-white font-medium' : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {selected && <Check size={12} />}
+                {widgetSizeLabel(s)}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex-1" />
+        {justAdded === def.id && (
+          <span data-store-added-note className="flex items-center gap-1 text-xs text-emerald-300">
+            <Check size={13} /> 已添加到主页
+          </span>
+        )}
+        {isAdded ? (
+          <>
+            <button
+              onClick={() => onNavigate('home')}
+              className="px-3 py-2 rounded-xl bg-indigo-500/85 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+            >
+              去主页看看
+            </button>
+            <button
+              data-store-remove
+              onClick={() => store.setWidgetVisible(def.id, false)}
+              className="flex items-center gap-1 px-3 py-2 rounded-xl bg-white/8 hover:bg-white/12 text-white/75 text-sm transition-colors"
+            >
+              <Minus size={13} /> 移除
+            </button>
+          </>
+        ) : (
+          <button
+            data-store-add
+            onClick={addSelected}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-500/85 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+          >
+            <Plus size={14} /> 添加到主页
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] text-white/30 text-center">移除组件不会删除它的数据，重新添加即原样恢复。</p>
+    </div>
+  );
+}
