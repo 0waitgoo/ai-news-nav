@@ -1,3 +1,5 @@
+import { siteLetterIcon } from '../data/groups';
+
 const API_BASE = '/api';
 
 export interface HealthInfo {
@@ -174,9 +176,9 @@ function getFallbackSoftwareRanking(): SoftwareRankingItem[] {
   return [
     { id: 1, name: 'ChatGPT', rank: 1, category: 'AI助手', description: 'OpenAI推出的AI对话助手', rating: 4.8, ratingScale: 5, reviewCount: '12.5万', usageMetric: '月活用户', usageValue: '1.8亿', dataPeriod: '2026年2月', url: 'https://chat.openai.com', logo: getSoftwareLogo('ChatGPT') },
     { id: 2, name: 'Claude', rank: 2, category: 'AI助手', description: 'Anthropic推出的AI助手', rating: 4.7, ratingScale: 5, reviewCount: '8.3万', usageMetric: '月活用户', usageValue: '5200万', dataPeriod: '2026年2月', url: 'https://claude.ai', logo: getSoftwareLogo('Claude') },
-    { id: 3, name: 'Perplexity', rank: 3, category: 'AI搜索', description: 'AI搜索引擎', rating: 4.6, ratingScale: 5, reviewCount: '5.2万', usageMetric: '月活用户', usageValue: '4800万', dataPeriod: '2026年2月', url: 'https://www.perplexity.ai', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=perplexity&backgroundColor=0891b2' },
-    { id: 4, name: 'Gemini', rank: 4, category: 'AI助手', description: 'Google AI助手', rating: 4.5, ratingScale: 5, reviewCount: '6.8万', usageMetric: '月活用户', usageValue: '3800万', dataPeriod: '2026年2月', url: 'https://gemini.google.com', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=gemini&backgroundColor=3b82f6' },
-    { id: 5, name: 'DeepSeek', rank: 5, category: 'AI助手', description: '深度求索AI助手', rating: 4.6, ratingScale: 5, reviewCount: '4.5万', usageMetric: '月活用户', usageValue: '3500万', dataPeriod: '2026年2月', url: 'https://deepseek.com', logo: 'https://api.dicebear.com/7.x/shapes/svg?seed=deepseek&backgroundColor=6366f1' },
+    { id: 3, name: 'Perplexity', rank: 3, category: 'AI搜索', description: 'AI搜索引擎', rating: 4.6, ratingScale: 5, reviewCount: '5.2万', usageMetric: '月活用户', usageValue: '4800万', dataPeriod: '2026年2月', url: 'https://www.perplexity.ai', logo: siteLetterIcon('Perplexity') },
+    { id: 4, name: 'Gemini', rank: 4, category: 'AI助手', description: 'Google AI助手', rating: 4.5, ratingScale: 5, reviewCount: '6.8万', usageMetric: '月活用户', usageValue: '3800万', dataPeriod: '2026年2月', url: 'https://gemini.google.com', logo: siteLetterIcon('Gemini') },
+    { id: 5, name: 'DeepSeek', rank: 5, category: 'AI助手', description: '深度求索AI助手', rating: 4.6, ratingScale: 5, reviewCount: '4.5万', usageMetric: '月活用户', usageValue: '3500万', dataPeriod: '2026年2月', url: 'https://deepseek.com', logo: siteLetterIcon('DeepSeek') },
     { id: 6, name: 'Midjourney', rank: 6, category: '图像生成', description: 'AI图像生成工具', rating: 4.7, ratingScale: 5, reviewCount: '3.8万', usageMetric: '月活用户', usageValue: '2800万', dataPeriod: '2026年2月', url: 'https://www.midjourney.com', logo: getSoftwareLogo('Midjourney') },
     { id: 7, name: 'Suno', rank: 7, category: '音频生成', description: 'AI音乐生成工具', rating: 4.5, ratingScale: 5, reviewCount: '2.9万', usageMetric: '月活用户', usageValue: '2200万', dataPeriod: '2026年2月', url: 'https://suno.com', logo: getSoftwareLogo('Suno') },
     { id: 8, name: 'Kimi', rank: 8, category: 'AI助手', description: '月之暗面AI助手', rating: 4.5, ratingScale: 5, reviewCount: '3.2万', usageMetric: '月活用户', usageValue: '1800万', dataPeriod: '2026年2月', url: 'https://kimi.moonshot.cn', logo: getSoftwareLogo('Kimi') },
