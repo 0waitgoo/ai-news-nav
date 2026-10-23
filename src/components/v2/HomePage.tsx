@@ -1,9 +1,8 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { LayoutGrid, FolderPlus, X, Plus, Minus, Check, List, Folder, Unlink, Combine, Palette } from 'lucide-react';
+import { LayoutGrid, FolderPlus, X, Check, List, Folder, Unlink, Combine, Palette } from 'lucide-react';
 import { GROUP_NAME_MAX, clampGroupName, textCharCount, type GroupDisplay, type NavGroup } from '../../data/groups';
 import {
-  ALL_WIDGETS,
   cardFaceStyleOf,
   clampColSpan,
   comboCardKey,
@@ -25,16 +24,12 @@ import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import BackgroundMenu from './BackgroundMenu';
 import { TopLogo, TopNav } from '../Sidebar';
-import FileToolsCard from './FileToolsCard';
-import NewsCard from './NewsCard';
-import RankingCard from './RankingCard';
-import TaskCard from './TaskCard';
+import { WIDGET_DEFINITIONS, widgetDefOf } from './widgetRegistry';
 import GroupListCard from './GroupListCard';
 import GroupStackCard, { StackGroupIcon } from './GroupStackCard';
 import GroupPanel from './GroupPanel';
 import ComboCard from './ComboCard';
 import ComboPanel from './ComboPanel';
-import TrendingWidget from '../widgets/TrendingWidget';
 import { GlassDefsHost } from './GlassSurface';
 import useLongPressMenu from './useLongPressMenu';
 
@@ -92,7 +87,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [panelGroupId, setPanelGroupId] = useState<string | null>(null);
   const [comboPanelId, setComboPanelId] = useState<string | null>(null);
-  const [showWidgetPanel, setShowWidgetPanel] = useState(false);
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDisplay, setNewGroupDisplay] = useState<GroupDisplay>('stack');
@@ -293,7 +287,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     : null;
   const sizeMenuTitle = sizeMenu
     ? sizeMenu.kind === 'widget'
-      ? `${ALL_WIDGETS.find((w) => w.id === sizeMenu.id)?.name ?? ''} · 组件尺寸`
+      ? `${widgetDefOf(sizeMenu.id).name} · 组件尺寸`
       : sizeMenu.kind === 'combo'
         ? (() => {
             const c = validCombos.find((cc) => cc.id === sizeMenu.id);
@@ -308,6 +302,18 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     else if (sizeMenu.kind === 'combo') store.setComboLayout(sizeMenu.id, patch);
     else store.setGroupLayout(sizeMenu.id, patch);
   };
+
+  /* 尺寸菜单可选项（第七十四轮，组件规范 2.2 声明机制）：A 型组件只列注册表 supportedSizes
+   * 里出现过的宽度/高度，声明之外的尺寸不出现；编组/组合卡无声明概念，维持全开。
+   * 现有 5 组件均声明四种形态全集，故当前菜单与此前逐项一致，机制为将来的收窄声明预留 */
+  const sizeMenuColOptions: (1 | 2)[] =
+    sizeMenu?.kind === 'widget'
+      ? ([1, 2] as const).filter((n) => widgetDefOf(sizeMenu.id).supportedSizes.some((s) => s.colSpan === n))
+      : [1, 2];
+  const sizeMenuHeightOptions: (1 | 2)[] =
+    sizeMenu?.kind === 'widget'
+      ? ([1, 2] as const).filter((n) => widgetDefOf(sizeMenu.id).supportedSizes.some((s) => s.heightUnits === n))
+      : [1, 2];
 
   /* ---------- 编组展开 / 弹窗 ---------- */
   const toggleExpand = (group: NavGroup) => {
@@ -354,7 +360,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       // 有弹窗/面板开着时 Esc 归它们自己处理，不抢
-      if (panelGroupId || comboPanelId || showWidgetPanel || showNewGroup) return;
+      if (panelGroupId || comboPanelId || showNewGroup) return;
       setExpandedId(null);
     };
     document.addEventListener('pointerdown', onDocPointerDown);
@@ -365,7 +371,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       document.removeEventListener('click', onDocClickCapture, true);
       document.removeEventListener('keydown', onKey);
     };
-  }, [expandedId, panelGroupId, comboPanelId, showWidgetPanel, showNewGroup]);
+  }, [expandedId, panelGroupId, comboPanelId, showNewGroup]);
 
   const scrollToGroup = (id: string) => {
     window.setTimeout(() => {
@@ -456,7 +462,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     const map = new Map<string, { group?: NavGroup; widgetId?: WidgetId; combo?: ComboItem }>();
     for (const g of groups) map.set(groupCardKey(g.id), { group: g });
     for (const c of validCombos) map.set(comboCardKey(c.id), { combo: c });
-    for (const w of ALL_WIDGETS) {
+    for (const w of WIDGET_DEFINITIONS) {
       if (widgets.includes(w.id)) map.set(widgetCardKey(w.id), { widgetId: w.id });
     }
     return map;
@@ -739,38 +745,20 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         />
       );
     }
-    switch (item.widgetId) {
-      case 'task':
-        return (
-          <TaskCard
-            store={store}
-            delay={delay}
-            colSpan={phoneViewport ? 1 : widgetLayouts.task.colSpan}
-            heightUnits={widgetLayouts.task.heightUnits}
-            tint={widgetTintOf(store.data.widgetTints, widgetCardKey('task'))}
-          />
-        );
-      case 'news':
-        return (
-          <NewsCard onNavigate={onNavigate} delay={delay} tint={widgetTintOf(store.data.widgetTints, widgetCardKey('news'))} />
-        );
-      case 'ranking':
-        return <RankingCard delay={delay} tint={widgetTintOf(store.data.widgetTints, widgetCardKey('ranking'))} />;
-      case 'trending':
-        return <TrendingWidget tint={widgetTintOf(store.data.widgetTints, widgetCardKey('trending'))} />;
-      case 'tools':
-        return (
-          <FileToolsCard
-            onNavigate={onNavigate}
-            delay={delay}
-            colSpan={phoneViewport ? 1 : widgetLayouts.tools.colSpan}
-            heightUnits={widgetLayouts.tools.heightUnits}
-            tint={widgetTintOf(store.data.widgetTints, widgetCardKey('tools'))}
-          />
-        );
-      default:
-        return null;
-    }
+    /* A 型组件渲染（第七十四轮起走统一注册表）：按 id 查注册定义渲染其适配组件，
+     * 统一 props 的映射与原 switch 逐项一致（尺寸感知组件吃布局、手机单列宽按 1 栏） */
+    const def = widgetDefOf(item.widgetId);
+    const WidgetComp = def.component;
+    return (
+      <WidgetComp
+        store={store}
+        onNavigate={onNavigate}
+        tint={widgetTintOf(store.data.widgetTints, widgetCardKey(def.id))}
+        layout={widgetLayouts[def.id]}
+        delay={delay}
+        phone={phoneViewport}
+      />
+    );
   };
 
   /* ---------- 拖拽排序 ----------
@@ -1335,9 +1323,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           );
         })}
 
-        {/* 添加组件入口（占格同样由 placements 决定：附在最矮栏末尾） */}
+        {/* 添加组件入口（占格同样由 placements 决定：附在最矮栏末尾）；
+            第七十四轮起升级为跳组件商店页（原主页组件开关面板已由商店取代） */}
         <div style={tileStyle(TILE_ADD_KEY)}>
-          <button onClick={() => setShowWidgetPanel(true)} className={dashedTileCls}>
+          <button data-add-widget-tile onClick={() => onNavigate('store')} className={dashedTileCls}>
             <LayoutGrid size={18} />
             添加组件
           </button>
@@ -1434,7 +1423,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
             <p className="px-1 pb-2 text-[11px] font-medium text-white/60">{sizeMenuTitle}</p>
             <p className="px-1 pb-1 text-[10px] tracking-wider text-white/40 uppercase">宽度</p>
             <div className="flex gap-1 pb-2.5">
-              {([1, 2] as const).map((n) => {
+              {sizeMenuColOptions.map((n) => {
                 const selected = sizeMenuLayout.colSpan === n;
                 return (
                   <button
@@ -1452,7 +1441,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
             </div>
             <p className="px-1 pb-1 text-[10px] tracking-wider text-white/40 uppercase">高度</p>
             <div className="flex gap-1">
-              {([1, 2] as const).map((n) => {
+              {sizeMenuHeightOptions.map((n) => {
                 const selected = sizeMenuLayout.heightUnits === n;
                 return (
                   <button
@@ -1577,7 +1566,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
               data-blank-add-widget
               onClick={() => {
                 setBlankMenu(null);
-                setShowWidgetPanel(true);
+                onNavigate('store');
               }}
               className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs text-white/80 hover:bg-white/8 hover:text-white transition-colors"
             >
@@ -1664,58 +1653,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         )}
       </AnimatePresence>
 
-      {/* 添加组件面板 */}
-      <AnimatePresence>
-        {showWidgetPanel && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setShowWidgetPanel(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 10 }}
-              transition={{ duration: 0.18 }}
-              onClick={(e) => e.stopPropagation()}
-              /* 面板全不透明实色（第十二轮统一口径）：不用 glass-panel 的半透明毛玻璃 */
-              className="rounded-[24px] bg-[#17171d] border border-white/15 w-full max-w-sm p-4 shadow-2xl shadow-black/70"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-sm">主页组件</h3>
-                <button onClick={() => setShowWidgetPanel(false)} className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10">
-                  <X size={15} />
-                </button>
-              </div>
-              {ALL_WIDGETS.map((w) => {
-                const visible = widgets.includes(w.id);
-                return (
-                  <div key={w.id} className="flex items-center gap-3 px-2 py-2.5 rounded-2xl hover:bg-white/5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{w.name}</p>
-                      <p className="text-[11px] text-white/40 truncate">{w.desc}</p>
-                    </div>
-                    <span className={`text-[10px] shrink-0 ${visible ? 'text-emerald-300' : 'text-white/35'}`}>
-                      {visible ? '显示中' : '未显示'}
-                    </span>
-                    <button
-                      onClick={() => store.setWidgetVisible(w.id, !visible)}
-                      className={`flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg transition-colors shrink-0 ${
-                        visible ? 'bg-white/8 text-white/70 hover:bg-white/12' : 'bg-indigo-500/80 text-white hover:bg-indigo-500'
-                      }`}
-                    >
-                      {visible ? <Minus size={12} /> : <Plus size={12} />}
-                      {visible ? '移除' : '添加'}
-                    </button>
-                  </div>
-                );
-              })}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* 「主页组件」开关面板已于第七十四轮下线：添加/移除组件统一走组件商店页（顶部「添加组件」入口与空白菜单均跳 store 页） */}
 
       {/* 新建编组弹窗：先选形态（详细列表 / 文件夹式） */}
       <AnimatePresence>
