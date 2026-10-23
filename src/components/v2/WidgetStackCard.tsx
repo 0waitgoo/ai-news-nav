@@ -8,6 +8,7 @@ import {
   type WidgetStackItem,
 } from '../../store/localStore';
 import { widgetDefOf } from './widgetRegistry';
+import { closeToolsWorkspace, getToolsWorkspace } from '../../store/toolsWorkspace';
 
 /**
  * A 型组件摞（第七十二轮）：多个小组件叠成一张卡——卡顶部一条成员标题排
@@ -48,6 +49,13 @@ export default function WidgetStackCard({
       return next.length === prev.length ? prev : next;
     });
   }, [stack.widgetIds]);
+
+  /* 文件工具工作区开着时切到别的成员（第八十六轮）：工作区随之收起——
+   * 否则 HomePage 会继续按「工作区打开」把整摞撑到 3 行高，而当前成员并没在用工作区。
+   * 工作区内部状态由 FileToolsCard 常驻挂载保留，切回来再打开不丢已选文件/结果 */
+  useEffect(() => {
+    if (stack.activeWidgetId !== 'tools' && getToolsWorkspace().open) closeToolsWorkspace();
+  }, [stack.activeWidgetId]);
 
   return (
     <div className="h-full flex flex-col" data-widget-stack={stack.id}>

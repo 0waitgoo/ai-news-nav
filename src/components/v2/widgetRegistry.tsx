@@ -108,9 +108,8 @@ const RankingWidget: React.ComponentType<WidgetRenderProps> = ({ tint, delay = 0
 
 const TrendingWidgetAdapter: React.ComponentType<WidgetRenderProps> = ({ tint }) => <TrendingWidget tint={tint} />;
 
-const ToolsWidget: React.ComponentType<WidgetRenderProps> = ({ onNavigate, tint, layout, delay = 0, phone }) => (
+const ToolsWidget: React.ComponentType<WidgetRenderProps> = ({ tint, layout, delay = 0, phone }) => (
   <FileToolsCard
-    onNavigate={onNavigate}
     delay={delay}
     colSpan={phone ? 1 : layout.colSpan}
     heightUnits={layout.heightUnits}

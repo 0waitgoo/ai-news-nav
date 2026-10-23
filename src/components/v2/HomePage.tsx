@@ -28,6 +28,7 @@ import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import BackgroundMenu from './BackgroundMenu';
 import { TopLogo, TopNav } from '../Sidebar';
+import { closeToolsWorkspace, requestToolsWorkspace, useToolsWorkspace } from '../../store/toolsWorkspace';
 import { WIDGET_DEFINITIONS, widgetDefOf } from './widgetRegistry';
 import GroupListCard from './GroupListCard';
 import GroupStackCard, { StackGroupIcon } from './GroupStackCard';
@@ -68,6 +69,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   /* 原位长按触发右键菜单（第七十轮）：合成 contextmenu 事件走既有三层右键路由 */
   useLongPressMenu();
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
+  /* 文件工具工作区状态（第八十六轮）：打开时本页要把文件工具卡（或含它的摞）
+   * 的栏位高度抬高，并响应顶栏扳手的定位请求；状态本体在 toolsWorkspace store */
+  const toolsWs = useToolsWorkspace();
   /* 视口三档（第六十六轮起）：≥lg（1024px）为 4 栏；640–1023（平板）为 2 栏；
    * <640（手机）为 1 栏单列。数据始终按 4 栏锚点存；2 栏呈现时 4 个锚点栏两两合并
    * （0,1→左、2,3→右），1 栏呈现时只按顺序纵向堆叠、锚点不参与（见 placements）。
@@ -163,6 +167,38 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   );
   const [stackA, stackB, stackC, ...stackRest] = singleStackGroups;
   const hasWidget = (id: WidgetId) => widgets.includes(id);
+
+  /* ---------- 文件工具工作区：扳手定位与状态守卫（第八十六轮） ---------- */
+  /** 顶栏扳手（主页侧）：已在主页——组件不在就先按商店同一路径添加，再发打开请求，
+   * 定位滚动由下面的请求监听统一执行 */
+  const handleToolsClickHere = () => {
+    if (!hasWidget('tools')) store.setWidgetVisible('tools', true);
+    requestToolsWorkspace();
+  };
+
+  /* 打开请求（扳手）到达时定位：摞里的先切到文件工具成员，再滚动到组件位置。
+   * 挂载时若已有未消费的请求（从子页面点扳手切回主页）同样执行——请求序号即消费凭据。
+   * 两段延时各滚一次：等添加组件/切成员/栏位变高的布局落定，scrollIntoView 幂等无副作用 */
+  const toolsRequestSeq = toolsWs.requestSeq;
+  useEffect(() => {
+    if (toolsRequestSeq === 0) return;
+    const stack = validWidgetStacks.find((s) => s.widgetIds.includes('tools'));
+    if (stack && stack.activeWidgetId !== 'tools') store.setWidgetStackActive(stack.id, 'tools');
+    const scroll = () =>
+      document.getElementById('v2-widget-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const t1 = window.setTimeout(scroll, 90);
+    const t2 = window.setTimeout(scroll, 400);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolsRequestSeq]);
+
+  /* 组件被移除（如在商店页移除）后工作区状态不能悬空：回到主页时自动收起 */
+  useEffect(() => {
+    if (toolsWs.open && !widgets.includes('tools')) closeToolsWorkspace();
+  }, [toolsWs.open, widgets]);
   const panelGroup = panelGroupId ? (groups.find((g) => g.id === panelGroupId) ?? null) : null;
   const comboPanel = comboPanelId ? (validCombos.find((c) => c.id === comboPanelId) ?? null) : null;
   const comboPanelGroups: [NavGroup, NavGroup] | null = comboPanel
@@ -593,6 +629,20 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     if (item?.group?.display === 'list' && expandedId === item.group.id) {
       return { span: storedSpecOf(key).span, height: 4 };
     }
+    /* 文件工具工作区打开时原地变高到至少 3 行（第八十六轮）：与编组卡展开同理，
+     * 宽度保持存储口径、只长高，同栏后续卡顺移让位、收起后精确复原。
+     * 摞里的文件工具只在它是当前成员时才撑高整摞 */
+    if (toolsWs.open) {
+      const stored = storedSpecOf(key);
+      if (item?.widgetId === 'tools') return { span: stored.span, height: Math.max(stored.height, 3) };
+      if (
+        item?.widgetStack &&
+        item.widgetStack.activeWidgetId === 'tools' &&
+        item.widgetStack.widgetIds.includes('tools')
+      ) {
+        return { span: stored.span, height: Math.max(stored.height, 3) };
+      }
+    }
     return storedSpecOf(key);
   };
 
@@ -720,6 +770,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           return 344;
         case 'tools':
           // 文件工具卡（第六十八轮）：手机全宽走 1 栏排布——1x 横排瓷砖 2 行、2x 放大瓷砖 3 行
+          // 工作区打开时给足操作高度（第八十六轮），溢出由工作区内部滚动承接
+          if (toolsWs.open) return 600;
           return lay.heightUnits === 2 ? 300 : 196;
         default:
           return 172;
@@ -759,7 +811,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     map.set(TILE_ADD_KEY, 132);
     map.set(TILE_NEW_KEY, 132);
     return map;
-  }, [phoneViewport, viewportWidth, itemByKey, groupLayouts, widgetLayouts, expandedId, groups, store.data.tasks, store.data.plans]);
+  }, [phoneViewport, viewportWidth, itemByKey, groupLayouts, widgetLayouts, expandedId, groups, store.data.tasks, store.data.plans, toolsWs.open]);
 
   /** 渲染放置（视觉空间）：4 栏视口直接用存储锚点；2 栏视口两两合并（0,1→左、2,3→右，2 宽卡占满宽）。
    *  拖拽中相关卡的锚点先被 previewCols 覆盖。两个虚线入口块作为无锚点伪卡附在末尾（回落最矮栏）。 */
@@ -804,7 +856,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       rowTemplate: undefined as string | undefined,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayOrder, itemByKey, groupLayouts, widgetLayouts, expandedId, visualCols, previewCols, effectiveCols, phoneViewport, phoneHeights]);
+  }, [displayOrder, itemByKey, groupLayouts, widgetLayouts, expandedId, visualCols, previewCols, effectiveCols, phoneViewport, phoneHeights, toolsWs.open]);
   const placementsRef = useRef(placements);
   placementsRef.current = placements;
 
@@ -1446,7 +1498,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
             <TopLogo onClick={() => onNavigate('home')} />
             <BackgroundMenu store={store} />
-            <TopNav onPageChange={onNavigate} currentPage="home" />
+            <TopNav onPageChange={onNavigate} currentPage="home" onToolsClick={handleToolsClickHere} />
           </div>
           <div className="col-span-1 lg:col-span-2 flex items-center gap-2 min-w-0">
             <StickySearch groups={groups} onOpenGroup={openGroupFromSearch} />
@@ -1480,7 +1532,14 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           return (
             <div
               key={key}
-              id={item.group ? `v2-group-${item.group.id}` : undefined}
+              id={
+                item.group
+                  ? `v2-group-${item.group.id}`
+                  : item.widgetId === 'tools' || item.widgetStack?.widgetIds.includes('tools')
+                    ? // 扳手定位锚点（第八十六轮）：文件工具在主页上至多出现一处（单卡或摞内）
+                      'v2-widget-tools'
+                    : undefined
+              }
               ref={(el) => {
                 if (el) wrapperRefs.current.set(key, el);
                 else wrapperRefs.current.delete(key);
