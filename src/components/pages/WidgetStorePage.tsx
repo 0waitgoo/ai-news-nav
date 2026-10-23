@@ -16,10 +16,13 @@ import {
   widgetSizeLabel,
   type WidgetCategory,
 } from '../v2/widgetRegistry';
+import { GlassDefsHost, useGlassBackdrop } from '../v2/GlassSurface';
+import { useDisplayPrefs } from '../../store/displayPrefs';
 
 /**
  * 组件商店页（第七十四轮，按已定稿线稿落地）：
- * - 左区：列表块——分类页签（全部 / 精选 / 工具 / 外观）+ 搜索在块顶，组件两列网格瓷砖，块内滚动，选中描边；
+ * - 左区：列表块——分类页签（全部 / 精选 / 工具 / 外观）+ 搜索在块顶，组件网格瓷砖（两栏布局时
+ *   3 列、堆叠时 1 列，第七十七轮追加修正），块内滚动，选中描边；
  * - 右区：上详情（名称/简介/分类/支持尺寸/联网与数据声明）、下预览——按真实尺寸渲染活的组件本体，
  *   切尺寸时预览真实变形并标注当前尺寸；预览区只展示不可操作（pointer-events-none），防误触改到真实数据；
  * - 底部全宽操作条：尺寸选择与预览联动；未添加 → 「添加到主页」按所选尺寸添加并留在本页给反馈
@@ -27,6 +30,10 @@ import {
  *   尺寸菜单同一通道），另有「移除」（沿用 setWidgetVisible 口径：移除不删数据，重加原样恢复）。
  * 组件全集、分类、尺寸声明一律读统一注册表（widgetRegistry），本页不自带组件清单。
  * 热度信号按规范 5.4：只有维护者精选 featured 与页脚的 GitHub 仓库链接，不做评分/下载量。
+ * 第七十七轮：本页接入外观三档（商店大面归编组卡同源表面 .store-panel，见 index.css
+ * 第七十七轮节）；操作条只在 ≥sm 悬浮 sticky，手机端回普通文档流排在内容末尾
+ * （用户口径原话：「这一块在手机看悬浮了，不用做悬浮」）；列表瓷砖改密排
+ * （两栏时 3 列、堆叠时 1 列，用户口径：「做成 B 卡的网页尺寸」）。
  */
 
 type StoreTab = 'all' | 'featured' | WidgetCategory;
@@ -91,6 +98,21 @@ export default function WidgetStorePage({
     return () => clearTimeout(t);
   }, [justAdded]);
 
+  /* 第七十七轮 · 外观三档接入：商店大面（列表块/详情块/预览外框/操作条）归编组卡同源
+     表面——挂 .store-panel 走 index.css 的三档底色/材质（暗夜沿用写死 #17171d 不变、
+     白天同 B 卡变量翻白、玻璃同 GlassSurface 材质，tint 同归 groupCardAlpha）；
+     列表块/详情块/操作条另挂 .group-card-scope 复用白天翻字作用域（C 卡同款接法）。
+     预览外框**不挂** scope：里面的组件本体是 A 型组件、与主页一样永不进编组卡作用域，
+     外框自有文字（标题/尺寸标注/脚注）改按 theme 条件类在白天翻深（下方 light 变量）。
+     玻璃折射四面各挂 useGlassBackdrop(24)（商店面圆角 24，与 B 卡 28/C 卡 22 同理取
+     宿主自身圆角）；非玻璃档 hook 自动 inert（不设变量、不动 backdrop），三档共用此路径。 */
+  const { theme } = useDisplayPrefs();
+  const light = theme === 'light';
+  const listGlass = useGlassBackdrop<HTMLElement>(24);
+  const detailGlass = useGlassBackdrop<HTMLDivElement>(24);
+  const previewGlass = useGlassBackdrop<HTMLDivElement>(24);
+  const barGlass = useGlassBackdrop<HTMLDivElement>(24);
+
   const addedIds = store.data.widgets;
   const def = widgetDefOf(selectedId);
   const isAdded = addedIds.includes(def.id);
@@ -136,7 +158,10 @@ export default function WidgetStorePage({
   const PreviewComp = def.component;
 
   return (
-    <div data-widget-store className="flex flex-col gap-4">
+    <div data-widget-store data-store-root className="flex flex-col gap-4">
+      {/* 玻璃滤镜定义宿主：主页 HomePage 也挂了一份，商店是独立子页面（主页不挂载），
+          本页自挂一份才能让四面的 url(#桶) 折射引用可解析（同 id 分桶，两页不会同屏） */}
+      <GlassDefsHost />
       {/* 页头：标题 + 仓库链接（规范 5.4：项目级热度信号链回 GitHub） */}
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
@@ -156,8 +181,10 @@ export default function WidgetStorePage({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
         {/* 左区：列表块（分类 + 搜索在块顶，两列瓷砖，块内滚动） */}
         <section
+          ref={listGlass.ref}
+          style={listGlass.style}
           data-store-list
-          className="rounded-[24px] bg-[#17171d] border border-white/12 flex flex-col overflow-hidden h-[400px] lg:h-auto lg:min-h-[560px]"
+          className="group-card-scope store-panel rounded-[24px] bg-[#17171d] border border-white/12 flex flex-col overflow-hidden h-[400px] lg:h-auto lg:min-h-[560px]"
         >
           <div className="p-3 pb-2.5 border-b border-white/8 shrink-0">
             <div className="flex gap-1.5 overflow-x-auto pb-2.5" data-store-tabs>
@@ -187,7 +214,11 @@ export default function WidgetStorePage({
           </div>
           <div className="flex-1 overflow-y-auto p-3">
             {filtered.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2.5">
+              /* 第七十七轮追加修正（用户口径：「小组件的选项做成 B 卡的网页尺寸，2 栏显示
+                 3 列，1 栏显示 1 列」）：列数跟随本页布局断点 lg——整页两栏时列表块为
+                 2 栏宽、瓷砖 3 列密排（对齐 B 卡站点瓷砖的规格感）；堆叠时列表块 1 栏宽、
+                 瓷砖整行 1 列。不留 2 列中间态。 */
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
                 {filtered.map((d) => {
                   const selected = d.id === selectedId;
                   const added = addedIds.includes(d.id);
@@ -209,12 +240,12 @@ export default function WidgetStorePage({
                         </span>
                         <span className="flex flex-col items-end gap-1">
                           {d.featured && (
-                            <span className="flex items-center gap-0.5 text-[10px] text-amber-300 bg-amber-400/10 border border-amber-300/25 rounded-full px-1.5 py-0.5">
+                            <span data-store-badge="featured" className="flex items-center gap-0.5 text-[10px] text-amber-300 bg-amber-400/10 border border-amber-300/25 rounded-full px-1.5 py-0.5">
                               <Star size={9} /> 精选
                             </span>
                           )}
                           {added && (
-                            <span data-store-added-badge className="flex items-center gap-0.5 text-[10px] text-emerald-300">
+                            <span data-store-added-badge data-store-badge="added" className="flex items-center gap-0.5 text-[10px] text-emerald-300">
                               <Check size={10} /> 已添加
                             </span>
                           )}
@@ -243,7 +274,12 @@ export default function WidgetStorePage({
 
         {/* 右区：上详情、下预览 */}
         <section className="flex flex-col gap-4 min-w-0">
-          <div data-store-detail className="rounded-[24px] bg-[#17171d] border border-white/12 p-4">
+          <div
+            ref={detailGlass.ref}
+            style={detailGlass.style}
+            data-store-detail
+            className="group-card-scope store-panel rounded-[24px] bg-[#17171d] border border-white/12 p-4"
+          >
             <div className="flex items-center gap-3">
               <span className="w-11 h-11 rounded-2xl bg-white/8 flex items-center justify-center text-white/90 shrink-0">
                 <def.icon size={20} />
@@ -255,12 +291,12 @@ export default function WidgetStorePage({
                     {WIDGET_CATEGORIES.find((c) => c.id === def.category)?.label}
                   </span>
                   {def.featured && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-amber-300 bg-amber-400/10 border border-amber-300/25 rounded-full px-2 py-0.5">
+                    <span data-store-badge="featured" className="flex items-center gap-0.5 text-[10px] text-amber-300 bg-amber-400/10 border border-amber-300/25 rounded-full px-2 py-0.5">
                       <Star size={9} /> 维护者精选
                     </span>
                   )}
                   {isAdded && (
-                    <span className="flex items-center gap-0.5 text-[10px] text-emerald-300 bg-emerald-400/10 border border-emerald-300/25 rounded-full px-2 py-0.5">
+                    <span data-store-badge="added" className="flex items-center gap-0.5 text-[10px] text-emerald-300 bg-emerald-400/10 border border-emerald-300/25 rounded-full px-2 py-0.5">
                       <Check size={9} /> 已在主页
                     </span>
                   )}
@@ -311,10 +347,20 @@ export default function WidgetStorePage({
             </div>
           </div>
 
-          <div data-store-preview className="rounded-[24px] bg-[#17171d] border border-white/12 p-4">
+          <div
+            ref={previewGlass.ref}
+            style={previewGlass.style}
+            data-store-preview
+            className="store-panel rounded-[24px] bg-[#17171d] border border-white/12 p-4"
+          >
             <div className="flex items-center justify-between gap-2 mb-3">
-              <p className="text-xs font-medium text-white/60">实时预览（组件本体）</p>
-              <span data-store-size-label className="text-[11px] text-indigo-200 bg-indigo-500/15 border border-indigo-400/40 rounded-full px-2 py-0.5">
+              <p className={`text-xs font-medium ${light ? 'text-black/60' : 'text-white/60'}`}>实时预览（组件本体）</p>
+              <span
+                data-store-size-label
+                className={`text-[11px] rounded-full px-2 py-0.5 border ${
+                  light ? 'text-indigo-700 bg-indigo-600/10 border-indigo-500/35' : 'text-indigo-200 bg-indigo-500/15 border-indigo-400/40'
+                }`}
+              >
                 当前尺寸：{widgetSizeLabel(activeSize)}
               </span>
             </div>
@@ -327,15 +373,21 @@ export default function WidgetStorePage({
                 layout={activeSize}
               />
             </PreviewStage>
-            <p className="text-[10px] text-white/30 mt-2.5">预览只展示、不响应点击；添加后在主页里正常使用。</p>
+            <p className={`text-[10px] mt-2.5 ${light ? 'text-black/40' : 'text-white/30'}`}>预览只展示、不响应点击；添加后在主页里正常使用。</p>
           </div>
         </section>
       </div>
 
-      {/* 底部全宽操作条：尺寸选择（与预览联动） + 添加/移除 */}
+      {/* 底部全宽操作条：尺寸选择（与预览联动） + 添加/移除。
+          悬浮只限 ≥sm（sticky 吸底 + 深影，第74轮桌面呈现）；手机端回普通文档流排在
+          内容末尾、随页滚动、不遮挡预览（第七十七轮追加修正，用户：「手机看悬浮了，
+          不用做悬浮」）——故 sticky/bottom/z/深影全部收进 sm: 前缀，<sm 无任何定位类。
+          本页没有为悬浮预留过额外底部 padding/占位（sticky 本就占自身文档位），无需清理。 */}
       <div
+        ref={barGlass.ref}
+        style={barGlass.style}
         data-store-actionbar
-        className="rounded-[24px] bg-[#17171d] border border-white/12 px-3 py-3 sm:px-4 flex items-center gap-2.5 flex-wrap sticky bottom-3 z-10 shadow-2xl shadow-black/50"
+        className="group-card-scope store-panel rounded-[24px] bg-[#17171d] border border-white/12 px-3 py-3 sm:px-4 flex items-center gap-2.5 flex-wrap sm:sticky sm:bottom-3 sm:z-10 sm:shadow-2xl sm:shadow-black/50"
       >
         <span className="text-xs text-white/50 shrink-0">{isAdded ? '主页尺寸' : '添加尺寸'}</span>
         <div className="flex gap-1.5 flex-wrap">
@@ -358,7 +410,7 @@ export default function WidgetStorePage({
         </div>
         <div className="flex-1" />
         {justAdded === def.id && (
-          <span data-store-added-note className="flex items-center gap-1 text-xs text-emerald-300">
+          <span data-store-added-note data-store-badge="added" className="flex items-center gap-1 text-xs text-emerald-300">
             <Check size={13} /> 已添加到主页
           </span>
         )}
