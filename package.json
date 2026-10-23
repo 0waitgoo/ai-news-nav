@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "build:ext": "VITE_ZABOX_EXT=1 VITE_API_BASE=https://news.hiitun01.top vite build --config vite.config.ext.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
