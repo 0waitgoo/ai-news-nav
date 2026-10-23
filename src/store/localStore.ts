@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  cleanSiteTag,
+  cleanSiteTags,
   findMappedLogo,
   navGroups,
   siteLogoFallback,
@@ -548,17 +548,21 @@ function ensureSiteIds(groups: NavGroup[]): NavGroup[] {
 }
 
 /**
- * 站点标签迁移（第二十六轮，种子与校验共用，就地修改）：
- * 已存 tag 先清洗（仅英文字母/大写/≤4）；无合法 tag 但带旧 needVpn 标记的迁移为 tag='VPN'，
- * 此后徽标只认 tag；两者皆无则删字段（无标签不显示徽标）。
+ * 站点标签迁移（第二十六轮单标签；第七十六轮改多标签，种子与校验共用，就地修改）：
+ * 新字段 tags 优先逐项清洗（仅英文字母/大写/≤4、去重、最多 2 个）；无 tags 时读旧单字段 tag
+ * 迁成单元素数组；两者皆无但带更旧的 needVpn 标记 → ['VPN']。迁移后旧字段 tag 一律删除，
+ * 此后徽标只认 tags；无标签则删字段（不显示徽标）。
+ * 本函数在种子生成、本地加载校验、导入/同步校验三处都会跑，老格式（含云端旧文件）自动无损升级。
  */
 function migrateSiteTags(groups: NavGroup[]): NavGroup[] {
   for (const group of groups) {
     for (const site of group.sites) {
-      const cleaned = cleanSiteTag(site.tag);
-      if (cleaned) site.tag = cleaned;
-      else if (site.needVpn) site.tag = 'VPN';
-      else delete site.tag;
+      let tags = cleanSiteTags(site.tags);
+      if (!tags.length) tags = cleanSiteTags(site.tag);
+      if (!tags.length && site.needVpn) tags = ['VPN'];
+      if (tags.length) site.tags = tags;
+      else delete site.tags;
+      delete site.tag;
     }
   }
   return groups;
@@ -754,8 +758,8 @@ export interface SiteDraft {
   /** 别名：表单已无编辑入口（第二十六轮），编辑时由表单原样回传既有别名，不清除 */
   aliases: string[];
   pinned: boolean;
-  /** 站点标签（第二十六轮）：空字符串 = 无标签，落盘前经 cleanSiteTag 清洗 */
-  tag: string;
+  /** 站点标签（第二十六轮单标签；第七十六轮多标签）：最多 2 个，落盘前经 cleanSiteTags 清洗 */
+  tags: string[];
   /** 图标来源（第四十九轮）：auto = 自动管线；text = iconText 字母图；upload = iconImage 上传图 */
   iconMode: 'auto' | 'text' | 'upload';
   iconText: string;
@@ -807,7 +811,7 @@ export function useLocalStore() {
         const group = d.groups.find((g) => g.id === groupId);
         if (group) {
           const minFreq = group.sites.reduce((min, s) => Math.min(min, s.frequency), 0);
-          const tag = cleanSiteTag(draft.tag);
+          const tags = cleanSiteTags(draft.tags);
           const site: SiteEntry = {
             id: genId('s'),
             name: draft.name,
@@ -817,7 +821,7 @@ export function useLocalStore() {
             aliases: draft.aliases,
             pinned: draft.pinned,
             frequency: Math.min(0, minFreq) - 1,
-            ...(tag ? { tag } : {}),
+            ...(tags.length ? { tags } : {}),
           };
           applyDraftIcon(site, draft);
           group.sites.push(site);
@@ -844,10 +848,11 @@ export function useLocalStore() {
           // 没带回则维持既有 logo，不再每次保存都无条件重算（图标已可手动管理）
           site.logo = draft.autoLogo || site.logo || logoForSite(draft.name, draft.url);
           applyDraftIcon(site, draft);
-          // 标签：清洗后落盘，清空输入即移除标签（徽标随之消失）
-          const tag = cleanSiteTag(draft.tag);
-          if (tag) site.tag = tag;
-          else delete site.tag;
+          // 标签：清洗后落盘（最多 2 个），全不选即移除标签（徽标随之消失）；旧单字段一并清掉
+          const tags = cleanSiteTags(draft.tags);
+          if (tags.length) site.tags = tags;
+          else delete site.tags;
+          delete site.tag;
           /* 置顶状态变化时换区落位（第三十八轮，配合区内拖动排序的分区模型）：
            * 新置顶 → 进置顶区末尾；取消置顶 → 进普通区开头。其余编辑不改变位置。 */
           if (!!draft.pinned !== wasPinned) {
