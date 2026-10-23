@@ -15,6 +15,7 @@ import {
 } from '../../store/localStore';
 import { AiView, PlansSection, TasksSection } from './TaskSections';
 import WidgetTintLayer from './WidgetTint';
+import { useGlassBackdrop } from './GlassSurface';
 
 /**
  * A 型 · 计划任务卡（第十八轮，替换原「今日任务」占位卡；第十九轮加待办分组）
@@ -112,16 +113,23 @@ export default function TaskCard({
    * 水印单独调低（第五十二轮）：2x 时 📋 正压在长期计划区，0.16 会干扰阅读，降到 0.1 */
   const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="📋" watermarkOpacity={0.1} /> : null;
 
+  /* 第七十八轮：基底改与编组卡同款的面（.widget-panel + .group-card-scope 翻字作用域，
+   * 见 index.css）；1x/2x 两壳互斥渲染，各挂一份玻璃折射 hook（圆角同为 28px） */
+  const glassFull = useGlassBackdrop<HTMLDivElement>(28);
+  const glassMini = useGlassBackdrop<HTMLDivElement>(28);
+
   /* ---------- 高 2x：全功能卡面（双列内容与原面板同一套组件；头部 AI 整理切换卡内视图） ---------- */
   if (heightUnits === 2) {
     return (
       <motion.div
+        ref={glassFull.ref}
+        style={glassFull.style}
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, delay }}
         data-task-card
         data-task-mode="full"
-        className="glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
+        className="group-card-scope widget-panel widget-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
       >
         {tintLayer}
         <div className="relative flex flex-col flex-1 min-h-0">
@@ -184,12 +192,14 @@ export default function TaskCard({
   /* ---------- 高 1x：简洁卡面（只展示与勾选；点标题展开全文，不再打开任何面板） ---------- */
   return (
     <motion.div
+      ref={glassMini.ref}
+      style={glassMini.style}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay }}
       data-task-card
       data-task-face={face}
-      className="glass-panel glass-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
+      className="group-card-scope widget-panel widget-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
     >
       {tintLayer}
       <div className="relative flex flex-col flex-1 min-h-0">

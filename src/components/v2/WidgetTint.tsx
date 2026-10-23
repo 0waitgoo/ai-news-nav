@@ -12,6 +12,11 @@ import { useDisplayPrefs } from '../../store/displayPrefs';
  * 第六十轮：滑杆拆分——tint 强度改吃独立字段 displayPrefs.widgetAlpha（背景面板「小组件底色
  * 不透明度」滑杆），与编组卡滑杆彻底解耦；旧耦合公式只留在 displayPrefs 里作老用户迁移推导。
  * 水印不透明度不随滑杆变（仍走 watermarkOpacity）。卡片与面板共用本组件，渲染口径一致。
+ * 第七十八轮（用户定版「底色跟随整体变化」）：底色拆两层——基底改与编组卡同款的面
+ * （.widget-panel：同底色变量/同透明度归属/同玻璃折射，见 index.css 与各卡壳），本层
+ * 只剩「专属色渐变 + 水印」的颜色身份职责；widgetAlpha 的唯一职责从此是本渐变层的浓淡
+ * （整层 opacity），不再决定卡面透不透。渐变色值与峰值（约 16%/9%/4%）不变——旧观感
+ * 之所以「拉满还淡」，病根在旧基底是写死 0.4 的玻璃壳、页面背景直透，与本层无关。
  */
 export default function WidgetTintLayer({
   tint,
