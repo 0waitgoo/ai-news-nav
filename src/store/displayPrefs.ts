@@ -30,7 +30,10 @@ export interface DisplayPrefs {
   theme: DisplayTheme;
   /** 编组卡（B/C/组合卡）底框不透明度 0–1；默认 0.4 = 改版前的 rgba(30,30,35,0.4) */
   groupCardAlpha: number;
-  /** 小组件（资讯/话题/榜单/计划）底色 tint 不透明度 0–1（第六十轮新增，与编组卡滑杆解耦） */
+  /** 小组件专属色渐变层的浓淡 0–1（第六十轮新增，与编组卡滑杆解耦）。
+   *  第七十八轮语义定版：只管渐变浓淡，不再决定卡面透不透——小组件基底已改与
+   *  编组卡同款的面（.widget-panel），其透明度归 groupCardAlpha 那套，两根滑杆
+   *  分工为「基底归整体外观、颜色归本滑杆」。字段名与存档口径不变，无迁移。 */
   widgetAlpha: number;
   /** 本地图片背景的模糊强度 0–1（第六十二轮新增）；经 bgBlurPx 换算成 backdrop blur 像素，默认 0.3 = 旧写死值 6px */
   bgBlur: number;
