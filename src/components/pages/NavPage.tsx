@@ -135,6 +135,30 @@ const toolsByCategory = {
     { name: 'Grammarly', logo: getLogo('Grammarly'), description: 'AI英文写作助手', url: 'https://www.grammarly.com', needVpn: true },
     { name: 'QuillBot', logo: getLogo('QuillBot'), description: 'AI英文改写润色工具', url: 'https://quillbot.com', needVpn: true },
   ],
+  'AI翻译': [
+    { name: 'DeepL', logo: getLogo('DeepL'), description: 'AI翻译工具，译文自然流畅', url: 'https://www.deepl.com', needVpn: true },
+    { name: '百度翻译', logo: getLogo('百度翻译'), description: '百度旗下AI翻译平台', url: 'https://fanyi.baidu.com', needVpn: false },
+    { name: '有道翻译', logo: getLogo('有道翻译'), description: '网易有道AI翻译工具', url: 'https://fanyi.youdao.com', needVpn: false },
+    { name: '腾讯翻译君', logo: getLogo('腾讯翻译君'), description: '腾讯AI翻译工具', url: 'https://fanyi.qq.com', needVpn: false },
+  ],
+  'AI设计': [
+    { name: 'Canva可画', logo: getLogo('Canva可画'), description: '在线设计平台，海量模板素材', url: 'https://www.canva.cn', needVpn: false },
+    { name: '稿定设计', logo: getLogo('稿定设计'), description: '在线平面设计平台', url: 'https://www.gaoding.com', needVpn: false },
+    { name: '即时设计', logo: getLogo('即时设计'), description: '国产在线协作设计工具', url: 'https://js.design', needVpn: false },
+    { name: 'Figma', logo: getLogo('Figma'), description: '在线协作UI设计工具', url: 'https://www.figma.com', needVpn: true },
+    { name: '创客贴', logo: getLogo('创客贴'), description: '在线平面设计工具，模板丰富', url: 'https://www.chuangkit.com', needVpn: false },
+  ],
+  'AI办公': [
+    { name: 'Beautiful.ai', logo: getLogo('Beautiful.ai'), description: 'AI驱动的PPT制作平台', url: 'https://www.beautiful.ai', needVpn: true },
+    { name: 'Prezi', logo: getLogo('Prezi'), description: '非线性动态演示文稿工具', url: 'https://prezi.com', needVpn: true },
+    { name: 'ProcessOn', logo: getLogo('ProcessOn'), description: '在线流程图与思维导图工具', url: 'https://www.processon.com', needVpn: false },
+    { name: 'WPS云文档', logo: getLogo('WPS云文档'), description: '金山在线协作文档平台', url: 'https://www.wps.cn', needVpn: false },
+  ],
+  'AI开放平台': [
+    { name: '百度AI', logo: getLogo('百度AI'), description: '百度AI开放平台', url: 'https://ai.baidu.com', needVpn: false },
+    { name: '腾讯AI', logo: getLogo('腾讯AI'), description: '腾讯AI开放平台', url: 'https://ai.qq.com', needVpn: false },
+    { name: '讯飞开放平台', logo: getLogo('讯飞开放平台'), description: '科大讯飞AI技术开放平台', url: 'https://www.xfyun.cn', needVpn: false },
+  ],
 };
 
 function NavPage() {
