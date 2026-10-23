@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 /**
- * 软件榜数据自动更新脚本
- * 从 Product Hunt API 获取最新 AI 产品数据
- * 
- * 使用方法:
- * node scripts/update-ranking.js
- * 
- * 数据来源:
- * - Product Hunt (AI分类热门产品)
- * 
- * 需要设置环境变量:
- * PRODUCT_HUNT_TOKEN=your_developer_token
+ * 软件榜数据自动更新脚本（第九十五轮重写）
+ *
+ * 数据来源：Product Hunt（https://www.producthunt.com）真实榜单数据。
+ * 取数路径：官方 GraphQL API（需 PRODUCT_HUNT_TOKEN，配置在仓库 Secrets），
+ * 取本周（ISO 周）发布产品按真实 votesCount 排序。
+ * 无 token / API 失败时直接退出（exit 1），绝不写入任何兜底/编造数据，
+ * 仓库里保留上一版数据文件，GitHub Actions 会标红提醒人工介入。
+ * （第九十五轮实测：PH 网页端已不内嵌产品票数，抓页面拿不到可靠 votes，
+ *   故不设网页抓取兜底，避免把讨论帖票数误安到产品头上。）
+ *
+ * 历史教训（第九十五轮审计）：旧脚本在无 token 时会把写死的 FALLBACK_DATA
+ * （「1.8亿票」「4.8 分」等编造数字）落盘冒充 Product Hunt 数据，已整段删除。
+ *
+ * 使用方法：node scripts/update-ranking.js
+ * 可选环境变量：PRODUCT_HUNT_TOKEN=<redacted> Hunt API token（GitHub Actions Secret）
  */
 
 import fs from 'fs';
+import { env } from 'node:process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -21,246 +26,154 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PRODUCT_HUNT_API = 'https://api.producthunt.com/v2/api/graphql';
-const PRODUCT_HUNT_TOKEN = process.env.PRODUCT_HUNT_TOKEN;
+const PRODUCT_HUNT_TOKEN = env['PRODUCT_HUNT_TOKEN'] || '';
 
-// AI 相关话题/分类的关键词
+// AI 相关话题/分类的关键词（沿用旧口径：榜单只收 AI 相关产品，过滤后不足时放宽用全部）
 const AI_KEYWORDS = ['AI', 'artificial intelligence', 'machine learning', 'chatbot', 'GPT', 'LLM', 'generative'];
 
-// 获取 Product Hunt 热门产品的 GraphQL 查询
-const GET_POPULAR_POSTS_QUERY = `
-  query GetPopularPosts($first: Int!) {
-    posts(first: $first, order: POPULARITY) {
+/** 本周一 00:00 UTC（ISO 周起点） */
+function startOfWeekUTC(from = new Date()) {
+  const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+  const dow = (d.getUTCDay() + 6) % 7; // 周一 = 0
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d;
+}
+
+function isAIProduct(product) {
+  const text = `${product.name} ${product.tagline || ''} ${(product.topics || []).join(' ')}`.toLowerCase();
+  return AI_KEYWORDS.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+/** 统一收口：过滤 → 同名去重 → AI 筛选 → 按真实票数降序 → 取前 20（rank 为排序序号） */
+function finalize(products, method) {
+  let list = products.filter((p) => p && p.name && typeof p.votes === 'number');
+  const seen = new Set();
+  list = list.filter((p) => (seen.has(p.name) ? false : (seen.add(p.name), true)));
+
+  const aiList = list.filter(isAIProduct);
+  const chosen = aiList.length >= 6 ? aiList : list;
+  if (aiList.length < 6) {
+    console.log(`⚠️ AI 相关产品仅 ${aiList.length} 条，放宽口径使用全部 ${list.length} 条`);
+  }
+
+  const items = [...chosen]
+    .sort((a, b) => b.votes - a.votes)
+    .slice(0, 20)
+    .map((p, i) => {
+      const item = {
+        rank: i + 1,
+        name: p.name,
+        tagline: p.tagline || '',
+        votes: p.votes,
+        url: p.url || 'https://www.producthunt.com/',
+      };
+      if (typeof p.commentsCount === 'number') item.commentsCount = p.commentsCount;
+      if (Array.isArray(p.topics) && p.topics.length) item.topics = p.topics;
+      return item;
+    });
+
+  return {
+    items,
+    meta: {
+      source: 'Product Hunt',
+      period: 'week',
+      method,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+/* ---------------- 路径 1：GraphQL API（有 token 时） ---------------- */
+
+const GET_POSTS_QUERY = `
+  query GetWeekPosts($first: Int!, $postedAfter: DateTime) {
+    posts(first: $first, order: POPULARITY, postedAfter: $postedAfter) {
       edges {
         node {
-          id
           name
           tagline
-          description
           url
+          website
           votesCount
           commentsCount
-          reviewsRating
-          reviewsCount
-          thumbnail {
-            url
-          }
-          topics {
-            edges {
-              node {
-                name
-              }
-            }
-          }
-          makers {
-            name
-          }
-          website
-          createdAt
+          topics { edges { node { name } } }
         }
       }
     }
   }
 `;
 
-// 从 Product Hunt 获取数据
-async function fetchFromProductHunt() {
-  console.log('🔍 检查环境变量...');
-  console.log('PRODUCT_HUNT_TOKEN 是否存在:', !!PRODUCT_HUNT_TOKEN);
-  
+async function fetchViaGraphQL() {
   if (!PRODUCT_HUNT_TOKEN) {
-    console.log('⚠️ 未设置 PRODUCT_HUNT_TOKEN 环境变量，使用备用数据');
+    console.log('ℹ️ 未设置 PRODUCT_HUNT_TOKEN，跳过 GraphQL 路径');
     return null;
   }
-
-  try {
-    console.log('🚀 正在从 Product Hunt 获取数据...');
-    console.log('API 地址:', PRODUCT_HUNT_API);
-    
-    // 获取热门产品
-    const response = await fetch(PRODUCT_HUNT_API, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${PRODUCT_HUNT_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        query: GET_POPULAR_POSTS_QUERY,
-        variables: { first: 50 }
-      })
-    });
-
-    console.log('📡 API 响应状态:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ HTTP 错误响应:', errorText);
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    if (data.errors) {
-      console.error('❌ GraphQL 错误:', JSON.stringify(data.errors, null, 2));
-      throw new Error(`GraphQL error: ${JSON.stringify(data.errors)}`);
-    }
-
-    const posts = data.data?.posts?.edges?.map(edge => edge.node) || [];
-    console.log(`✅ 成功获取 ${posts.length} 个产品`);
-    
-    return posts;
-  } catch (error) {
-    console.error('❌ 获取 Product Hunt 数据失败:', error.message);
-    console.error('错误详情:', error);
-    return null;
-  }
-}
-
-// 判断是否为 AI 相关产品
-function isAIProduct(product) {
-  const text = `${product.name} ${product.tagline} ${product.description || ''}`.toLowerCase();
-  const topics = product.topics?.edges?.map(e => e.node.name.toLowerCase()) || [];
-  
-  return AI_KEYWORDS.some(keyword => 
-    text.includes(keyword.toLowerCase()) || 
-    topics.some(t => t.includes(keyword.toLowerCase()))
-  );
-}
-
-// 将 Product Hunt 数据转换为我们的格式
-function transformProductHuntData(products) {
-  if (!products || products.length === 0) {
-    console.log('⚠️ 没有获取到产品数据');
-    return null;
-  }
-
-  // 筛选 AI 相关产品
-  const aiProducts = products.filter(isAIProduct);
-  
-  console.log(`🤖 筛选出 ${aiProducts.length} 个 AI 相关产品`);
-  
-  if (aiProducts.length === 0) {
-    console.log('⚠️ 未找到 AI 相关产品，使用全部产品');
-    // 如果没有 AI 相关产品，使用前 20 个
-    aiProducts.push(...products.slice(0, 20));
-  }
-
-  return aiProducts.slice(0, 20).map((product, index) => {
-    // 从 topics 中提取分类
-    const topics = product.topics?.edges?.map(e => e.node.name) || [];
-    const category = topics.find(t => 
-      ['Chatbot', 'AI', 'Productivity', 'Developer Tools', 'Design', 'Marketing'].includes(t)
-    ) || 'AI工具';
-
-    // 格式化数据
-    return {
-      id: parseInt(product.id) || index + 1,
-      name: product.name,
-      category: category,
-      rating: product.reviewsRating ? Math.round(product.reviewsRating * 10) / 10 : 4.5,
-      ratingScale: 5,
-      reviewCount: product.reviewsCount ? `${product.reviewsCount}条评价` : '暂无评价',
-      usageMetric: 'Product Hunt 投票',
-      usageValue: `${product.votesCount || 0}票`,
-      dataPeriod: new Date().toISOString().split('T')[0],
-      url: product.website || product.url,
-      description: product.tagline || product.description || '',
-      rank: index + 1,
-      phUrl: product.url, // Product Hunt 页面链接
-      commentsCount: product.commentsCount || 0
-    };
+  console.log('🚀 正在从 Product Hunt GraphQL API 获取本周数据...');
+  const res = await fetch(PRODUCT_HUNT_API, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${PRODUCT_HUNT_TOKEN}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      query: GET_POSTS_QUERY,
+      variables: { first: 50, postedAfter: startOfWeekUTC().toISOString() },
+    }),
   });
+  if (!res.ok) throw new Error(`GraphQL HTTP ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  if (data.errors) throw new Error(`GraphQL error: ${JSON.stringify(data.errors)}`);
+  const posts = (data.data?.posts?.edges || []).map((e) => e.node);
+  console.log(`✅ GraphQL 返回 ${posts.length} 条`);
+  return posts.map((p) => ({
+    name: p.name,
+    tagline: p.tagline || '',
+    votes: p.votesCount || 0,
+    url: p.website || p.url,
+    commentsCount: p.commentsCount || 0,
+    topics: (p.topics?.edges || []).map((e) => e.node.name),
+  }));
 }
 
-// 备用数据（当 API 不可用时）
-const FALLBACK_DATA = [
-  { id: 1, name: 'ChatGPT', category: '聊天机器人', rating: 4.8, ratingScale: 5, reviewCount: '12.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1.8亿票', dataPeriod: '2026年2月', url: 'https://chat.openai.com', description: 'OpenAI推出的AI对话助手' },
-  { id: 2, name: 'Claude', category: '聊天机器人', rating: 4.7, ratingScale: 5, reviewCount: '8.3万条评价', usageMetric: 'Product Hunt 投票', usageValue: '5200万票', dataPeriod: '2026年2月', url: 'https://claude.ai', description: 'Anthropic推出的AI助手' },
-  { id: 3, name: 'DeepSeek', category: '聊天机器人', rating: 4.6, ratingScale: 5, reviewCount: '4.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '3500万票', dataPeriod: '2026年2月', url: 'https://deepseek.com', description: '深度求索AI助手' },
-  { id: 4, name: 'Kimi', category: '聊天机器人', rating: 4.5, ratingScale: 5, reviewCount: '3.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1800万票', dataPeriod: '2026年2月', url: 'https://kimi.moonshot.cn', description: '月之暗面AI助手' },
-  { id: 5, name: 'Gemini', category: '聊天机器人', rating: 4.5, ratingScale: 5, reviewCount: '6.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '3800万票', dataPeriod: '2026年2月', url: 'https://gemini.google.com', description: 'Google AI助手' },
-  { id: 6, name: '豆包', category: '聊天机器人', rating: 4.4, ratingScale: 5, reviewCount: '2.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '950万票', dataPeriod: '2026年2月', url: 'https://www.doubao.com', description: '字节跳动AI助手' },
-  { id: 7, name: '文心一言', category: '聊天机器人', rating: 4.3, ratingScale: 5, reviewCount: '5.6万条评价', usageMetric: 'Product Hunt 投票', usageValue: '1200万票', dataPeriod: '2026年2月', url: 'https://yiyan.baidu.com', description: '百度AI助手' },
-  { id: 8, name: '通义千问', category: '聊天机器人', rating: 4.2, ratingScale: 5, reviewCount: '3.5万条评价', usageMetric: 'Product Hunt 投票', usageValue: '850万票', dataPeriod: '2026年2月', url: 'https://tongyi.aliyun.com', description: '阿里云AI助手' },
-  { id: 9, name: '腾讯混元', category: '聊天机器人', rating: 4.3, ratingScale: 5, reviewCount: '2.1万条评价', usageMetric: 'Product Hunt 投票', usageValue: '680万票', dataPeriod: '2026年2月', url: 'https://hunyuan.tencent.com', description: '腾讯AI大模型' },
-  { id: 10, name: 'Midjourney', category: '图像生成', rating: 4.7, ratingScale: 5, reviewCount: '3.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '2800万票', dataPeriod: '2026年2月', url: 'https://www.midjourney.com', description: 'AI图像生成工具' },
-  { id: 11, name: 'Suno', category: '音频生成', rating: 4.5, ratingScale: 5, reviewCount: '2.9万条评价', usageMetric: 'Product Hunt 投票', usageValue: '2200万票', dataPeriod: '2026年2月', url: 'https://suno.com', description: 'AI音乐生成工具' },
-  { id: 12, name: 'Copilot', category: '代码编程', rating: 4.4, ratingScale: 5, reviewCount: '4.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '620万票', dataPeriod: '2026年2月', url: 'https://copilot.microsoft.com', description: '微软AI编程助手' },
-  { id: 13, name: 'Cursor', category: '代码编程', rating: 4.6, ratingScale: 5, reviewCount: '1.8万条评价', usageMetric: 'Product Hunt 投票', usageValue: '550万票', dataPeriod: '2026年2月', url: 'https://cursor.sh', description: 'AI代码编辑器' },
-  { id: 14, name: 'Perplexity', category: 'AI搜索', rating: 4.6, ratingScale: 5, reviewCount: '5.2万条评价', usageMetric: 'Product Hunt 投票', usageValue: '4800万票', dataPeriod: '2026年2月', url: 'https://www.perplexity.ai', description: 'AI搜索引擎' },
-];
+/* ---------------- 主流程 ---------------- */
 
-// 生成新的数据文件内容
-function generateDataFile(data) {
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  
-  // 如果没有获取到数据，使用备用数据
-  const finalData = data || FALLBACK_DATA.map((item, index) => ({
-    ...item,
-    rank: index + 1
-  }));
+function generateDataFile({ items, meta }) {
+  return `// AI软件排行榜 - Product Hunt 本周真实榜单（自动生成，请勿手改）
+// 数据来源: Product Hunt (https://www.producthunt.com)，votes 为源站真实票数
+// 更新周期: 每周一由 GitHub Actions 运行 scripts/update-ranking.js 更新
+// 取数路径: ${meta.method}，生成时间: ${meta.generatedAt}
 
-  return `// AI软件排行榜 (${dateStr} 自动更新)
-// 数据来源: Product Hunt (https://www.producthunt.com)
-// 更新周期: 每周一自动更新
-// 自动生成时间: ${now.toISOString()}
+export const softwareRankingData = ${JSON.stringify(items, null, 2)};
 
-export const softwareRankingData = ${JSON.stringify(finalData, null, 2)};
+export const rankingMeta = ${JSON.stringify(meta, null, 2)};
 `;
 }
 
-// 主函数
-async function updateRanking() {
+async function main() {
+  console.log('🚀 开始更新软件榜数据（Product Hunt 本周真实票数）...');
+  let result = null;
+
   try {
-    console.log('🚀 开始更新软件榜数据...');
-    console.log('⏰ 当前时间:', new Date().toLocaleString('zh-CN'));
-    console.log('📊 数据来源: Product Hunt');
-    console.log('Node.js 版本:', process.version);
-    
-    // 从 Product Hunt 获取数据
-    const rawData = await fetchFromProductHunt();
-    
-    // 转换数据格式
-    const transformedData = rawData ? transformProductHuntData(rawData) : null;
-    
-    // 生成新的数据文件
-    const newContent = generateDataFile(transformedData);
-    
-    // 写入文件
-    const outputPath = path.join(__dirname, '../api/ranking-data.js');
-    fs.writeFileSync(outputPath, newContent, 'utf8');
-    
-    console.log('✅ 数据更新完成！');
-    console.log('📊 更新条目数:', transformedData ? transformedData.length : FALLBACK_DATA.length);
-    console.log('💾 文件保存路径:', outputPath);
-    console.log('📝 数据日期:', new Date().toISOString().split('T')[0]);
-    
-    if (!PRODUCT_HUNT_TOKEN) {
-      console.log('\n⚠️ 提示: 设置 PRODUCT_HUNT_TOKEN 环境变量以获取实时数据');
-      console.log('   获取方式: https://www.producthunt.com/v2/oauth/applications');
-    }
-    
-    return {
-      success: true,
-      count: transformedData ? transformedData.length : FALLBACK_DATA.length,
-      timestamp: new Date().toISOString(),
-      source: transformedData ? 'Product Hunt API' : 'Fallback Data'
-    };
-    
-  } catch (error) {
-    console.error('❌ 更新失败:', error.message);
-    console.error('错误堆栈:', error.stack);
+    const viaApi = await fetchViaGraphQL();
+    if (viaApi && viaApi.length) result = finalize(viaApi, 'graphql');
+  } catch (e) {
+    console.error('❌ GraphQL 路径失败:', e.message);
+  }
+
+  if (!result || result.items.length === 0) {
+    console.error('❌ 未能取得真实榜单数据：不写入任何数据，保留上一版文件，等待人工处理。');
+    console.error('   若为 token 问题：请在仓库 Settings → Secrets 配置 PRODUCT_HUNT_TOKEN 后手动重跑 workflow。');
     process.exit(1);
   }
+
+  const outputPath = path.join(__dirname, '../api/ranking-data.js');
+  fs.writeFileSync(outputPath, generateDataFile(result), 'utf8');
+  console.log(`✅ 已写入 ${result.items.length} 条真实榜单（路径: ${result.meta.method}）→ ${outputPath}`);
+  console.log(`   第 1 名: ${result.items[0].name}（${result.items[0].votes} 票）`);
 }
 
-// 运行更新
-updateRanking().then(result => {
-  console.log('\n🎉 软件榜数据更新成功！');
-  console.log('数据来源:', result.source);
-  console.log('下次更新时间: 下周一凌晨 2:00');
-}).catch(error => {
-  console.error('更新失败:', error);
+main().catch((e) => {
+  console.error('❌ 更新失败:', e);
   process.exit(1);
 });
