@@ -4,7 +4,7 @@ import { Pin, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { GROUP_NAME_MAX, siteIconSrc, sortSites, textCharCount, type NavGroup } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
-import GroupExpandedBody, { SiteTagBadge } from './GroupExpanded';
+import GroupExpandedBody, { SiteTagBadges } from './GroupExpanded';
 import { useGlassBackdrop } from './GlassSurface';
 import SwipeableRow from './SwipeableRow';
 
@@ -276,15 +276,16 @@ export default function GroupListCard({
                     <SiteLogo logo={siteIconSrc(site)} name={site.name} size={34} imgSize={23} grayscale={site.dead} />
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-1.5">
-                        <span className={`text-[13px] font-semibold truncate ${site.dead ? 'text-white/45' : ''}`}>{site.name}</span>
+                        <span className={`text-[13px] font-semibold truncate min-w-0 ${site.dead ? 'text-white/45' : ''}`}>{site.name}</span>
                         {site.pinned && <Pin size={11} className="text-amber-400 fill-amber-400 shrink-0" />}
+                        {/* 标签徽标（第七十六轮）：从行尾挪到名字正后方、与图钉同区，最多 2 个 */}
+                        <SiteTagBadges site={site} />
                         {site.dead && (
                           <span className="text-[9px] font-medium text-red-300 bg-red-500/15 px-1.5 py-0.5 rounded shrink-0">失效</span>
                         )}
                       </span>
                       <span className="block text-[11px] text-white/45 truncate mt-0.5">{site.description}</span>
                     </span>
-                    <SiteTagBadge site={site} />
                   </button>
                 )}
               </SwipeableRow>

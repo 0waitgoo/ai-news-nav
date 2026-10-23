@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, Pin, Plus, Trash2, Check } from 'lucide-react';
-import { GROUP_NAME_MAX, GROUP_TAB_COLORS, cleanSiteTag, siteIconSrc, sortSites, textCharCount, type NavGroup, type SiteEntry } from '../../data/groups';
+import { GROUP_NAME_MAX, GROUP_TAB_COLORS, siteIconSrc, siteTags, sortSites, textCharCount, type NavGroup, type SiteEntry } from '../../data/groups';
 import type { LocalStore } from '../../store/localStore';
 import { SiteLogo } from './Card';
-import { SiteForm, SiteTagBadge } from './GroupExpanded';
+import { SiteForm, SiteTagBadges } from './GroupExpanded';
 import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteContextMenu';
 import { SITE_DRAG_PLACEHOLDER_STYLE, useSiteDragSort } from './useSiteDragSort';
 
@@ -317,10 +317,12 @@ export function GroupPanelSection({
                 className="relative flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white/[0.05] hover:bg-white/10 border border-white/5 transition-colors"
               >
                 {site.pinned && <Pin size={10} className="absolute top-1.5 left-1.5 text-amber-400 fill-amber-400 z-10" />}
-                {/* 站点标签徽标（第二十六轮）：与 B 卡行同一来源（tag），置于瓷砖右上角 */}
-                {cleanSiteTag(site.tag) && (
-                  <span className="absolute top-1.5 right-1.5 z-10">
-                    <SiteTagBadge site={site} />
+                {/* 站点标签徽标（第二十六轮；第七十六轮多标签）：与 B 卡行同一来源（tags）。
+                    瓷砖是竖排居中布局（图标在上、名字在下居中截断），名字后方没有横向空间，
+                    故保留第四十九轮定版的右上角徽标带（图标已下移避让），双标签在此纵向叠放、右对齐 */}
+                {siteTags(site).length > 0 && (
+                  <span className="absolute top-1.5 right-1.5 z-10 flex flex-col items-end gap-1">
+                    <SiteTagBadges site={site} />
                   </span>
                 )}
                 <button

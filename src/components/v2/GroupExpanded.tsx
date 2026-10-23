@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Pin, Plus, Check, X, RefreshCw, Upload } from 'lucide-react';
-import { SITE_TAG_MAX, cleanSiteTag, letterIconDataUri, siteIconSrc, siteLogoFallback, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
+import { SITE_TAG_MAX, SITE_TAGS_MAX_COUNT, cleanSiteTag, cleanSiteTags, letterIconDataUri, siteIconSrc, siteLogoFallback, siteTags, sortSites, type NavGroup, type SiteEntry } from '../../data/groups';
 import { logoForSite, type LocalStore, type SiteDraft } from '../../store/localStore';
 import { SiteLogo } from './Card';
 import SiteContextMenu, { siteMenuPosition, type SiteMenuState } from './SiteContextMenu';
@@ -15,7 +15,8 @@ export const SITE_DESC_MAX = 40;
  * 站点标签预设与配色（第三十九轮）：三个写死预设 + 自定义标签。
  * 预设值落盘为大写（VPN / APP / MARK），按钮文字用 VPN / App / Mark；
  * 徽标与表单预设按钮共用同一套色（底/字/边同色系半透明），自定义标签走灰色。
- * 所有渲染 tag 徽标的地方（B 卡收起/展开行、弹窗瓷砖）都经 SiteTagBadge 走 siteTagBadgeCls，不要各处写死颜色。
+ * 所有渲染 tag 徽标的地方（B 卡收起/展开行、弹窗瓷砖）都经 SiteTagBadges 走 siteTagBadgeCls，不要各处写死颜色。
+ * 第七十六轮起每站最多 2 个标签（tags 数组），徽标一律紧贴站点名之后展示。
  */
 export const SITE_TAG_PRESETS = [
   {
@@ -46,14 +47,19 @@ export function siteTagBadgeCls(tag: string): string {
   return SITE_TAG_PRESETS.find((p) => p.value === tag)?.badgeCls ?? 'bg-white/10 text-white/40 border-white/15';
 }
 
-/** 站点行小徽标（第二十六轮，第三十九轮按值配色）：文本 = 站点 tag（已归一化落盘），无 tag 不显示 */
-export function SiteTagBadge({ site }: { site: SiteEntry }) {
-  const tag = cleanSiteTag(site.tag);
-  if (!tag) return null;
+/** 站点行小徽标（第二十六轮，第三十九轮按值配色，第七十六轮多标签）：
+ * 文本 = 站点 tags（已归一化落盘，最多 2 个），逐个按值配色，无标签不显示 */
+export function SiteTagBadges({ site }: { site: SiteEntry }) {
+  const tags = siteTags(site);
+  if (!tags.length) return null;
   return (
-    <span data-site-tag={tag} className={`text-[8px] font-bold border px-1.5 py-0.5 rounded shrink-0 ${siteTagBadgeCls(tag)}`}>
-      {tag}
-    </span>
+    <>
+      {tags.map((tag) => (
+        <span key={tag} data-site-tag={tag} className={`text-[8px] font-bold border px-1.5 py-0.5 rounded shrink-0 ${siteTagBadgeCls(tag)}`}>
+          {tag}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -115,8 +121,27 @@ export function SiteForm({
   const [name, setName] = useState(initial?.name ?? '');
   const [url, setUrl] = useState(initial?.url ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  // 标签初值：已迁移的 tag 优先；老站点只有 needVpn 标记时预填 VPN，保存即正式写入 tag
-  const [tag, setTag] = useState(() => cleanSiteTag(initial?.tag) || (initial?.needVpn ? 'VPN' : ''));
+  // 标签初值（第七十六轮多选）：既有 tags 优先（siteTags 兼容迁移前的旧单字段）；
+  // 老站点只有 needVpn 标记时预填 VPN，保存即正式写入 tags
+  const [tags, setTags] = useState<string[]>(() => {
+    const existing = initial ? siteTags(initial) : [];
+    return existing.length ? existing : initial?.needVpn ? ['VPN'] : [];
+  });
+  // 自定义标签输入只是待添加草稿：回车 / 失焦 / 保存时并入 tags（沿用第二十六轮「输完即是标签」的手感）
+  const [customTag, setCustomTag] = useState('');
+  const tagsFull = tags.length >= SITE_TAGS_MAX_COUNT;
+  const commitCustomTag = () => {
+    const t = cleanSiteTag(customTag);
+    setCustomTag('');
+    if (t && !tags.includes(t) && tags.length < SITE_TAGS_MAX_COUNT) {
+      setTags((prev) => (prev.includes(t) || prev.length >= SITE_TAGS_MAX_COUNT ? prev : [...prev, t]));
+    }
+  };
+  const toggleTag = (value: string) => {
+    setTags((prev) =>
+      prev.includes(value) ? prev.filter((t) => t !== value) : prev.length < SITE_TAGS_MAX_COUNT ? [...prev, value] : prev,
+    );
+  };
   const [pinned, setPinned] = useState(!!initial?.pinned);
   const [error, setError] = useState('');
   /* 图标编辑（第四十九轮）：三态初值取站点既有配置（存量站点无字段 = auto）；
@@ -143,6 +168,9 @@ export function SiteForm({
     if (iconMode === 'upload' && !iconImage) return setError('请先选择一张图片作图标');
     // 名称/网址变了又没手动重检索时，保存时按新值自动重取一次（与改版前每次保存重算图标的老行为一致）
     const identityChanged = !!initial && (name.trim() !== initial.name || finalUrl !== initial.url);
+    // 标签：已选列表 + 输入框里还没回车的自定义草稿（有空位才并入），统一清洗封顶 2 个
+    const pendingCustom = cleanSiteTag(customTag);
+    const finalTags = cleanSiteTags(pendingCustom && !tags.includes(pendingCustom) ? [...tags, pendingCustom] : tags);
     onSubmit({
       // 保存时硬截断兜底：即使输入绕过了 maxLength（如程序填充）也不会存入超长文本
       name: name.trim().slice(0, SITE_NAME_MAX),
@@ -151,7 +179,7 @@ export function SiteForm({
       // 别名（第二十六轮）：表单不再提供编辑入口，但既有别名数据原样回传保留，继续供搜索直达
       aliases: [...(initial?.aliases ?? [])],
       pinned,
-      tag: cleanSiteTag(tag),
+      tags: finalTags,
       iconMode,
       iconText: iconText.trim(),
       iconImage,
@@ -275,34 +303,69 @@ export function SiteForm({
         )}
       </div>
       <div className="flex items-center gap-2 flex-wrap">
-        {/* 标签（第二十六轮；第三十九轮改造）：左侧缩短的自定义输入（灰色系，规则不变：仅英文字母、
-            自动转大写、最多 4 个）+ 右侧三个写死预设按钮（VPN 绿 / App 蓝 / Mark 红，与徽标同色）。
-            点预设 = 设为该标签；再点已选中的预设 = 取消（清标签）；清空输入同样 = 无标签。 */}
+        {/* 标签（第二十六轮；第三十九轮预设配色；第七十六轮改多选、最多 2 个）：自定义输入（灰色系，
+            规则不变：仅英文字母、自动转大写、最多 4 个，回车/失焦并入已选）+ 三个写死预设按钮
+            （VPN 绿 / App 蓝 / Mark 红，与徽标同色）。点预设 = 勾选/取消；选满 2 个后其余预设与
+            输入框禁用并给提示；已选的自定义标签以灰色小片呈现、点 × 移除（腾出位置可再选）。 */}
         <input
-          value={tag}
-          onChange={(e) => setTag(cleanSiteTag(e.target.value))}
-          placeholder="自定义"
+          value={customTag}
+          onChange={(e) => setCustomTag(cleanSiteTag(e.target.value))}
+          onBlur={commitCustomTag}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitCustomTag();
+            }
+          }}
+          placeholder="自定义，回车添加"
           maxLength={SITE_TAG_MAX}
+          disabled={tagsFull}
           data-site-tag-input
-          className="w-24 shrink-0 bg-white/5 border border-white/15 rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-white/40 placeholder:text-white/30"
+          className="w-32 shrink-0 bg-white/5 border border-white/15 rounded-xl px-2.5 py-1.5 text-xs outline-none focus:border-white/40 placeholder:text-white/30 disabled:opacity-40 disabled:cursor-not-allowed"
         />
         {SITE_TAG_PRESETS.map((p) => {
-          const active = tag === p.value;
+          const active = tags.includes(p.value);
+          const blocked = !active && tagsFull;
           return (
             <button
               key={p.value}
               type="button"
               data-tag-preset={p.value}
               data-active={active ? 'true' : undefined}
-              onClick={() => setTag(active ? '' : p.value)}
+              disabled={blocked}
+              onClick={() => toggleTag(p.value)}
               className={`shrink-0 text-[11px] font-semibold px-2.5 py-1.5 rounded-xl border transition-colors ${p.btnCls} ${
                 active ? p.btnActiveCls : ''
-              }`}
+              } ${blocked ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               {p.label}
             </button>
           );
         })}
+        {tags
+          .filter((t) => !SITE_TAG_PRESETS.some((p) => p.value === t))
+          .map((t) => (
+            <span
+              key={t}
+              data-custom-tag-chip={t}
+              className="flex items-center gap-1 shrink-0 text-[11px] font-semibold px-2 py-1.5 rounded-xl border bg-white/10 text-white/70 border-white/25"
+            >
+              {t}
+              <button
+                type="button"
+                aria-label={`移除标签 ${t}`}
+                onClick={() => setTags((prev) => prev.filter((x) => x !== t))}
+                className="text-white/50 hover:text-white"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        {tagsFull && (
+          <span data-tag-limit-hint className="text-[10px] text-white/35 shrink-0">
+            最多 2 个标签
+          </span>
+        )}
         <label className="flex items-center gap-1.5 text-[11px] text-white/60 shrink-0 cursor-pointer select-none ml-auto">
           <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="accent-amber-400" />
           置顶
@@ -382,15 +445,16 @@ function EditableSiteRow({
         <SiteLogo logo={siteIconSrc(site)} name={site.name} size={34} imgSize={23} grayscale={site.dead} />
         <span className="flex-1 min-w-0">
           <span className="flex items-center gap-1.5">
-            <span className={`text-[13px] font-semibold truncate ${site.dead ? 'text-white/45' : ''}`}>{site.name}</span>
+            <span className={`text-[13px] font-semibold truncate min-w-0 ${site.dead ? 'text-white/45' : ''}`}>{site.name}</span>
             {site.pinned && <Pin size={11} className="text-amber-400 fill-amber-400 shrink-0" />}
+            {/* 标签徽标（第七十六轮）：从行尾挪到名字正后方、与图钉同区，最多 2 个 */}
+            <SiteTagBadges site={site} />
             {site.dead && (
               <span className="text-[9px] font-medium text-red-300 bg-red-500/15 px-1.5 py-0.5 rounded shrink-0">失效</span>
             )}
           </span>
           <span className="block text-[11px] text-white/45 truncate mt-0.5">{site.description}</span>
         </span>
-        <SiteTagBadge site={site} />
       </button>
     </div>
   );
