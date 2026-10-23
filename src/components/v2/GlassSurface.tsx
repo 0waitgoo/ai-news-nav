@@ -165,13 +165,21 @@ const rasterizedBuckets = new Set<string>();
 function rasterizeBucketMap(bucket: GlassBucket): void {
   if (typeof document === 'undefined' || rasterizedBuckets.has(bucket.id)) return;
   rasterizedBuckets.add(bucket.id);
-  const SS = 2; // 超采样倍数：抵消高 DPR 下贴图被放大的软化，折射场形状不变
+  /* 第九十七轮（性能回归修复）：光栅分辨率 2×/2048 改 1×/1024。版本二分实测
+   * （无头 SwiftShader、1024×700、玻璃档滚动帧中位）：89 轮前 1517ms → 89 轮后
+   * 1900~1950ms（+25~29%），台阶恰在本光栅化；暗夜档四版无差异。机制：feImage
+   * 每帧求值要采样/解码这张大位图（2× 超采样下大卡贴图达 2048px、上 MB 级
+   * data URL），成为全玻璃面共同的固定开销。位移场是平滑解析场（渐变+高斯），
+   * 分辨率不携带场信息：1×（=宿主 CSS 尺寸、上限 1024）采样与 2× 的场差在
+   * test-r97 等价断言内（逐像素 meanAbsDiff 与 89 轮 SVG↔PNG 同一口径）；
+   * 折射参数（scale/blur/displace/区域）一字未动，贴图定义仍是同一份 SVG。 */
+  const SS = 1; // 光栅倍数（第九十七轮由 2 改 1，理由见上）
   const img = new Image();
   img.onload = () => {
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = Math.min(2048, bucket.w * SS);
-      canvas.height = Math.min(2048, bucket.h * SS);
+      canvas.width = Math.min(1024, bucket.w * SS);
+      canvas.height = Math.min(1024, bucket.h * SS);
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
