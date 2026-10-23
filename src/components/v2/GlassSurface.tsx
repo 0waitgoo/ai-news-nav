@@ -175,7 +175,13 @@ export function GlassDefsHost() {
     >
       <defs>
         {buckets.map((b) => (
-          <filter key={b.id} id={b.id} colorInterpolationFilters="sRGB" x="0%" y="0%" width="100%" height="100%">
+          /* 第八十轮：滤镜区域四边各外扩 25% 留边——位移最大幅度 ±115px（scale 230），
+             宿主边缘处的输出像素要采样元素框外的幕布；区域恰好 100% 时框外采样命中的是
+             透明黑（feColorMatrix 的 alpha 行取位移后源 alpha → 边缘通道变透明、折射在
+             边缘断崖）。外扩后边缘采样落到真实幕布上。feImage 的贴图矩形仍是 0/0/100%：
+             贴图外区域取透明黑 = 位移量恒定偏移，那部分结果只落在元素框外、被宿主
+             裁剪裁掉，不进画面。折射参数（scale/blur/通道）一律不动。 */
+          <filter key={b.id} id={b.id} colorInterpolationFilters="sRGB" x="-25%" y="-25%" width="150%" height="150%">
             <feImage x="0" y="0" width="100%" height="100%" preserveAspectRatio="none" result="map" href={b.mapUrl} />
             <feDisplacementMap
               in="SourceGraphic"
