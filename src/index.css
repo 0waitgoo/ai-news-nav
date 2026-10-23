@@ -91,6 +91,31 @@ body {
 [data-theme="light"] .group-card-panel { border-color: rgba(0, 0, 0, 0.09); }
 [data-theme="light"] .group-card-panel-hover:hover { border-color: rgba(0, 0, 0, 0.16); }
 
+/* ---------- 第七十八轮：A 型小组件基底接入外观体系 ---------- */
+/* 用户定版（2026-10-23 两次修正后的最终口径）：小组件底色分两层——
+   ① 基底跟随整体外观：直接用与编组卡同款的面（同一套 --group-card-rgb /
+      --group-card-alpha 变量与透明度归属），暗夜深色磨砂、白天翻白、玻璃走同款折射，
+      不做实色死底、该透时与编组卡一起透；② 其上罩专属色渐变（WidgetTint），
+      浓淡由 widgetAlpha 滑杆控制——该滑杆的唯一职责从此只是渐变浓淡，
+      不再决定卡面透不透（旧病根：渐变自身 alpha 峰值仅约 16%、又叠在 0.4 的
+      写死玻璃壳上，滑杆拉满卡面仍大量透出页面背景，看起来「很淡」）。
+   本类数值逐项与 .group-card-panel 同值（同源对值的自测依据）；文字翻深不靠本类，
+   靠卡根另挂 .group-card-scope 作用域标记复用下方翻字规则表（C 卡同款接法）；
+   玻璃折射靠卡根挂 useGlassBackdrop（圆角随各卡：28 / 话题卡 32）+ 下方玻璃规则
+   选择器同批接入。 */
+.widget-panel {
+  background: rgb(var(--group-card-rgb) / var(--group-card-alpha, 0.4));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.widget-panel-hover:hover {
+  background: rgb(var(--group-card-rgb) / calc(var(--group-card-alpha, 0.4) + 0.1));
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+[data-theme="light"] .widget-panel { border-color: rgba(0, 0, 0, 0.09); }
+[data-theme="light"] .widget-panel-hover:hover { border-color: rgba(0, 0, 0, 0.16); }
+
 /* 与编组卡卡面同源的表面：顶栏搜索框与「数据」按钮共用这套底——
    同一底色变量（--group-card-rgb / --group-card-alpha，滑杆实时控制）+ 同款 24px 磨砂模糊。
    描边由各元素自己的 Tailwind 边框类负责，本类只管底色与模糊，避免压掉搜索框的 focus 高亮。
@@ -230,9 +255,10 @@ body {
    作用域与白天同口径：只命中编组卡卡面（.group-card-panel / [data-stack-body]）
    与同源表面（.card-glass-surface：搜索框、数据按钮）；第七十七轮起组件商店的大面
    （.store-panel：列表块/详情块/预览外框/操作条，归编组卡同源表面）同批接入；
+   第七十八轮起 A 型小组件的基底（.widget-panel，用户定版「底色跟随整体变化」）同批接入；
    圆角不动（各卡自身圆角类，
    玻璃层的圆角由位移贴图按宿主圆角生成，B 卡 28 / C 卡 22 / 搜索面 16 / 商店面 24）。 */
-[data-theme="glass"] :is(.group-card-panel, .card-glass-surface, .store-panel),
+[data-theme="glass"] :is(.group-card-panel, .card-glass-surface, .store-panel, .widget-panel),
 [data-theme="glass"] [data-stack-body] {
   background: var(--glass-bg,
     linear-gradient(155deg, rgb(255 255 255 / calc(0.1 + var(--group-card-alpha, 0.4) * 0.28)) 0%, rgb(255 255 255 / 0) 46%),
@@ -247,7 +273,7 @@ body {
     inset 1px 0 0 rgb(255 255 255 / 0.1),
     inset -1px 0 0 rgb(255 255 255 / 0.1);
 }
-[data-theme="glass"] .group-card-panel-hover:hover {
+[data-theme="glass"] :is(.group-card-panel-hover, .widget-panel-hover):hover {
   border-color: rgb(255 255 255 / 0.55) !important;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.65),
