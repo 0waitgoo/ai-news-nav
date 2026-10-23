@@ -8,7 +8,6 @@ import {
   planDateRatio,
   taskChildProgress,
   taskEntryDone,
-  taskFlatStats,
   taskGroupDone,
   todayDateStr,
   type LocalStore,
@@ -50,6 +49,11 @@ import { splitTasksText, type SplitPlanDraft } from '../../utils/taskSplit';
  *   （见 useOutsidePressConfirm），标题编辑框原本就是失焦保存、不动；② 已完成区的组/项/
  *   子任务行尾带垃圾桶（DoneTrashButton，两步确认，口径同行右键删除）；③ 待办/组/子任务
  *   标题收起态改最多显示 2 行（line-clamp-2），点击仍展开全文
+ * - 第八十七轮（2 栏布局加密）：两节区加 pinned 模式（2 栏时由 TaskCard 传入）——整列
+ *   flex 满高：标题行在顶、列表区（[data-task-col-scroll]）各自滚动占满中间、添加行钉列底；
+ *   删两行独立空状态文案（提示已在输入框占位/按钮文字里）；「+ 建组」从整行虚线框降为
+ *   待办标题行右侧小文字按钮（表单改在底部块内、添加框上方展开）；待办列计数去掉
+ *   （卡头 x/y 已含），计划列计数保留为标题旁小灰字；行高/内距全面收一档
  */
 
 interface RowMenuState {
@@ -284,7 +288,7 @@ function useOutsidePressConfirm() {
  * 勾选/添加/建组/组展开勾子任务/已完成折叠/行右键编辑删除/拖拽合并都在卡面直接完成；
  * 标题截断时点击文字展开全文、再点收起（第六十九轮）
  */
-export function TasksSection({ store }: { store: LocalStore }) {
+export function TasksSection({ store, pinned = false }: { store: LocalStore; pinned?: boolean }) {
   const { tasks } = store.data;
   const [menu, setMenu] = useState<RowMenuState | null>(null);
   /** 「已完成」分组头右键菜单（第四十八轮）：只记位置，开/关与行菜单分开管理 */
@@ -314,9 +318,7 @@ export function TasksSection({ store }: { store: LocalStore }) {
     });
   };
 
-  // 计数口径与卡面一致：组按子任务摊平（taskFlatStats）；顶层条目按完成态分未完成/已完成两区
-  const flat = taskFlatStats(tasks);
-  const flatOpen = flat.total - flat.done;
+  // 顶层条目按完成态分未完成/已完成两区；列内不再单列计数（第八十七轮去重：卡头 x/y 已含待办计数）
   const openEntries = tasks.filter((t) => !taskEntryDone(t));
   const doneEntries = tasks.filter((t) => taskEntryDone(t));
 
@@ -429,7 +431,7 @@ export function TasksSection({ store }: { store: LocalStore }) {
         data-task-entry={inOpen ? task.id : undefined}
         onPointerDown={inOpen ? (e) => drag.beginTaskDrag(e, task) : undefined}
         onContextMenu={(e) => openMenu(e, 'task', task.id, task.title)}
-        className={`flex items-center gap-2.5 px-2 py-2 rounded-xl min-w-0 ${
+        className={`flex items-center gap-2.5 px-1.5 py-[3px] rounded-xl min-w-0 ${
           dragVisual === 'over'
             ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-400/60'
             : 'hover:bg-white/[0.04]'
@@ -458,17 +460,31 @@ export function TasksSection({ store }: { store: LocalStore }) {
   };
 
   return (
-    <section>
-      <div className="flex items-baseline gap-2 mb-1.5">
+    <section className={pinned ? 'flex flex-col h-full min-h-0' : undefined}>
+      {/* 标题行（第八十七轮）：计数去掉（卡头 x/y 已含）；「+ 建组」降为行右小文字按钮 */}
+      <div className="flex items-center gap-2 mb-1 shrink-0">
         <h4 className="text-sm font-semibold">待办</h4>
-        <span className="text-[11px] text-zinc-300">未完成 {flatOpen}</span>
+        {!showGroupForm && (
+          <button
+            type="button"
+            data-group-new
+            onClick={() => setShowGroupForm(true)}
+            className="ml-auto text-[11px] leading-none px-1.5 py-1 rounded-md text-zinc-300 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            + 建组
+          </button>
+        )}
       </div>
+      {/* 列表区：pinned 时自成滚动区吃满列高（空状态不再单列文案，提示在底部输入框占位里） */}
+      <div
+        data-task-col-scroll={pinned ? 'tasks' : undefined}
+        className={pinned ? 'flex-1 min-h-0 overflow-y-auto' : undefined}
+      >
       <div data-nodrag ref={drag.listRef}>
-        {tasks.length === 0 && <p className="text-[13px] text-zinc-300 px-2 py-3">暂无待办，在下方添加第一件。</p>}
         {openEntries.map((t) => taskRow(t, true))}
       </div>
       {doneEntries.length > 0 && (
-        <div className="mt-1.5">
+        <div className="mt-1">
           <button
             type="button"
             data-done-header
@@ -479,7 +495,7 @@ export function TasksSection({ store }: { store: LocalStore }) {
               e.stopPropagation();
               setDoneMenu(rowMenuPosition(e));
             }}
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-zinc-300 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 px-1.5 py-1 text-xs text-zinc-300 hover:text-white transition-colors"
           >
             <ChevronDown size={13} className={`transition-transform ${showDone ? '' : '-rotate-90'}`} />
             已完成 {doneEntries.length} 项
@@ -487,29 +503,14 @@ export function TasksSection({ store }: { store: LocalStore }) {
           {showDone && <div data-nodrag>{doneEntries.map((t) => taskRow(t, false))}</div>}
         </div>
       )}
-      <form
-        className="mt-2.5 flex items-center gap-1.5 bg-white/[0.07] border border-white/20 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submitNewTask();
-        }}
-      >
-        <Plus size={14} className="text-zinc-300 shrink-0" />
-        <input
-          value={newTask}
-          onChange={(e) => changeNewTask(e.target.value)}
-          onKeyDown={enterToSubmit(submitNewTask)}
-          onBlur={submitNewTask}
-          placeholder="添加待办，回车确认"
-          data-task-add
-          className="flex-1 min-w-0 bg-transparent text-sm py-1.5 outline-none placeholder:text-zinc-400"
-        />
-      </form>
-      {/* 建组入口：组用来收纳一组相关的子任务（如一次采购清单）；第六十九轮起卡面直接提供（原仅面板） */}
-      {showGroupForm ? (
+      </div>
+      {/* 底部块（第八十七轮）：pinned 时钉在列底——建组表单（开时）在添加框上方展开，添加框恒在最底 */}
+      <div className={pinned ? 'shrink-0 pt-2 flex flex-col gap-2' : 'mt-2.5 flex flex-col gap-2'}>
+      {/* 建组表单：组用来收纳一组相关的子任务（如一次采购清单）；入口已降为标题行小按钮 */}
+      {showGroupForm && (
           <form
             ref={groupConfirm.setEl}
-            className="mt-2 flex items-center gap-1.5"
+            className="flex items-center gap-1.5"
             onSubmit={(e) => {
               e.preventDefault();
               submitGroup();
@@ -549,16 +550,26 @@ export function TasksSection({ store }: { store: LocalStore }) {
               取消
             </button>
           </form>
-        ) : (
-          <button
-            type="button"
-            data-group-new
-            onClick={() => setShowGroupForm(true)}
-            className="mt-2 w-full py-1.5 rounded-xl border border-dashed border-white/20 text-[11px] text-zinc-300 hover:text-white hover:border-white/40 transition-colors"
-          >
-            + 建组（把几件相关的事收在一起）
-          </button>
         )}
+      <form
+        className="flex items-center gap-1.5 bg-white/[0.07] border border-white/20 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitNewTask();
+        }}
+      >
+        <Plus size={14} className="text-zinc-300 shrink-0" />
+        <input
+          value={newTask}
+          onChange={(e) => changeNewTask(e.target.value)}
+          onKeyDown={enterToSubmit(submitNewTask)}
+          onBlur={submitNewTask}
+          placeholder="添加待办，回车确认"
+          data-task-add
+          className="flex-1 min-w-0 bg-transparent text-sm py-1 outline-none placeholder:text-zinc-400"
+        />
+      </form>
+      </div>
 
       {/* 行右键菜单（编辑/删除，删除在菜单内两步确认） */}
       {menu && (
@@ -623,7 +634,7 @@ export function TasksSection({ store }: { store: LocalStore }) {
  * 核心交互（次数型 −1/+1、日期型「完成」）与新建/编辑表单都在卡面直接完成，
  * 新建入口原先只在展开面板里，本轮按用户要求搬到卡面（见 PlansSection 末尾「+ 新计划」）
  */
-export function PlansSection({ store }: { store: LocalStore }) {
+export function PlansSection({ store, pinned = false }: { store: LocalStore; pinned?: boolean }) {
   const { plans } = store.data;
   const [menu, setMenu] = useState<RowMenuState | null>(null);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -636,36 +647,42 @@ export function PlansSection({ store }: { store: LocalStore }) {
   };
 
   return (
-    <section>
-      <div className="flex items-baseline gap-2 mb-1.5">
+    <section className={pinned ? 'flex flex-col h-full min-h-0' : undefined}>
+      <div className="flex items-baseline gap-2 mb-1 shrink-0">
         <h4 className="text-sm font-semibold">长期计划</h4>
-        <span className="text-[11px] text-zinc-300">{plans.length} 个</span>
+        <span className="text-[11px] text-zinc-400 tabular-nums">{plans.length} 个</span>
       </div>
-      <div className="flex flex-col gap-1.5" data-nodrag>
-        {plans.length === 0 && !showPlanForm && (
-          <p className="text-[13px] text-zinc-300 px-2 py-3">暂无长期计划，点下方「+ 新计划」添加。</p>
-        )}
-        {plans.map((plan) =>
-          editingPlanId === plan.id ? (
-            <PlanEditForm key={plan.id} plan={plan} store={store} onClose={() => setEditingPlanId(null)} />
-          ) : (
-            <PlanRow key={plan.id} plan={plan} store={store} onContextMenu={(e) => openMenu(e, plan)} />
-          ),
+      {/* 列表区：pinned 时自成滚动区吃满列高（空状态不再单列文案，入口就是列底的按钮本身） */}
+      <div
+        data-task-col-scroll={pinned ? 'plans' : undefined}
+        className={pinned ? 'flex-1 min-h-0 overflow-y-auto' : undefined}
+      >
+        <div className="flex flex-col gap-1.5" data-nodrag>
+          {plans.map((plan) =>
+            editingPlanId === plan.id ? (
+              <PlanEditForm key={plan.id} plan={plan} store={store} onClose={() => setEditingPlanId(null)} />
+            ) : (
+              <PlanRow key={plan.id} plan={plan} store={store} onContextMenu={(e) => openMenu(e, plan)} />
+            ),
+          )}
+        </div>
+      </div>
+      {/* 底部块（第八十七轮）：pinned 时钉在列底——新建入口恒为单行紧凑按钮，
+          表单展开时在本块原地替换按钮（第六十九轮：表单从展开面板搬到卡面） */}
+      <div className={pinned ? 'shrink-0 pt-2' : 'mt-2'}>
+        {showPlanForm ? (
+          <PlanCreateForm store={store} onClose={() => setShowPlanForm(false)} />
+        ) : (
+          <button
+            type="button"
+            data-plan-new
+            onClick={() => setShowPlanForm(true)}
+            className="w-full py-1.5 rounded-xl border border-dashed border-white/25 text-xs text-zinc-300 hover:text-white hover:border-white/45 transition-colors"
+          >
+            + 新计划
+          </button>
         )}
       </div>
-      {/* 新建计划入口（第六十九轮：从展开面板搬到卡面，表单即原 PlanCreateForm，卡内原地展开） */}
-      {showPlanForm ? (
-        <PlanCreateForm store={store} onClose={() => setShowPlanForm(false)} />
-      ) : (
-        <button
-          type="button"
-          data-plan-new
-          onClick={() => setShowPlanForm(true)}
-          className="mt-3 w-full py-2 rounded-xl border border-dashed border-white/25 text-xs text-zinc-300 hover:text-white hover:border-white/45 transition-colors"
-        >
-          + 新计划
-        </button>
-      )}
 
       {/* 行右键菜单（编辑/删除） */}
       {menu && (
@@ -736,7 +753,7 @@ const GroupBlock: React.FC<{
     <div
       data-task-group
       data-task-entry={entryId}
-      className={`rounded-xl px-2 py-1.5 ${
+      className={`rounded-xl px-1.5 py-[3px] ${
         dragVisual === 'over' ? 'bg-indigo-500/15 ring-1 ring-inset ring-indigo-400/60' : 'hover:bg-white/[0.04]'
       } ${dragVisual === 'source' ? 'opacity-40' : ''}`}
       onContextMenu={onMenu}
@@ -789,7 +806,7 @@ const GroupBlock: React.FC<{
                 e.stopPropagation();
                 onChildMenu(e, child.id, child.title);
               }}
-              className="flex items-center gap-2.5 py-1.5 min-w-0"
+              className="flex items-center gap-2.5 py-[3px] min-w-0"
             >
               {checkBtn(child.done, () => store.toggleSubTask(group.id, child.id), child.done ? '取消完成' : '标记完成')}
               <span
@@ -856,7 +873,7 @@ const PlanRow: React.FC<{
     const overdue = !plan.done && daysLeft < 0;
     const ratio = plan.done ? 1 : planDateRatio(plan);
     return (
-      <div data-plan-item data-plan-mode="date" className="rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5" onContextMenu={onContextMenu}>
+      <div data-plan-item data-plan-mode="date" className="rounded-2xl border border-white/20 bg-white/10 px-2.5 py-2" onContextMenu={onContextMenu}>
         <div className="flex items-center gap-2">
           <span className={`flex-1 min-w-0 truncate text-sm font-medium ${plan.done ? 'line-through text-white/40' : 'text-white/90'}`}>
             {plan.title}
@@ -890,7 +907,7 @@ const PlanRow: React.FC<{
           )}
           {!plan.done && plan.deadline && <span className="text-zinc-400">· 目标 {formatMonthDay(plan.deadline)}</span>}
         </div>
-        <div className="mt-2 h-1 rounded-full bg-white/20 overflow-hidden">
+        <div className="mt-1.5 h-1 rounded-full bg-white/20 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-300 ${overdue ? 'bg-red-400' : 'bg-indigo-400'}`}
             style={{ width: `${Math.round(ratio * 100)}%` }}
@@ -908,7 +925,7 @@ const PlanRow: React.FC<{
   const stepBtn =
     'w-6 h-6 rounded-lg bg-white/10 text-zinc-100 hover:bg-white/20 hover:text-white disabled:opacity-40 disabled:hover:bg-white/10 flex items-center justify-center transition-colors shrink-0';
   return (
-    <div data-plan-item data-plan-mode="count" className="rounded-2xl border border-white/20 bg-white/10 px-3 py-2.5" onContextMenu={onContextMenu}>
+    <div data-plan-item data-plan-mode="count" className="rounded-2xl border border-white/20 bg-white/10 px-2.5 py-2" onContextMenu={onContextMenu}>
       <div className="flex items-center gap-2">
         <span className={`flex-1 min-w-0 truncate text-sm font-medium ${full ? 'text-indigo-200' : 'text-white/90'}`}>
           {plan.title}
@@ -918,7 +935,7 @@ const PlanRow: React.FC<{
         </span>
         {full && <Check size={13} className="text-indigo-200 shrink-0" />}
       </div>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-1.5 flex items-center gap-2">
         <div className="flex-1 h-1 rounded-full bg-white/20 overflow-hidden">
           <div className="h-full rounded-full bg-indigo-400 transition-all duration-300" style={{ width: `${Math.round(ratio * 100)}%` }} />
         </div>
@@ -990,7 +1007,7 @@ function PlanCreateForm({ store, onClose }: { store: LocalStore; onClose: () => 
   return (
     <div
       ref={outsideConfirm.setEl}
-      className="mt-3 rounded-2xl border border-white/12 bg-white/[0.03] p-3"
+      className="rounded-2xl border border-white/12 bg-white/[0.03] p-3"
       data-plan-form
       onBlur={(e) => {
         // 点表单外 = 确认（第七十五轮）：可提交就添加并关闭；标题为空等无效状态直接收起不落库

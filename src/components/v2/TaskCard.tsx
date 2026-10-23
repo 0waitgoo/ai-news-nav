@@ -35,6 +35,10 @@ import { useGlassBackdrop } from './GlassSurface';
  * 第七十五轮（收起态行数）：2x 标题与焦点式大标题收起态统一为最多 2 行（line-clamp-2，点击仍
  * 展开全文）；1x 列表式行保留 1 行截断——1x 卡面固定只摆 3 行、高度预算仅够单行/行，改 2 行
  * 任一行变高都会把最后一行挤出卡面（overflow-hidden 直接切掉），属刻意紧凑设计，展开全文不受影响
+ * 第八十七轮（2 栏布局加密，用户：「尽可能显示更多的项目内容」）：2 栏时内容区改每列独立
+ * 结构——各列「标题在顶 → 列表区各自滚动占满中间 → 添加行钉列底」（sections 的 pinned 模式），
+ * 壳内边距/头部间距收一档；水印改为待办与计划双列都空时才淡显，有任何条目即隐藏；
+ * 卡内拖拽滚动随之泛化到每列自己的滚动区（[data-task-col-scroll]）。1 栏堆叠仍走共享滚动。
  */
 export default function TaskCard({
   store,
@@ -52,7 +56,7 @@ export default function TaskCard({
   /** 专属底色（第二十三轮，由 HomePage 按 widgetTints 分配传入；1x/2x 两壳都生效） */
   tint?: WidgetTint;
 }) {
-  const { tasks, cardFaceStyles } = store.data;
+  const { tasks, plans, cardFaceStyles } = store.data;
   const face = cardFaceStyleOf(cardFaceStyles, widgetCardKey('task'));
   /** 刚在卡面上勾完的待办：先划线留影，片刻后才移出前 3（避免勾完瞬间跳变） */
   const [justDone, setJustDone] = useState<Record<string, true>>({});
@@ -110,8 +114,10 @@ export default function TaskCard({
   const restCount = Math.max(0, open.length - 1);
 
   /** 专属底色层（第二十三轮）：1x/2x 两壳共用，内容以 relative 层级盖在其上；
-   * 水印单独调低（第五十二轮）：2x 时 📋 正压在长期计划区，0.16 会干扰阅读，降到 0.1 */
-  const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="📋" watermarkOpacity={0.1} /> : null;
+   * 水印单独调低（第五十二轮）：2x 时 📋 正压在长期计划区，0.16 会干扰阅读，降到 0.1；
+   * 第八十七轮：水印只在待办与计划都为空时淡显（0.1），有任何条目即隐藏，不占视觉 */
+  const bothEmpty = tasks.length === 0 && plans.length === 0;
+  const tintLayer = tint ? <WidgetTintLayer tint={tint} emoji="📋" watermarkOpacity={bothEmpty ? 0.1 : 0} /> : null;
 
   /* 第七十八轮：基底改与编组卡同款的面（.widget-panel + .group-card-scope 翻字作用域，
    * 见 index.css）；1x/2x 两壳互斥渲染，各挂一份玻璃折射 hook（圆角同为 28px） */
@@ -129,12 +135,12 @@ export default function TaskCard({
         transition={{ duration: 0.35, delay }}
         data-task-card
         data-task-mode="full"
-        className="group-card-scope widget-panel widget-panel-hover relative rounded-[28px] h-full p-4 sm:p-5 flex flex-col overflow-hidden transition-colors"
+        className="group-card-scope widget-panel widget-panel-hover relative rounded-[28px] h-full p-3.5 sm:p-4 flex flex-col overflow-hidden transition-colors"
       >
         {tintLayer}
         <div className="relative flex flex-col flex-1 min-h-0">
         {/* 头部：标题 + 今日进度 + AI 整理入口（第六十九轮：原「展开」按钮删除，面板层取消） */}
-        <div className="flex items-center gap-2 mb-2.5 shrink-0">
+        <div className="flex items-center gap-2 mb-2 shrink-0">
           <div className="w-7 h-7 rounded-full bg-indigo-500 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] ring-1 ring-black/20 flex items-center justify-center shrink-0">
             <ListTodo size={14} />
           </div>
@@ -159,7 +165,7 @@ export default function TaskCard({
             )}
           </button>
         </div>
-        <div className="h-1 rounded-full bg-white/20 overflow-hidden shrink-0 mb-3">
+        <div className="h-1 rounded-full bg-white/20 overflow-hidden shrink-0 mb-2">
           <div className="h-full rounded-full bg-indigo-400 transition-all duration-300" style={{ width: `${pct}%` }} />
         </div>
 
@@ -167,8 +173,25 @@ export default function TaskCard({
           <div className="flex-1 min-h-0 flex flex-col" data-nodrag>
             <AiView store={store} onDone={() => setCardView('main')} />
           </div>
+        ) : colSpan === 2 ? (
+          /* 2 栏加密结构（第八十七轮）：外层不再滚动，两列各占满高——列内「标题在顶 →
+             列表各自滚动 → 添加行钉底」由 sections 的 pinned 模式实现；拖拽滚动由
+             useCardDragScroll 按指针落点找 [data-task-col-scroll] 接管对应列 */
+          <div
+            ref={dragScroll.scrollRef}
+            onPointerDown={dragScroll.onPointerDown}
+            onClickCapture={dragScroll.onClickCapture}
+            data-task-scroll
+            data-nodrag
+            className="flex-1 min-h-0"
+          >
+            <div className="grid gap-4 sm:gap-5 h-full min-h-0 grid-cols-2">
+              <TasksSection store={store} pinned />
+              <PlansSection store={store} pinned />
+            </div>
+          </div>
         ) : (
-          /* 内容滚动区：整区 data-nodrag（卡内滚动/操作不触发卡片拖拽）；
+          /* 1 栏堆叠：共享滚动区（整区 data-nodrag，卡内滚动/操作不触发卡片拖拽）；
              鼠标按住拖拽滚动由 useCardDragScroll 接管（顶层待办行是合并拖拽的领地，不作起手） */
           <div
             ref={dragScroll.scrollRef}
@@ -178,7 +201,7 @@ export default function TaskCard({
             data-nodrag
             className="flex-1 min-h-0 overflow-y-auto"
           >
-            <div className={`grid gap-5 sm:gap-6 items-start ${colSpan === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className="grid gap-4 sm:gap-5 items-start grid-cols-1">
               <TasksSection store={store} />
               <PlansSection store={store} />
             </div>
@@ -204,7 +227,7 @@ export default function TaskCard({
       {tintLayer}
       <div className="relative flex flex-col flex-1 min-h-0">
       {/* 头部：标题 + 今日进度 */}
-      <div className="flex items-center gap-2 mb-2.5 shrink-0">
+      <div className="flex items-center gap-2 mb-2 shrink-0">
         <div className="w-7 h-7 rounded-full bg-indigo-500 text-white shadow-[0_1px_4px_rgba(0,0,0,0.3)] ring-1 ring-black/20 flex items-center justify-center shrink-0">
           <ListTodo size={14} />
         </div>
@@ -213,7 +236,7 @@ export default function TaskCard({
           {doneCount}/{total}
         </span>
       </div>
-      <div className="h-1 rounded-full bg-white/20 overflow-hidden shrink-0 mb-3">
+      <div className="h-1 rounded-full bg-white/20 overflow-hidden shrink-0 mb-2">
         <div className="h-full rounded-full bg-indigo-400 transition-all duration-300" style={{ width: `${pct}%` }} />
       </div>
 
@@ -312,16 +335,18 @@ const SCROLL_DRAG_THRESHOLD = 5;
  * - 按钮/输入框等控件不作起手，原有点击不受影响。
  * 消歧：位移 ≤ 阈值松手 = 普通点击（不滚动、不吞 click）；超过阈值 = 拖拽滚动，
  * 松手后 400ms 内由 onClickCapture 吞掉紧随的 click，避免拖完顺手把条目点开/勾上。
+ * 第八十七轮：滚动目标在按下时按落点决定——落点在某列自己的滚动区（[data-task-col-scroll]，
+ * 2 栏 pinned 结构）就滚那一列，否则滚共享容器（scrollRef，1 栏堆叠）。
  */
 function useCardDragScroll() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ pointerId: number; startY: number; startTop: number; dragging: boolean } | null>(null);
+  const dragRef = useRef<{ pointerId: number; startY: number; startTop: number; el: HTMLElement; dragging: boolean } | null>(null);
   const suppressAtRef = useRef(0);
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
       const d = dragRef.current;
-      const el = scrollRef.current;
+      const el = d?.el;
       if (!d || !el || e.pointerId !== d.pointerId) return;
       const dy = e.clientY - d.startY;
       if (!d.dragging) {
@@ -362,9 +387,9 @@ function useCardDragScroll() {
     const t = e.target as HTMLElement;
     if (t.closest('[data-task-entry], [data-row-menu], [data-done-clear-menu]')) return;
     if (t.closest('button, input, textarea, select, a, form, [contenteditable="true"]')) return;
-    const el = scrollRef.current;
+    const el = t.closest<HTMLElement>('[data-task-col-scroll]') ?? scrollRef.current;
     if (!el) return;
-    dragRef.current = { pointerId: e.pointerId, startY: e.clientY, startTop: el.scrollTop, dragging: false };
+    dragRef.current = { pointerId: e.pointerId, startY: e.clientY, startTop: el.scrollTop, el, dragging: false };
   };
 
   const onClickCapture = (e: React.MouseEvent) => {
