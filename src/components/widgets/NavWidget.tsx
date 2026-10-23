@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
+import { siteLogoFallback } from '../../data/groups';
 
 const iconMap: Record<string, string> = {
   'KIMI': '/icon_APP/KIMI.svg',
@@ -95,7 +96,8 @@ export default function NavWidget({ onNavigate }: NavWidgetProps) {
                 className="w-5 h-5 object-contain"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
-                  target.src = `https://api.dicebear.com/7.x/shapes/svg?seed=${tool.name.toLowerCase()}&backgroundColor=6366f1`;
+                  // 无真实图标 → 站名首字字标（第八十四轮），不再用 DiceBear 随机图
+                  if (!target.src.startsWith('data:')) target.src = siteLogoFallback(tool.name);
                 }}
               />
             </div>
