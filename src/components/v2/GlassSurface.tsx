@@ -196,11 +196,6 @@ function rasterizeBucketMap(bucket: GlassBucket): void {
   img.src = bucket.mapUrl;
 }
 
-/** 自测/诊断用：已注册的桶是否全部换成 PNG 贴图 */
-export function glassBucketsAllPng(): boolean {
-  return bucketSnapshot.length > 0 && bucketSnapshot.every((b) => b.mapUrl.startsWith('data:image/png'));
-}
-
 function subscribeRegistry(fn: () => void): () => void {
   registryListeners.add(fn);
   return () => {
@@ -209,11 +204,6 @@ function subscribeRegistry(fn: () => void): () => void {
 }
 function getRegistrySnapshot(): GlassBucket[] {
   return bucketSnapshot;
-}
-
-/** 当前已生成的共享滤镜数（自测/诊断用） */
-export function glassBucketCount(): number {
-  return bucketMap.size;
 }
 
 /* ---------- 滤镜定义宿主：全页只挂一份，渲染注册表里的全部 <filter> ----------

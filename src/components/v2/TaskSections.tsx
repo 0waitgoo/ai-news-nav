@@ -385,7 +385,7 @@ export function TasksSection({ store, pinned = false }: { store: LocalStore; pin
     </button>
   );
 
-  const titleEditor = (id: string) => (
+  const titleEditor = () => (
     <input
       value={editText}
       autoFocus
@@ -413,7 +413,7 @@ export function TasksSection({ store, pinned = false }: { store: LocalStore; pin
         store={store}
         startExpanded={!taskGroupDone(task)}
         editing={editingTaskId === task.id}
-        editor={titleEditor(task.id)}
+        editor={titleEditor()}
         onMenu={(e) => openMenu(e, 'taskGroup', task.id, task.title)}
         onChildMenu={(e, childId, childTitle) => openMenu(e, 'taskChild', childId, childTitle, task.id)}
         checkBtn={checkBtn}
@@ -439,7 +439,7 @@ export function TasksSection({ store, pinned = false }: { store: LocalStore; pin
       >
         {checkBtn(task.done, () => store.toggleTask(task.id), task.done ? '取消完成' : '标记完成')}
         {editingTaskId === task.id ? (
-          titleEditor(task.id)
+          titleEditor()
         ) : (
           <span
             data-task-title
