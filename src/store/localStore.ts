@@ -524,7 +524,8 @@ export function resolveCardOrder(stored: string[], defaultOrder: string[]): stri
 }
 
 export const ALL_WIDGETS: { id: WidgetId; name: string; desc: string }[] = [
-  { id: 'task', name: '今日任务', desc: '待办与长期计划小工具' },
+  // 名称与卡面标题统一为「计划」（组件规范第 7 节收编口径，第七十四轮）；UI 显示名以 widgetRegistry 注册表为准
+  { id: 'task', name: '计划', desc: '待办与长期计划小工具' },
   { id: 'news', name: 'AI 资讯', desc: '今日最热头条 + 热门榜单' },
   { id: 'ranking', name: 'AI 软件榜', desc: 'Product Hunt 每周更新榜单' },
   { id: 'trending', name: '热门话题', desc: '社区热门话题帖子数' },
