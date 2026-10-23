@@ -13,7 +13,7 @@ export interface SearchResults {
   groups: NavGroup[];
 }
 
-function matchesText(target: string, query: string, lowerQuery: string, latin: boolean): boolean {
+function matchesText(target: string, lowerQuery: string, latin: boolean): boolean {
   if (!target) return false;
   if (target.toLowerCase().includes(lowerQuery)) return true;
   if (latin && getPinyinInitials(target).includes(lowerQuery)) return true;
@@ -32,23 +32,23 @@ export function searchAll(rawQuery: string, groups: NavGroup[]): SearchResults {
 
   for (const group of groups) {
     const groupMatched =
-      matchesText(group.name, query, lowerQuery, latin) ||
-      (group.aliases ?? []).some((a) => matchesText(a, query, lowerQuery, latin));
+      matchesText(group.name, lowerQuery, latin) ||
+      (group.aliases ?? []).some((a) => matchesText(a, lowerQuery, latin));
     if (groupMatched) groupHits.push(group);
 
     for (const site of group.sites) {
       let matchedAlias: string | undefined;
-      let matched = matchesText(site.name, query, lowerQuery, latin);
+      let matched = matchesText(site.name, lowerQuery, latin);
       if (!matched) {
         for (const alias of site.aliases ?? []) {
-          if (matchesText(alias, query, lowerQuery, latin)) {
+          if (matchesText(alias, lowerQuery, latin)) {
             matched = true;
             matchedAlias = alias;
             break;
           }
         }
       }
-      if (!matched && matchesText(site.description, query, lowerQuery, latin)) {
+      if (!matched && matchesText(site.description, lowerQuery, latin)) {
         matched = true;
       }
       if (matched) siteHits.push({ site, group, matchedAlias });
@@ -63,17 +63,4 @@ export function searchAll(rawQuery: string, groups: NavGroup[]): SearchResults {
   });
 
   return { sites: siteHits.slice(0, 8), groups: groupHits.slice(0, 4) };
-}
-
-/** 在单个编组内搜索 */
-export function searchInGroup(group: NavGroup, rawQuery: string): SiteEntry[] {
-  const query = rawQuery.trim();
-  if (!query) return group.sites;
-  const lowerQuery = query.toLowerCase();
-  const latin = isLatinQuery(query);
-  return group.sites.filter(
-    (site) =>
-      matchesText(site.name, query, lowerQuery, latin) ||
-      (site.aliases ?? []).some((a) => matchesText(a, query, lowerQuery, latin)),
-  );
 }
