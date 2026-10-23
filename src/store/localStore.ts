@@ -438,9 +438,57 @@ function normalizeCombos(raw: unknown, groups: NavGroup[]): ComboItem[] {
   return out;
 }
 
+/**
+ * A 型组件摞（第七十二轮）：多个小组件叠成一张卡，顶部标题排切换当前成员，一摞最多 4 个。
+ * 摞只记成员顺序与当前成员；成员各自的数据（计划任务、组件独立存储等）完全不动，
+ * 成员仍留在 widgets 列表里（摞是纯布局层分组，不产生第二份实体，商店里仍显示「已添加」）。
+ * 卡片顺序里摞占一个条目（key = wstack:<id>），尺寸存 groupLayouts 的同一 key（同组合口径）。
+ */
+export const WIDGET_STACK_MAX = 4;
+
+export interface WidgetStackItem {
+  id: string;
+  /** 成员组件 id（有序，2..WIDGET_STACK_MAX 个）：顶部标题排从左到右即此序 */
+  widgetIds: WidgetId[];
+  /** 当前显示的成员（必须是成员之一） */
+  activeWidgetId: WidgetId;
+}
+
+/** 拖拽/菜单合并的参与方：单个组件或一整摞（HomePage 与 store 方法共用） */
+export type WidgetMergeEntity = { type: 'widget'; id: WidgetId } | { type: 'stack'; id: string };
+
+/** 归一化组件摞：成员必须是合法组件且当前在 widgets 列表中、两两不重复、一个组件至多属于一摞；
+ *  成摞需 2..上限 个成员，不足 2 个整摞丢弃（成员按普通卡渲染）；超上限截断到上限 */
+function normalizeWidgetStacks(raw: unknown, widgets: WidgetId[]): WidgetStackItem[] {
+  if (!Array.isArray(raw)) return [];
+  const visible = new Set(widgets);
+  const used = new Set<WidgetId>();
+  const out: WidgetStackItem[] = [];
+  for (const s of raw as Partial<WidgetStackItem>[]) {
+    if (!s || typeof s.id !== 'string' || !s.id || !Array.isArray(s.widgetIds)) continue;
+    if (out.some((o) => o.id === s.id)) continue;
+    const members: WidgetId[] = [];
+    for (const m of s.widgetIds as unknown[]) {
+      if (typeof m !== 'string') continue;
+      const id = m as WidgetId;
+      if (!ALL_WIDGETS.some((w) => w.id === id)) continue;
+      if (!visible.has(id) || used.has(id) || members.includes(id)) continue;
+      members.push(id);
+      if (members.length >= WIDGET_STACK_MAX) break;
+    }
+    if (members.length < 2) continue;
+    for (const m of members) used.add(m);
+    out.push({
+      id: s.id,
+      widgetIds: members,
+      activeWidgetId: members.includes(s.activeWidgetId as WidgetId) ? (s.activeWidgetId as WidgetId) : members[0],
+    });
+  }
+  return out;
+}
+
 /** 归一化卡面样式表：只采纳合法值 */
-function normalizeCardFaceStyles(raw: unknown): Record<string, CardFaceStyle> {
-  const out: Record<string, CardFaceStyle> = {};
+function normalizeCardFaceStyles(raw: unknown): Record<string, CardFaceStyle> {  const out: Record<string, CardFaceStyle> = {};
   if (raw && typeof raw === 'object') {
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
       if (v === 'list' || v === 'focus') out[k] = v;
@@ -487,6 +535,8 @@ export interface StoreData {
   cardFaceStyles: Record<string, CardFaceStyle>;
   /** C 卡组合（第二十一轮）：老数据无此字段时归一化为空数组 */
   combos: ComboItem[];
+  /** A 型组件摞（第七十二轮）：老数据无此字段时归一化为空数组（无摞时行为与此前完全一致） */
+  widgetStacks: WidgetStackItem[];
   /**
    * A 型小组件专属底色（第二十三轮）：key = 卡片稳定 key（widget:<id>），value = WIDGET_TINTS 色板索引。
    * 组件首次出现时随机抽一次并落盘，之后刷新/同步都不变；老数据无此字段时为空表（渲染前补抽）。
@@ -499,6 +549,8 @@ export const groupCardKey = (groupId: string) => `group:${groupId}`;
 export const widgetCardKey = (widgetId: WidgetId) => `widget:${widgetId}`;
 /** 组合卡的稳定 key（顺序与尺寸布局都按这个 key 存） */
 export const comboCardKey = (comboId: string) => `combo:${comboId}`;
+/** 组件摞的稳定 key（顺序与尺寸布局都按这个 key 存） */
+export const widgetStackCardKey = (stackId: string) => `wstack:${stackId}`;
 
 /**
  * 把已存顺序与当前应有的卡片集合（defaultOrder）对齐：
@@ -583,6 +635,7 @@ function seedData(): StoreData {
     plans: [],
     cardFaceStyles: {},
     combos: [],
+    widgetStacks: [],
     widgetTints: {},
   };
 }
@@ -721,6 +774,7 @@ export function validateStoreData(raw: unknown): StoreData | null {
     plans: normalizePlans((data as { plans?: unknown }).plans),
     cardFaceStyles: normalizeCardFaceStyles((data as { cardFaceStyles?: unknown }).cardFaceStyles),
     combos: normalizeCombos((data as { combos?: unknown }).combos, groups),
+    widgetStacks: normalizeWidgetStacks((data as { widgetStacks?: unknown }).widgetStacks, widgets),
     widgetTints: normalizeWidgetTints((data as { widgetTints?: unknown }).widgetTints),
   };
 }
@@ -1167,6 +1221,160 @@ export function useLocalStore() {
     [update],
   );
 
+  /* ---------- A 型组件摞（第七十二轮） ---------- */
+
+  /**
+   * 合并小组件（拖拽充能后压住目标松手、或右键「合并到…」选目标时调用）：
+   * - 目标是单个组件：新建摞落在 target 的位置与栏，尺寸继承 target 当前组件尺寸；
+   *   成员顺序 = [target, ...被拖方成员]，当前成员 = target（被压住的那张保持显示）。
+   * - 目标已是摞：被拖方成员依次追加到摞尾，摞的位置/尺寸/当前成员全不变。
+   * - 被拖方是摞：整摞成员一并并入，被拖摞的尺寸/栏条目随之删除。
+   * 合并后总成员数超过上限（WIDGET_STACK_MAX）整次拒绝；成员各自的布局条目
+   * （widgetLayouts）与底色不动，拆分/移出时自然恢复各自尺寸。
+   */
+  const mergeWidgetEntities = useCallback(
+    (dragged: WidgetMergeEntity, target: WidgetMergeEntity, currentOrder: string[]) => {
+      if (dragged.type === target.type && dragged.id === target.id) return;
+      update((d) => {
+        const stackOf = (wid: WidgetId) => d.widgetStacks.find((s) => s.widgetIds.includes(wid));
+        const dragStack = dragged.type === 'stack' ? d.widgetStacks.find((s) => s.id === dragged.id) : undefined;
+        const targetStack = target.type === 'stack' ? d.widgetStacks.find((s) => s.id === target.id) : undefined;
+        if (dragged.type === 'stack' && !dragStack) return d;
+        if (target.type === 'stack' && !targetStack) return d;
+        if (dragStack && targetStack && dragStack.id === targetStack.id) return d;
+        // 实体若报的是单个组件，它必须尚未入摞（入摞成员没有独立卡面，正常路径到不了这里）
+        if (dragged.type === 'widget' && stackOf(dragged.id)) return d;
+        if (target.type === 'widget' && stackOf(target.id)) return d;
+        const dragMembers: WidgetId[] = dragged.type === 'stack' ? [...dragStack!.widgetIds] : [dragged.id];
+        const targetMembers: WidgetId[] = target.type === 'stack' ? [...targetStack!.widgetIds] : [target.id];
+        if (dragMembers.some((m) => targetMembers.includes(m))) return d;
+        if (dragMembers.length + targetMembers.length > WIDGET_STACK_MAX) return d;
+        const dragKey = dragged.type === 'stack' ? widgetStackCardKey(dragged.id) : widgetCardKey(dragged.id);
+        const targetKey = target.type === 'stack' ? widgetStackCardKey(target.id) : widgetCardKey(target.id);
+        // 被拖方是摞：其摞记录与布局/栏条目一并收掉（成员本身的条目保留）
+        if (dragStack) {
+          d.widgetStacks = d.widgetStacks.filter((s) => s.id !== dragStack.id);
+          delete d.groupLayouts[widgetStackCardKey(dragStack.id)];
+          delete d.cardCols[widgetStackCardKey(dragStack.id)];
+        }
+        if (targetStack) {
+          targetStack.widgetIds = [...targetStack.widgetIds, ...dragMembers];
+          d.cardOrder = currentOrder.filter((k) => k !== dragKey);
+          return d;
+        }
+        const id = genId('ws');
+        const key = widgetStackCardKey(id);
+        d.widgetStacks.push({
+          id,
+          widgetIds: [target.id as WidgetId, ...dragMembers],
+          activeWidgetId: target.id as WidgetId,
+        });
+        d.groupLayouts[key] = { ...d.widgetLayouts[target.id as WidgetId] };
+        const targetCol = d.cardCols[widgetCardKey(target.id as WidgetId)];
+        if (targetCol !== undefined) d.cardCols[key] = targetCol;
+        const order = currentOrder.filter((k) => k !== dragKey);
+        const ti = order.indexOf(targetKey);
+        if (ti >= 0) order[ti] = key;
+        else order.push(key);
+        d.cardOrder = order;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 拆分组件摞：摞条目原位替换回全部成员条目（成员顺序），删摞记录与其尺寸条目；成员各自尺寸条目未动、自然恢复 */
+  const splitWidgetStack = useCallback(
+    (stackId: string, currentOrder: string[]) => {
+      update((d) => {
+        const stack = d.widgetStacks.find((s) => s.id === stackId);
+        if (!stack) return d;
+        d.widgetStacks = d.widgetStacks.filter((s) => s.id !== stackId);
+        const key = widgetStackCardKey(stackId);
+        delete d.groupLayouts[key];
+        const col = d.cardCols[key];
+        if (col !== undefined) {
+          for (const wid of stack.widgetIds) d.cardCols[widgetCardKey(wid)] = col;
+        }
+        delete d.cardCols[key];
+        const order = [...currentOrder];
+        const idx = order.indexOf(key);
+        const keys = stack.widgetIds.map((wid) => widgetCardKey(wid));
+        if (idx >= 0) order.splice(idx, 1, ...keys);
+        else order.push(...keys);
+        d.cardOrder = order;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /**
+   * 从摞里移出单个成员：成员恢复独立卡、排在摞后面（栏同摞）；
+   * 移出后摞只剩 1 个成员时整摞解散——剩余成员与移出者依次排在摞原位。
+   */
+  const extractWidgetFromStack = useCallback(
+    (stackId: string, widgetId: WidgetId, currentOrder: string[]) => {
+      update((d) => {
+        const stack = d.widgetStacks.find((s) => s.id === stackId);
+        if (!stack || !stack.widgetIds.includes(widgetId)) return d;
+        const key = widgetStackCardKey(stackId);
+        const col = d.cardCols[key];
+        const remaining = stack.widgetIds.filter((w) => w !== widgetId);
+        const order = [...currentOrder];
+        const idx = order.indexOf(key);
+        if (remaining.length >= 2) {
+          stack.widgetIds = remaining;
+          if (stack.activeWidgetId === widgetId) stack.activeWidgetId = remaining[0];
+          if (col !== undefined) d.cardCols[widgetCardKey(widgetId)] = col;
+          if (idx >= 0) order.splice(idx + 1, 0, widgetCardKey(widgetId));
+          else order.push(widgetCardKey(widgetId));
+        } else {
+          d.widgetStacks = d.widgetStacks.filter((s) => s.id !== stackId);
+          delete d.groupLayouts[key];
+          delete d.cardCols[key];
+          const keys =
+            remaining.length === 1 ? [widgetCardKey(remaining[0]), widgetCardKey(widgetId)] : [widgetCardKey(widgetId)];
+          if (col !== undefined) {
+            for (const k of keys) d.cardCols[k] = col;
+          }
+          if (idx >= 0) order.splice(idx, 1, ...keys);
+          else order.push(...keys);
+        }
+        d.cardOrder = order;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 切换摞的当前成员（点顶部标题排，持久化，刷新/跨设备同步后保持） */
+  const setWidgetStackActive = useCallback(
+    (stackId: string, widgetId: WidgetId) => {
+      update((d) => {
+        const stack = d.widgetStacks.find((s) => s.id === stackId);
+        if (stack && stack.widgetIds.includes(widgetId)) stack.activeWidgetId = widgetId;
+        return d;
+      });
+    },
+    [update],
+  );
+
+  /** 摞右键改尺寸：按 wstack key 存 groupLayouts（成员各自尺寸条目不动），宽度夹到 ≤2 栏 */
+  const setWidgetStackLayout = useCallback(
+    (stackId: string, patch: Partial<WidgetLayout>) => {
+      update((d) => {
+        const key = widgetStackCardKey(stackId);
+        const cur = d.groupLayouts[key] ?? DEFAULT_STACK_LAYOUT;
+        const next = { ...cur, ...patch };
+        next.colSpan = clampColSpan(next.colSpan);
+        d.groupLayouts[key] = next;
+        return d;
+      });
+    },
+    [update],
+  );
+
   /** 切换背景：选预设或标记使用本地图片（图片本体在 IndexedDB，由调用方先存好） */
   const setBackground = useCallback(
     (next: BackgroundSetting) => {
@@ -1285,6 +1493,30 @@ export function useLocalStore() {
         else set.delete(widgetId);
         // 保持 ALL_WIDGETS 的固有顺序，布局稳定
         d.widgets = ALL_WIDGETS.map((w) => w.id).filter((id) => set.has(id));
+        /* 组件摞联动（第七十二轮）：从主页移除正在摞中的成员时同步把它摘出摞——
+         * 摞还剩 ≥2 个则摞保留（当前成员被摘时改指第一个剩余成员）；只剩 1 个则整摞
+         * 解散，剩余成员顶替摞在顺序/栏上的位置。重新添加该组件时按独立卡回来，不自动回摞 */
+        if (!visible) {
+          const stack = d.widgetStacks.find((s) => s.widgetIds.includes(widgetId));
+          if (stack) {
+            const remaining = stack.widgetIds.filter((w) => w !== widgetId);
+            const key = widgetStackCardKey(stack.id);
+            if (remaining.length >= 2) {
+              stack.widgetIds = remaining;
+              if (stack.activeWidgetId === widgetId) stack.activeWidgetId = remaining[0];
+            } else {
+              d.widgetStacks = d.widgetStacks.filter((s) => s.id !== stack.id);
+              delete d.groupLayouts[key];
+              const col = d.cardCols[key];
+              delete d.cardCols[key];
+              if (remaining.length === 1) {
+                if (col !== undefined) d.cardCols[widgetCardKey(remaining[0])] = col;
+                const idx = d.cardOrder.indexOf(key);
+                if (idx >= 0) d.cardOrder.splice(idx, 1, widgetCardKey(remaining[0]));
+              }
+            }
+          }
+        }
         return d;
       });
     },
@@ -1631,6 +1863,11 @@ export function useLocalStore() {
     detachComboMemberAsList,
     setComboActive,
     setComboLayout,
+    mergeWidgetEntities,
+    splitWidgetStack,
+    extractWidgetFromStack,
+    setWidgetStackActive,
+    setWidgetStackLayout,
     setWidgetVisible,
     setWidgetLayout,
     setGroupLayout,
