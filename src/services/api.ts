@@ -1,5 +1,3 @@
-const API_BASE = '/api';
-
 export interface HealthInfo {
   status: string;
   newsCount: number;
