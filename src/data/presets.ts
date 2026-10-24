@@ -32,8 +32,14 @@ export const BUILTIN_PRESET_META: PresetMeta[] = [
   { id: 'tools', name: '工具', desc: '整页小组件，没有站点编组' },
 ];
 
-/** 全部 A 型组件（与 store 的 ALL_WIDGETS / DEFAULT_WIDGETS 同序） */
+/** 种子默认主页的组件集（默认预设与种子逐点一致用；与 store 的 DEFAULT_WIDGETS 同序） */
 const ALL_WIDGET_IDS: CompositionSnapshot['widgets'] = ['task', 'news', 'ranking', 'trending', 'tools'];
+
+/** 全部 A 型组件（工具预设 = 全组件布局，第一百零七轮起含中式色卡） */
+const EVERY_WIDGET_IDS: CompositionSnapshot['widgets'] = [...ALL_WIDGET_IDS, 'colors'];
+
+/** 中式色卡在预设里的专属底色：色板第 3 档「赤霞绯梦」（红系，与胭脂同族，设计稿 4.3 定版口径） */
+const COLORS_PRESET_TINT = 3;
 
 const defaultWidgetLayouts = () => structuredClone(DEFAULT_WIDGET_LAYOUTS);
 
@@ -96,9 +102,10 @@ export function buildDefaultPreset(): CompositionSnapshot {
 
 /**
  * 设计师预设：图像/视频打头，设计四件（AI图片处理/设计素材/设计灵感/配色字体，
- * 数据取自导航页池）与 AI 对话随后；小组件只配计划 + 文件工具。
+ * 数据取自导航页池）与 AI 对话随后；小组件配计划 + 文件工具 + 中式色卡
+ * （第一百零七轮：色卡是设计师预设的差异化组件，摆设计灵感之后收尾）。
  * 排版（4 栏）：[图像][视频][AI对话 2宽] / [图片处理][设计素材][AI对话] /
- * [计划][配色字体][文件工具 2宽] / [设计灵感]（第 4 行左栏收尾）
+ * [计划][配色字体][文件工具 2宽] / [设计灵感][中式色卡]
  */
 export function buildDesignerPreset(): CompositionSnapshot {
   const groups = prepareGroups([
@@ -111,7 +118,8 @@ export function buildDesignerPreset(): CompositionSnapshot {
   ]);
   return baseSnapshot({
     groups,
-    widgets: ['task', 'tools'],
+    widgets: ['task', 'tools', 'colors'],
+    widgetTints: { [widgetCardKey('colors')]: COLORS_PRESET_TINT },
     cardOrder: [
       groupCardKey('image'),
       groupCardKey('video'),
@@ -122,6 +130,7 @@ export function buildDesignerPreset(): CompositionSnapshot {
       groupCardKey('color-font'),
       widgetCardKey('tools'),
       groupCardKey('design-inspire'),
+      widgetCardKey('colors'),
     ],
     cardCols: {
       [groupCardKey('image')]: 0,
@@ -133,6 +142,7 @@ export function buildDesignerPreset(): CompositionSnapshot {
       [groupCardKey('color-font')]: 1,
       [widgetCardKey('tools')]: 2,
       [groupCardKey('design-inspire')]: 0,
+      [widgetCardKey('colors')]: 1,
     },
   });
 }
@@ -181,13 +191,15 @@ export function buildDeveloperPreset(): CompositionSnapshot {
 }
 
 /**
- * 工具预设：整页只有小组件、没有任何站点编组。计划给 2 宽 × 2 高的大尺寸，
- * 资讯与软件榜两张 2×2 大卡分列左右，热门话题与文件工具收尾，四行内左右等高。
+ * 工具预设：整页只有小组件、没有任何站点编组（全组件，第一百零七轮起含中式色卡）。
+ * 计划给 2 宽 × 2 高的大尺寸，资讯与软件榜两张 2×2 大卡分列左右，
+ * 热门话题与文件工具收尾，中式色卡落左栏末位。
  */
 export function buildToolsPreset(): CompositionSnapshot {
   return baseSnapshot({
     groups: [],
-    widgets: [...ALL_WIDGET_IDS],
+    widgets: [...EVERY_WIDGET_IDS],
+    widgetTints: { [widgetCardKey('colors')]: COLORS_PRESET_TINT },
     widgetLayouts: {
       ...defaultWidgetLayouts(),
       task: { colSpan: 2, heightUnits: 2 },
@@ -198,6 +210,7 @@ export function buildToolsPreset(): CompositionSnapshot {
       widgetCardKey('ranking'),
       widgetCardKey('trending'),
       widgetCardKey('tools'),
+      widgetCardKey('colors'),
     ],
     cardCols: {
       [widgetCardKey('task')]: 0,
@@ -205,6 +218,7 @@ export function buildToolsPreset(): CompositionSnapshot {
       [widgetCardKey('ranking')]: 0,
       [widgetCardKey('trending')]: 2,
       [widgetCardKey('tools')]: 2,
+      [widgetCardKey('colors')]: 0,
     },
   });
 }
