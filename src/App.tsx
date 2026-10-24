@@ -1,6 +1,5 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { TopLogo, TopNav } from './components/Sidebar';
-import BackgroundMenu from './components/v2/BackgroundMenu';
 import HomePage from './components/v2/HomePage';
 import PresetMenu from './components/v2/PresetMenu';
 import TopBarShade from './components/v2/TopBarShade';
@@ -182,7 +181,6 @@ export default function App() {
                 <div className="grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-4 gap-3 sm:gap-4 items-center min-h-12 sm:min-h-13">
                   <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
                     <TopLogo onClick={() => handlePageChange('home')} />
-                    <BackgroundMenu store={store} />
                     <TopNav onPageChange={handlePageChange} currentPage={currentPage} presetsNode={<PresetMenu store={store} />} />
                   </div>
                   <div className="col-span-1 lg:col-span-2" />
