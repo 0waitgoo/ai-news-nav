@@ -139,6 +139,9 @@ const iconMap: Record<string, string> = {
   'maoken': '/icon_APP/maoken.png',
   'dafont': '/icon_APP/dafont.png',
   'qiuziti': '/icon_APP/qiuziti.png',
+  // 第一百零五轮定版新站（官网取回落盘，与 groups.ts 图标池同步登记）
+  'zhipu': '/icon_APP/zhipu.png',
+  'vidu': '/icon_APP/vidu.svg',
 };
 
 const getLogo = (name: string): string => {
