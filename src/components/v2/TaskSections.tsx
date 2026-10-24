@@ -551,8 +551,10 @@ export function TasksSection({ store, pinned = false }: { store: LocalStore; pin
             </button>
           </form>
         )}
+      {/* 添加待办框（第一百零五轮）：与右侧「+ 新计划」统一为虚线款——虚线边、透明底、
+          同圆角 rounded-xl、同高（边框 2 + 输入 py-1 + 文本行高 = 30px，与按钮一致） */}
       <form
-        className="flex items-center gap-1.5 bg-white/[0.07] border border-white/20 rounded-xl pl-2.5 pr-1.5 py-1 focus-within:border-indigo-400/50 transition-colors"
+        className="flex items-center gap-1.5 border border-dashed border-white/25 rounded-xl pl-2.5 pr-1.5 hover:border-white/45 focus-within:border-indigo-400/50 transition-colors"
         onSubmit={(e) => {
           e.preventDefault();
           submitNewTask();
