@@ -17,7 +17,7 @@ import {
  * - 同步层（GitHub 仓库 / 云端）以后只替换这一层的读写后端，组件不感知
  */
 
-export type WidgetId = 'task' | 'news' | 'ranking' | 'trending' | 'tools';
+export type WidgetId = 'task' | 'news' | 'ranking' | 'trending' | 'tools' | 'colors';
 
 /** A 型原生组件在网格中的占位：宽度跨栏数（最多 2 栏） + 高度单位（1X / 2X） */
 export interface WidgetLayout {
@@ -32,6 +32,8 @@ export const DEFAULT_WIDGET_LAYOUTS: Record<WidgetId, WidgetLayout> = {
   trending: { colSpan: 2, heightUnits: 1 },
   /** 文件工具卡（第六十八轮）：默认 2 栏 × 1x，6 个工具一排摆下 */
   tools: { colSpan: 2, heightUnits: 1 },
+  /** 中式色卡（第一百零七轮）：默认 2 栏 × 1x，当日配色色带横排（设计稿注册定版） */
+  colors: { colSpan: 2, heightUnits: 1 },
 };
 
 /** B 型编组卡收起态的默认占位：2 栏 × 2x（与组件共用 WidgetLayout 形状，右键菜单可改） */
@@ -704,6 +706,7 @@ export const ALL_WIDGETS: { id: WidgetId; name: string; desc: string }[] = [
   { id: 'ranking', name: 'AI 软件榜', desc: 'Product Hunt 每周更新榜单' },
   { id: 'trending', name: '热门话题', desc: '社区热门话题帖子数' },
   { id: 'tools', name: '文件工具', desc: 'PDF 转图片/长图、图片转 PDF、合并与拆分' },
+  { id: 'colors', name: '中式色卡', desc: '158 种中国传统色：色墙浏览、传统配色、一键复制色值' },
 ];
 
 const STORAGE_KEY = 'ainav-store-v1';

@@ -3,11 +3,14 @@
  * - 前端直连 api.github.com（Contents API），不经过任何中间服务器；
  * - 登录凭证只存浏览器本地 localStorage 的独立 key（ainav-github-sync-v1），
  *   **绝不写入同步的 JSON 内容、也绝不进导出 JSON**（同步内容就是 store.data 本身）；
+ * - 第一百零七轮起：组件独立存储（如中式色卡收藏）按 store/widgetStorage.ts 的登记
+ *   随主数据一并同步——写出时有组件数据才包信封、读入时统一拆包，旧纯主数据文件兼容；
  * - 冲突裁决靠数据里的 updatedAt：拉取时云端更新则覆盖本地；推送遇 sha 冲突先重新拉取，
  *   云端更新用云端、本地更新换新 sha 重试，仍失败交给用户手动裁决（见 DataMenu）。
  */
 
 import { API_BASE as SITE_API_BASE, IS_EXTENSION_BUILD } from '../services/apiBase';
+import { envelopeStoreOf, unpackDataEnvelope } from './widgetStorage';
 
 export interface GithubSyncConfig {
   owner: string;
@@ -131,16 +134,27 @@ function contentsUrl(cfg: GithubSyncConfig): string {
   return `${API_BASE}/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/contents/${encodedPath}`;
 }
 
-/** 从解析出的数据里取 updatedAt（没有/非法一律 0） */
+/** 从解析出的数据里取 updatedAt（没有/非法一律 0）；
+ * 信封格式（store/widgetStorage，见 store/widgetStorage.ts）时取 store 子对象的 updatedAt */
 export function updatedAtOf(data: unknown): number {
-  if (data && typeof data === 'object' && typeof (data as { updatedAt?: unknown }).updatedAt === 'number') {
-    return (data as { updatedAt: number }).updatedAt;
+  const inner = envelopeStoreOf(data);
+  if (inner && typeof inner === 'object' && typeof (inner as { updatedAt?: unknown }).updatedAt === 'number') {
+    return (inner as { updatedAt: number }).updatedAt;
   }
   return 0;
 }
 
 export type GhGetResult =
-  | { kind: 'ok'; data: unknown; text: string; sha: string; updatedAt: number }
+  | {
+      kind: 'ok';
+      /** 主数据（信封已拆包，调用方拿到的永远是纯主数据） */
+      data: unknown;
+      text: string;
+      sha: string;
+      updatedAt: number;
+      /** 信封里携带的组件独立数据（旧格式文件为 null，调用方据此决定是否恢复） */
+      widgetStorage: Record<string, unknown> | null;
+    }
   | { kind: 'missing' }
   | { kind: 'error'; message: string };
 
@@ -179,8 +193,9 @@ export async function ghGetFile(cfg: GithubSyncConfig): Promise<GhGetResult> {
       return { kind: 'error', message: 'GitHub 返回的文件格式异常（可能路径指向文件夹）' };
     }
     const text = b64DecodeUtf8(body.content);
-    const data: unknown = JSON.parse(text);
-    return { kind: 'ok', data, text, sha: body.sha, updatedAt: updatedAtOf(data) };
+    const parsed: unknown = JSON.parse(text);
+    const { store, widgetStorage } = unpackDataEnvelope(parsed);
+    return { kind: 'ok', data: store, text, sha: body.sha, updatedAt: updatedAtOf(parsed), widgetStorage };
   } catch {
     return { kind: 'error', message: '云端文件不是有效的 JSON 数据' };
   }
