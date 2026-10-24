@@ -918,9 +918,9 @@ function normalizeGroupLayouts(raw: unknown): Record<string, WidgetLayout> {
  */
 const LEGACY_LOGO_PATHS: Record<string, string> = {
   '/icon_APP/元气AI.png': '/icon_APP/yuanqi-ai.png',
-  '/元气AI.png': '/yuanqi-ai.png',
+  '/元气AI.png': '/icon_APP/yuanqi-ai.png',
   '/icon_APP/有道龙虾.svg': '/icon_APP/youdao-longxia.svg',
-  '/有道龙虾.svg': '/youdao-longxia.svg',
+  '/有道龙虾.svg': '/icon_APP/youdao-longxia.svg',
   '/icon_APP/海螺.png': '/icon_APP/hailuo.png',
   '/icon_APP/盒豚生活.png': '/icon_APP/hetun-life.png',
   '/icon_APP/秘塔写作.png': '/icon_APP/mita-writing.png',
