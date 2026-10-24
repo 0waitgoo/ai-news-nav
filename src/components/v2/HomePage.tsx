@@ -31,6 +31,7 @@ import BackgroundMenu from './BackgroundMenu';
 import PresetMenu from './PresetMenu';
 import { TopLogo, TopNav } from '../Sidebar';
 import { closeToolsWorkspace, useToolsWorkspace } from '../../store/toolsWorkspace';
+import { closeColorsWorkspace, useColorsWorkspace } from '../../store/colorsWorkspace';
 import { WIDGET_DEFINITIONS, widgetDefOf } from './widgetRegistry';
 import GroupListCard from './GroupListCard';
 import GroupStackCard, { StackGroupIcon } from './GroupStackCard';
@@ -129,6 +130,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
    * 的栏位高度抬高；状态本体在 toolsWorkspace store。原顶栏扳手定位已于
    * 第一百零六轮随扳手改预设入口下线，工作区只由文件工具卡自身开关 */
   const toolsWs = useToolsWorkspace();
+  /* 中式色卡工作区状态（第一百零七轮）：与文件工具同制，打开时栏位高度抬到 2 倍 */
+  const colorsWs = useColorsWorkspace();
   /* 视口三档（第六十六轮起）：≥lg（1024px）为 4 栏；640–1023（平板）为 2 栏；
    * <640（手机）为 1 栏单列。数据始终按 4 栏锚点存；2 栏呈现时 4 个锚点栏两两合并
    * （0,1→左、2,3→右），1 栏呈现时只按顺序纵向堆叠、锚点不参与（见 placements）。
@@ -232,6 +235,10 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   useEffect(() => {
     if (toolsWs.open && !widgets.includes('tools')) closeToolsWorkspace();
   }, [toolsWs.open, widgets]);
+  /* 中式色卡同守卫（第一百零七轮） */
+  useEffect(() => {
+    if (colorsWs.open && !widgets.includes('colors')) closeColorsWorkspace();
+  }, [colorsWs.open, widgets]);
   const panelGroup = panelGroupId ? (groups.find((g) => g.id === panelGroupId) ?? null) : null;
   const comboPanel = comboPanelId ? (validCombos.find((c) => c.id === comboPanelId) ?? null) : null;
   const comboPanelGroups: [NavGroup, NavGroup] | null = comboPanel
@@ -585,6 +592,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     for (const c of validCombos) order.push(comboCardKey(c.id));
     if (hasWidget('trending')) order.push(widgetCardKey('trending'));
     if (hasWidget('tools')) order.push(widgetCardKey('tools'));
+    if (hasWidget('colors')) order.push(widgetCardKey('colors'));
     /* 组件摞（第七十二轮）：成员 key 全部摘掉，摞 key 落在成员中最靠前的位置。
      * 这只是 cardOrder 为空/对齐时的回落位——合并/拆分动作都会把摞的真实位置写进 cardOrder */
     let result = order;
@@ -670,16 +678,23 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     /* 文件工具工作区打开时原地变高（第八十六轮建制，第一百零四轮改口径）：高度 =
      * 收起态的 2 倍（2x 口径，用户定版——旧「至少 3 行」在 1x 卡上会拉成近全屏高、
      * 下方大片空白）。与编组卡展开同理，宽度保持存储口径、只长高，同栏后续卡
-     * 顺移让位、收起后精确复原。摞里的文件工具只在它是当前成员时才撑高整摞 */
-    if (toolsWs.open) {
+     * 顺移让位、收起后精确复原。摞里的工作区组件只在它是当前成员时才撑高整摞。
+     * 第一百零七轮：中式色卡工作区同制，一并走这张表 */
+    const openWsWidgets: WidgetId[] = [
+      ...(toolsWs.open ? (['tools'] as WidgetId[]) : []),
+      ...(colorsWs.open ? (['colors'] as WidgetId[]) : []),
+    ];
+    if (openWsWidgets.length > 0) {
       const stored = storedSpecOf(key);
-      if (item?.widgetId === 'tools') return { span: stored.span, height: stored.height * 2 };
-      if (
-        item?.widgetStack &&
-        item.widgetStack.activeWidgetId === 'tools' &&
-        item.widgetStack.widgetIds.includes('tools')
-      ) {
-        return { span: stored.span, height: stored.height * 2 };
+      for (const wid of openWsWidgets) {
+        if (item?.widgetId === wid) return { span: stored.span, height: stored.height * 2 };
+        if (
+          item?.widgetStack &&
+          item.widgetStack.activeWidgetId === wid &&
+          item.widgetStack.widgetIds.includes(wid)
+        ) {
+          return { span: stored.span, height: stored.height * 2 };
+        }
       }
     }
     return storedSpecOf(key);
@@ -816,6 +831,12 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           const closed = lay.heightUnits === 2 ? 300 : 196;
           return toolsWs.open ? closed * 2 : closed;
         }
+        case 'colors': {
+          // 中式色卡（第一百零七轮）：手机 1 栏排布——1x 色带一排、2x 带当日一色块；
+          // 工作区打开时高度 = 收起态 2 倍（与文件工具同制），色墙在工作区内滚动
+          const closed = lay.heightUnits === 2 ? 300 : 196;
+          return colorsWs.open ? closed * 2 : closed;
+        }
         default:
           return 172;
       }
@@ -854,7 +875,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     map.set(TILE_ADD_KEY, 132);
     map.set(TILE_NEW_KEY, 132);
     return map;
-  }, [phoneViewport, viewportWidth, itemByKey, groupLayouts, widgetLayouts, expandedId, groups, store.data.tasks, store.data.plans, toolsWs.open]);
+  }, [phoneViewport, viewportWidth, itemByKey, groupLayouts, widgetLayouts, expandedId, groups, store.data.tasks, store.data.plans, toolsWs.open, colorsWs.open]);
 
   /** 渲染放置（视觉空间）：4 栏视口直接用存储锚点；2 栏视口两两合并（0,1→左、2,3→右，2 宽卡占满宽）。
    *  拖拽中相关卡的锚点先被 previewCols 覆盖。两个虚线入口块作为无锚点伪卡附在末尾（回落最矮栏）。 */
@@ -899,7 +920,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       rowTemplate: undefined as string | undefined,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayOrder, itemByKey, groupLayouts, widgetLayouts, expandedId, visualCols, previewCols, effectiveCols, phoneViewport, phoneHeights, toolsWs.open]);
+  }, [displayOrder, itemByKey, groupLayouts, widgetLayouts, expandedId, visualCols, previewCols, effectiveCols, phoneViewport, phoneHeights, toolsWs.open, colorsWs.open]);
   const placementsRef = useRef(placements);
   placementsRef.current = placements;
 

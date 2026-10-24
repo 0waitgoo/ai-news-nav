@@ -1,5 +1,5 @@
 import React from 'react';
-import { ListTodo, Newspaper, Trophy, TrendingUp, Wrench, type LucideIcon } from 'lucide-react';
+import { ListTodo, Newspaper, Palette, Trophy, TrendingUp, Wrench, type LucideIcon } from 'lucide-react';
 import {
   DEFAULT_WIDGET_LAYOUTS,
   type LocalStore,
@@ -11,6 +11,7 @@ import TaskCard from './TaskCard';
 import NewsCard from './NewsCard';
 import RankingCard from './RankingCard';
 import FileToolsCard from './FileToolsCard';
+import ColorsCard from './ColorsCard';
 import TrendingWidget from '../widgets/TrendingWidget';
 
 /**
@@ -120,6 +121,15 @@ const ToolsWidget: React.ComponentType<WidgetRenderProps> = ({ tint, layout, del
   />
 );
 
+const ColorsWidget: React.ComponentType<WidgetRenderProps> = ({ tint, layout, delay = 0, phone }) => (
+  <ColorsCard
+    delay={delay}
+    colSpan={phone ? 1 : layout.colSpan}
+    heightUnits={layout.heightUnits}
+    tint={tint}
+  />
+);
+
 /* ---------- 注册表本体（顺序与 localStore 的 ALL_WIDGETS 一致） ---------- */
 
 export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
@@ -185,6 +195,20 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultLayout: DEFAULT_WIDGET_LAYOUTS.tools,
     // 文件只在浏览器内存处理、不落盘不上传，无持久数据、无联网，故无 network / storage 声明
     component: ToolsWidget,
+  },
+  {
+    id: 'colors',
+    name: '中式色卡',
+    desc: '158 种中国传统色：色墙浏览、传统配色、一键复制色值',
+    category: 'tools',
+    icon: Palette,
+    watermark: '🎨',
+    supportedSizes: ALL_SIZES,
+    defaultLayout: DEFAULT_WIDGET_LAYOUTS.colors,
+    // 数据随包内置（src/data/traditionalColors.ts）、零联网，故无 network 声明；
+    // 收藏/自存配色走独立 key（规范 4.1），同步/导出/导入按 store/widgetStorage.ts 的登记一并处理
+    storage: { own: 'ainav-widget-colors-data', reason: '收藏与自存配色是组件自有数据，与站点数据无关，独立迭代/整表清理更稳妥' },
+    component: ColorsWidget,
   },
 ];
 

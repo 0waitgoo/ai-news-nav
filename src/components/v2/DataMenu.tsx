@@ -34,6 +34,8 @@ import {
   type FileSaveMeta,
   type FsFileHandle,
 } from '../../store/fileSave';
+import { packDataEnvelope, restoreWidgetStorage, unpackDataEnvelope } from '../../store/widgetStorage';
+import { reloadColorsData } from '../../store/colorsData';
 
 /**
  * 「数据」入口：放在搜索区旁，不显眼。
@@ -91,7 +93,8 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     saveFileSaveMeta(meta);
   }, [meta]);
 
-  const serializeData = () => JSON.stringify(dataRef.current, null, 2);
+  /** 序列化写出（本地文件/导出/同步共用）：有组件独立数据时包信封带走（widgetStorage 登记制） */
+  const serializeData = () => JSON.stringify(packDataEnvelope(dataRef.current), null, 2);
 
   const doWrite = async (h: FsFileHandle, request: boolean, auto: boolean): Promise<void> => {
     if (writingRef.current) return;
@@ -220,12 +223,22 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     return githubConfigComplete(m) ? m : null;
   };
 
-  /** 用云端数据覆盖本地：先落基准再导入，导入触发的变化 effect 会因 updatedAt 已对齐而跳过回推 */
-  const applyRemote = (remoteData: unknown, sha: string, remoteUpdatedAt: number): boolean => {
+  /** 用云端数据覆盖本地：先落基准再导入，导入触发的变化 effect 会因 updatedAt 已对齐而跳过回推；
+   * 信封携带的组件独立数据（widgetStorage）在主数据导入成功后一并恢复并通知组件重读 */
+  const applyRemote = (
+    remoteData: unknown,
+    sha: string,
+    remoteUpdatedAt: number,
+    widgetStorage?: Record<string, unknown> | null,
+  ): boolean => {
     updateGhMeta({ lastSha: sha, baseUpdatedAt: remoteUpdatedAt, lastSyncedAt: Date.now() });
     if (!storeRef.current.importData(remoteData)) {
       setGhStatus({ kind: 'error', text: '云端数据结构不对，无法导入' });
       return false;
+    }
+    if (widgetStorage) {
+      restoreWidgetStorage(widgetStorage);
+      reloadColorsData();
     }
     setGhStatus({ kind: 'ok', text: `已同步 · ${formatSavedTime(Date.now())}` });
     return true;
@@ -238,7 +251,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     setGhStatus({ kind: 'syncing', text: '正在推送到 GitHub…' });
     try {
       const snapshot = dataRef.current;
-      const text = JSON.stringify(snapshot, null, 2);
+      const text = JSON.stringify(packDataEnvelope(snapshot), null, 2);
       const res = await ghPutFile(cfg, text, ghMetaRef.current.lastSha);
       if (res.kind === 'ok') {
         updateGhMeta({ lastSha: res.sha, baseUpdatedAt: snapshot.updatedAt, lastSyncedAt: Date.now() });
@@ -267,13 +280,13 @@ export default function DataMenu({ store }: { store: LocalStore }) {
         return;
       }
       if (remote.updatedAt > dataRef.current.updatedAt) {
-        if (applyRemote(remote.data, remote.sha, remote.updatedAt)) {
+        if (applyRemote(remote.data, remote.sha, remote.updatedAt, remote.widgetStorage)) {
           setGhStatus({ kind: 'ok', text: '云端有更新，已拉取云端数据' });
         }
         return;
       }
       // 本地较新：换上云端最新 sha 重试一次
-      const retry = await ghPutFile(cfg, JSON.stringify(dataRef.current, null, 2), remote.sha);
+      const retry = await ghPutFile(cfg, serializeData(), remote.sha);
       if (retry.kind === 'ok') {
         updateGhMeta({ lastSha: retry.sha, baseUpdatedAt: dataRef.current.updatedAt, lastSyncedAt: Date.now() });
         setGhStatus({ kind: 'ok', text: `已同步 · ${formatSavedTime(Date.now())}` });
@@ -304,7 +317,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
       }
       const localUpdatedAt = dataRef.current.updatedAt;
       if (opts?.forceApply || res.updatedAt > localUpdatedAt) {
-        applyRemote(res.data, res.sha, res.updatedAt);
+        applyRemote(res.data, res.sha, res.updatedAt, res.widgetStorage);
       } else if (res.updatedAt < localUpdatedAt) {
         updateGhMeta({ lastSha: res.sha, baseUpdatedAt: res.updatedAt });
         setGhStatus({ kind: 'ok', text: '本地数据较新，正在推送…' });
@@ -334,7 +347,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
       }
       const sha = remote.kind === 'ok' ? remote.sha : null;
       const snapshot = dataRef.current;
-      const res = await ghPutFile(cfg, JSON.stringify(snapshot, null, 2), sha);
+      const res = await ghPutFile(cfg, JSON.stringify(packDataEnvelope(snapshot), null, 2), sha);
       if (res.kind === 'ok') {
         updateGhMeta({ lastSha: res.sha, baseUpdatedAt: snapshot.updatedAt, lastSyncedAt: Date.now() });
         setGhStatus({ kind: 'ok', text: `已同步 · ${formatSavedTime(Date.now())}` });
@@ -489,7 +502,7 @@ export default function DataMenu({ store }: { store: LocalStore }) {
   };
 
   const exportJson = () => {
-    const blob = new Blob([JSON.stringify(store.data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(packDataEnvelope(store.data), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -503,7 +516,13 @@ export default function DataMenu({ store }: { store: LocalStore }) {
     try {
       const text = await file.text();
       const parsed: unknown = JSON.parse(text);
-      if (store.importData(parsed)) {
+      /* 信封文件（带组件独立数据）先拆包；历史纯主数据文件 widgetStorage 为 null、行为不变 */
+      const { store: storePart, widgetStorage } = unpackDataEnvelope(parsed);
+      if (store.importData(storePart)) {
+        if (widgetStorage) {
+          restoreWidgetStorage(widgetStorage);
+          reloadColorsData();
+        }
         setMessage({ ok: true, text: '导入成功，数据已恢复' });
       } else {
         setMessage({ ok: false, text: '导入失败：文件结构不对，请用本应用导出的 JSON' });
