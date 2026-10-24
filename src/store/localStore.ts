@@ -595,15 +595,17 @@ export interface StoreData {
    */
   widgetTints: Record<string, WidgetTintValue>;
   /**
-   * 当前主页预设（第一百零六轮）：内置预设 id 或 'my'（自定义态——用户自己的排版，
-   * 含从内置预设改动后的状态）。老存档无此字段时归一化为 'my'：既有排版即用户的「我的」，
-   * 行为与此前完全一致。内置预设生效期间任一构成变更都会经 update() 自动转回 'my'（见 update）。
+   * 当前主页预设（第一百零六轮建、第一百零九轮改语义）：内置预设 id 或 'my'
+   * （用户自己的排版）。老存档无此字段时归一化为 'my'：既有排版即用户的「我的」。
+   * 任一构成变更都经 update() 自动处理：内置预设期翻为 'my' 并立即刷新存档，
+   * 本来就在 'my' 时同样刷新存档——「我的」恒等于当前排版（见 update）。
    */
   activePreset: PresetId;
   /**
-   * 「我的」预设存档（第一百零六轮）：用户自有构成的快照，只在「从自定义态显式切去
-   * 内置预设」时由 applyPreset 更新；null = 尚无存档（老存档/新装初期），
-   * 面板上「我的」显示「暂无存档」、点击无操作，首次切去内置预设时自动生成。
+   * 「我的」预设存档（第一百零六轮建、第一百零九轮改语义）：用户自有构成的快照，
+   * 构成一变即由 update() 自动刷新（无需用户点任何东西）；null = 尚无存档
+   * （老存档/新装初期），面板上「我的」显示「暂无存档」、点击无操作，
+   * 首次构成变更时自动生成。内置预设之间互切不覆盖存档。
    */
   myPreset: CompositionSnapshot | null;
 }
@@ -750,24 +752,103 @@ export function prepareGroups(groups: NavGroup[]): NavGroup[] {
   return migrateSiteTags(ensureSiteIds(structuredClone(groups)));
 }
 
+/**
+ * 默认主页构成（第一百零九轮）：用户 live 布局，seedData（新访客/恢复默认）与
+ * 默认预设（data/presets.ts）同源共用——两边逐项一致。
+ * 来源：用户导出的 ainav-data.json live 构成（组、站点、顺序、尺寸、栏位、组合、摞）。
+ * 不含：widgetTints（底色属显示偏好，不进预设）、background、tasks/plans、旧 myPreset 快照。
+ * 相对种子编组的组级差异只两处：编程工具改列表卡、图像/视频文件夹小角颜色；
+ * 其余三套预设仍用种子编组原样（编程工具在程序员预设里仍是文件夹卡），
+ * 故这里只对默认构成做覆盖，不动 data/groups.ts 的种子本身。
+ */
+export function defaultPresetGroups(): NavGroup[] {
+  const groups = prepareGroups(navGroups);
+  const code = groups.find((g) => g.id === 'code');
+  if (code) code.display = 'list';
+  const image = groups.find((g) => g.id === 'image');
+  if (image) image.tabColor = '#e0655a';
+  const video = groups.find((g) => g.id === 'video');
+  if (video) video.tabColor = '#8b6fd8';
+  return groups;
+}
+
+/** 默认主页的小组件尺寸（用户 live 布局：计划 2×2、资讯 1×2，其余同缺省） */
+export const DEFAULT_PRESET_WIDGET_LAYOUTS: Record<WidgetId, WidgetLayout> = {
+  task: { colSpan: 2, heightUnits: 2 },
+  news: { colSpan: 1, heightUnits: 2 },
+  ranking: { colSpan: 2, heightUnits: 2 },
+  trending: { colSpan: 2, heightUnits: 1 },
+  tools: { colSpan: 2, heightUnits: 1 },
+  colors: { colSpan: 2, heightUnits: 1 },
+};
+
+/** 默认主页的编组/组合/摞尺寸（用户 live 布局：编程工具 1×2、组合 1×1、摞 1×2） */
+export const DEFAULT_PRESET_GROUP_LAYOUTS: Record<string, WidgetLayout> = {
+  code: { colSpan: 1, heightUnits: 2 },
+  'combo:c-mvm8celnynhjv': { colSpan: 1, heightUnits: 1 },
+  'wstack:ws-mvm8czz1m8o8n': { colSpan: 1, heightUnits: 2 },
+};
+
+/** 默认主页的卡片顺序（用户 live 布局） */
+export const DEFAULT_PRESET_CARD_ORDER: string[] = [
+  'group:ai-chat',
+  'widget:task',
+  'wstack:ws-mvm8czz1m8o8n',
+  'combo:c-mvm8celnynhjv',
+  'group:writing',
+  'group:audio',
+  'group:office',
+  'widget:trending',
+  'widget:tools',
+  'group:code',
+];
+
+/** 默认主页的栏锚点（用户 live 布局） */
+export const DEFAULT_PRESET_CARD_COLS: Record<string, number> = {
+  'group:ai-chat': 0,
+  'widget:task': 2,
+  'group:image': 3,
+  'widget:news': 2,
+  'group:video': 0,
+  'group:writing': 1,
+  'widget:ranking': 0,
+  'group:code': 3,
+  'group:audio': 3,
+  'group:office': 2,
+  'widget:trending': 0,
+  'widget:tools': 0,
+  'combo:c-mvm8celnynhjv': 0,
+  'wstack:ws-mvm8czz1m8o8n': 2,
+};
+
+/** 默认主页的组合（用户 live 布局：图像 + 视频，当前 tab 图像） */
+export const DEFAULT_PRESET_COMBOS: ComboItem[] = [
+  { id: 'c-mvm8celnynhjv', groupIds: ['image', 'video'], activeGroupId: 'image' },
+];
+
+/** 默认主页的组件摞（用户 live 布局：资讯 + 软件榜，当前资讯） */
+export const DEFAULT_PRESET_WIDGET_STACKS: WidgetStackItem[] = [
+  { id: 'ws-mvm8czz1m8o8n', widgetIds: ['news', 'ranking'], activeWidgetId: 'news' },
+];
+
 function seedData(): StoreData {
   return {
     version: 1,
-    groups: prepareGroups(navGroups),
+    groups: defaultPresetGroups(),
     widgets: [...DEFAULT_WIDGETS],
-    widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
-    groupLayouts: {},
-    cardOrder: [],
-    cardCols: {},
+    widgetLayouts: structuredClone(DEFAULT_PRESET_WIDGET_LAYOUTS),
+    groupLayouts: structuredClone(DEFAULT_PRESET_GROUP_LAYOUTS),
+    cardOrder: [...DEFAULT_PRESET_CARD_ORDER],
+    cardCols: { ...DEFAULT_PRESET_CARD_COLS },
     background: { ...DEFAULT_BACKGROUND },
     updatedAt: Date.now(),
     tasks: [],
     plans: [],
     cardFaceStyles: {},
-    combos: [],
-    widgetStacks: [],
+    combos: structuredClone(DEFAULT_PRESET_COMBOS),
+    widgetStacks: structuredClone(DEFAULT_PRESET_WIDGET_STACKS),
     widgetTints: {},
-    // 新装即默认预设的主页（构成与种子一致），「我的」尚无存档
+    // 新装即默认预设的主页（构成与默认预设同源），「我的」尚无存档
     activePreset: 'default',
     myPreset: null,
   };
@@ -1065,13 +1146,15 @@ export function useLocalStore() {
       const next = fn(structuredClone(prev));
       // 每次用户变更都刷新时间戳：GitHub 同步靠它判断本地/云端谁更新
       next.updatedAt = Date.now();
-      /* 预设状态机（第一百零六轮）：内置预设生效期间，任一经 update() 的构成变更
-       * （增删改编组/站点、改尺寸、拖拽排序、合并/拆分等）都使当前状态转为自定义（'my'）——
-       * 面板不再把该内置预设标为当前。注意：这里只翻标记，绝不触碰 myPreset 存档本身；
-       * 存档只在 applyPreset「从自定义态切去内置预设」时才被当前构成覆盖。
-       * 静默写回（栏锚点补写/迁移、底色补抽走 setData 直写）不经此处，不会误翻。 */
-      if (next.activePreset !== 'my' && compositionFingerprint(next) !== compositionFingerprint(prev)) {
+      /* 预设状态机（第一百零六轮建、第一百零九轮改语义：预设一有变化自动变「我的」，
+       * 并且自动保存「我的」）：任一经 update() 的构成变更（增删改编组/站点、改尺寸、
+       * 拖拽排序、合并/拆分等）都立即翻为 'my' 并把当前构成存进 myPreset——
+       * 内置预设期如此，本来就在 'my' 时同样刷新快照，「我的」恒等于当前排版。
+       * 背景/显示偏好/计划内容不改指纹，不触发。静默写回（栏锚点补写/迁移、
+       * 底色补抽走 setData 直写）不经此处，不会误翻误存。 */
+      if (compositionFingerprint(next) !== compositionFingerprint(prev)) {
         next.activePreset = 'my';
+        next.myPreset = structuredClone(compositionOf(next));
       }
       return next;
     });
@@ -2077,11 +2160,11 @@ export function useLocalStore() {
   }, []);
 
   /**
-   * 应用预设（第一百零六轮）：一键把整套主页构成换成目标快照，计划数据（tasks/plans）、
-   * 背景与显示偏好一概不动。状态机：
+   * 应用预设（第一百零六轮建、第一百零九轮改语义）：一键把整套主页构成换成目标快照，
+   * 计划数据（tasks/plans）、背景与显示偏好一概不动。状态机：
    * - 切到内置预设（须传该预设的构成快照）：若当前是自定义态（activePreset='my'），
-   *   先把当前构成存进 myPreset（「我的」存档在此刻更新）；若当前已在某个内置预设上，
-   *   直接换、不覆盖存档。
+   *   先把当前构成存进 myPreset（第一百零九轮起 update() 已在每次改动时自动存过，
+   *   此处只是兜底、内容一致）；若当前已在某个内置预设上，直接换、不覆盖存档。
    * - 切到「我的」：恢复 myPreset 存档；存档为空（null）时无操作。
    * 直写 setData（不经 update）：应用本身不是「改动构成」，不能被状态机误翻为自定义。
    */
