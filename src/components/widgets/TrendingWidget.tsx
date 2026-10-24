@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'motion/react';
 import { TrendingUp, RefreshCw } from 'lucide-react';
 import { fetchTrends, type TrendItem } from '../../services/api';
@@ -36,7 +36,72 @@ export default function TrendingWidget({
 
   useEffect(() => { load(); }, [load]);
 
-  const rows = items.slice(0, heightUnits >= 2 ? 8 : 4);
+  /** 卡内拖拽滚动（第一百一十轮，照计划卡 useCardDragScroll 的模式）：
+   *  5px 阈值区分点击与拖动；超过阈值松手后 400ms 内吞掉 click，避免拖完误打开话题；
+   *  触摸端不动（原生滚动已有）。列表容器另挂 data-nodrag，卡内拖动不触发整卡拖拽排序；
+   *  滚轮走原生 overflow-y-auto（全站滚动条全局隐藏，只隐条不禁滚）。 */
+  const SCROLL_DRAG_THRESHOLD = 5;
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; startY: number; startTop: number; dragging: boolean } | null>(null);
+  const suppressAtRef = useRef(0);
+
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      const el = listRef.current;
+      if (!d || !el || e.pointerId !== d.pointerId) return;
+      const dy = e.clientY - d.startY;
+      if (!d.dragging) {
+        if (Math.abs(dy) <= SCROLL_DRAG_THRESHOLD) return;
+        d.dragging = true;
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+      }
+      el.scrollTop = d.startTop - dy;
+    };
+    const onPointerEnd = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      dragRef.current = null;
+      if (d.dragging) {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        suppressAtRef.current = Date.now();
+      }
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerEnd);
+    window.addEventListener('pointercancel', onPointerEnd);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerEnd);
+      if (dragRef.current?.dragging) {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+      dragRef.current = null;
+    };
+  }, []);
+
+  const onListPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || dragRef.current) return;
+    if (!listRef.current) return;
+    dragRef.current = { pointerId: e.pointerId, startY: e.clientY, startTop: listRef.current.scrollTop, dragging: false };
+  };
+
+  const onListClickCapture = (e: React.MouseEvent) => {
+    if (suppressAtRef.current && Date.now() - suppressAtRef.current < 400) {
+      suppressAtRef.current = 0;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  /* 第一百一十轮：列表不再按高度档截断行数——卡高决定可视窗口，其余行全部滚动可见；
+   * heightUnits 入参保留（注册表传入），不再用于截断。 */
+  void heightUnits;
+  const rows = items;
   const timeText = updatedAt
     ? new Date(updatedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
     : '';
@@ -81,7 +146,13 @@ export default function TrendingWidget({
             </button>
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-hidden flex flex-col justify-evenly gap-1.5">
+          <div
+            ref={listRef}
+            data-nodrag
+            onPointerDown={onListPointerDown}
+            onClickCapture={onListClickCapture}
+            className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5"
+          >
             {rows.map((trend) => (
               <button
                 key={trend.id}
