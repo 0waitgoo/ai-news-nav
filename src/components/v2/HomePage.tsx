@@ -27,7 +27,6 @@ import {
 import { placeInLanes, simulateDenseFlow, type LaneItemSpec } from './laneLayout';
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
-import BackgroundMenu from './BackgroundMenu';
 import PresetMenu from './PresetMenu';
 import { TopLogo, TopNav } from '../Sidebar';
 import { closeToolsWorkspace, useToolsWorkspace } from '../../store/toolsWorkspace';
@@ -1529,7 +1528,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
         <div className="grid grid-cols-[auto_minmax(0,1fr)] lg:grid-cols-4 gap-3 sm:gap-4 items-center">
           <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
             <TopLogo onClick={() => onNavigate('home')} />
-            <BackgroundMenu store={store} />
             <TopNav onPageChange={onNavigate} currentPage="home" presetsNode={<PresetMenu store={store} />} />
           </div>
           <div className="col-span-1 lg:col-span-2 flex items-center gap-2 min-w-0">
