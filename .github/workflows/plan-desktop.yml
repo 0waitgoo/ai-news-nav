@@ -1,0 +1,60 @@
+# 杂盒计划桌面版（第一百一十六轮）
+#
+# 计划组件与网站同源（PlanPage + store），本工作流在计划相关源码变化时
+# 自动重打 Windows 安装包并更新滚动 Release「plan-desktop」。
+# 「一起更新」的口径：网站计划一改 → 本工作流重打 → Release 里永远是最新版；
+# 应用内自动更新（需签名密钥）为下一步，v1 需手动下载新版覆盖安装。
+# 未签名：Windows SmartScreen 首次安装会提示，点“仍要运行”即可。
+
+name: 杂盒计划桌面版
+
+on:
+  push:
+    paths:
+      - 'src-tauri/**'
+      - 'src/plan-app.tsx'
+      - 'src/components/v2/PlanSyncBar.tsx'
+      - 'src/components/pages/PlanPage.tsx'
+      - 'src/components/v2/TaskSections.tsx'
+      - 'src/components/v2/TaskCard.tsx'
+      - 'src/store/localStore.ts'
+      - 'src/store/githubSync.ts'
+      - 'src/store/widgetStorage.ts'
+      - 'src/store/displayPrefs.ts'
+      - 'src/index.css'
+      - 'plan.html'
+      - 'vite.config.plan.ts'
+      - 'package.json'
+      - '.github/workflows/plan-desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: .
+          tauriScript: npx @tauri-apps/cli@2
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: plan-desktop
+          name: 杂盒计划桌面版
+          body: |
+            杂盒计划桌面版（Windows 安装包），与网站计划组件同源构建。
+            首次使用：在应用顶部粘贴有 ainav-data 仓读写权限的 GitHub 令牌，点同步即可与网站互通。
+            未签名：Windows SmartScreen 首次安装会提示，点“仍要运行”即可。
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          make_latest: false
