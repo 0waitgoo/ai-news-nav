@@ -12,7 +12,9 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "server": "node server/index.js",
-    "start": "concurrently \"npm run server\" \"npm run dev\""
+    "start": "concurrently \"npm run server\" \"npm run dev\"",
+    "build:plan": "vite build --config vite.config.plan.ts",
+    "dev:plan": "vite --config vite.config.plan.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
