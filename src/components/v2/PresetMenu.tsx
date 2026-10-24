@@ -5,10 +5,10 @@ import type { LocalStore, PresetId } from '../../store/localStore';
 import { BUILTIN_PRESET_META, buildBuiltinPreset } from '../../data/presets';
 
 /**
- * 「预设」入口（第一百零六轮，接替原顶栏扳手）：布局/模板图标点开浮层，
+ * 「预设」入口（第一百零六轮建、第一百零九轮改语义，接替原顶栏扳手）：布局/模板图标点开浮层，
  * 五套主页构成一键切换——默认 / 设计师 / 程序员 / 工具 / 我的。
  * 切换只换主页构成（编组、组件、布局），计划数据与外观设置不动，无二次确认：
- * 切走前当前构成会自动存进「我的」兜底（状态机见 store.applyPreset）。
+ * 排版一改动就自动存进「我的」（状态机见 store.update），内置预设之间互切不覆盖存档。
  * 面板形态与 BackgroundMenu 同款：无底色图标触发 + 实色浮层 + 点外关闭。
  */
 export default function PresetMenu({ store }: { store: LocalStore }) {
@@ -118,7 +118,7 @@ export default function PresetMenu({ store }: { store: LocalStore }) {
                 );
               })}
               {/* 「我的」：恢复自己的存档。无存档时呈禁用态注明「暂无存档」；
-                  正在自定义态且无独立存档时，当前排版本身就是「我的」、标为当前 */}
+                  有存档或正在自定义态时说明：你现在的排版，改动即自动保存 */}
               <button
                 data-preset-option="my"
                 data-preset-current={activePreset === 'my' || undefined}
@@ -128,11 +128,7 @@ export default function PresetMenu({ store }: { store: LocalStore }) {
                 <span className="flex-1 min-w-0">
                   <span className="block text-[13px] font-medium text-white/90">我的</span>
                   <span className="block text-[11px] text-white/45 truncate">
-                    {hasMyArchive
-                      ? '恢复你保存的排版'
-                      : activePreset === 'my'
-                        ? '当前排版就是你的存档'
-                        : '暂无存档'}
+                    {hasMyArchive || activePreset === 'my' ? '你现在的排版，改动即自动保存' : '暂无存档'}
                   </span>
                 </span>
                 {activePreset === 'my' && (
@@ -143,7 +139,7 @@ export default function PresetMenu({ store }: { store: LocalStore }) {
               </button>
             </div>
             <p className="px-1 pt-2.5 text-[11px] leading-relaxed text-white/35">
-              切换只换主页排版，计划和设置不受影响；切走前当前排版会自动存进「我的」。
+              切换只换主页排版，计划和设置不受影响；排版一改动就自动存进「我的」。
             </p>
           </motion.div>
         )}
