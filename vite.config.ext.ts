@@ -32,7 +32,7 @@ function extensionAssets(): Plugin {
         description: '杂盒 ZaBox 新标签页：个人资料整理收录 + 任务计划 + 日程处理，数据只存本地。',
         chrome_url_overrides: { newtab: 'index.html' },
         permissions: ['storage'],
-        host_permissions: ['https://news.hiitun01.top/*'],
+        host_permissions: ['https://zahe.hiitun.top/*'],
         icons: {
           '16': 'icons/icon-16.png',
           '32': 'icons/icon-32.png',

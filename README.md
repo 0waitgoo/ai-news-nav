@@ -2,7 +2,7 @@
 
 一个**本地优先**的个人杂盒：把你常用的网站、每日资讯、任务计划和日程，统统收进一个可以自由拖拽排版的新标签页——杂，而有序。
 
-在线体验：<https://news.hiitun01.top>
+在线体验：<https://zahe.hiitun.top>
 
 ![杂盒 ZaBox 主页](docs/images/homepage.png)
 
