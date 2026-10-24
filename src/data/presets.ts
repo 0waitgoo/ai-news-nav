@@ -1,7 +1,14 @@
 import { navGroups, type NavGroup } from './groups';
 import { toolsByCategory } from './navPool';
 import {
+  DEFAULT_PRESET_CARD_COLS,
+  DEFAULT_PRESET_CARD_ORDER,
+  DEFAULT_PRESET_COMBOS,
+  DEFAULT_PRESET_GROUP_LAYOUTS,
+  DEFAULT_PRESET_WIDGET_LAYOUTS,
+  DEFAULT_PRESET_WIDGET_STACKS,
   DEFAULT_WIDGET_LAYOUTS,
+  defaultPresetGroups,
   groupCardKey,
   prepareGroups,
   widgetCardKey,
@@ -90,13 +97,20 @@ function baseSnapshot(partial: Partial<CompositionSnapshot>): CompositionSnapsho
 }
 
 /**
- * 默认预设：与种子默认主页完全一致——编组就是种子本身，布局走与新装相同的
- * 「空顺序/空锚点 → 首屏迁移生成」路径，呈现结果逐点相同。
+ * 默认预设（第一百零九轮）：用户 live 布局——与 seedData（新访客/恢复默认）
+ * 同源共用 store 里的 DEFAULT_PRESET_* 常量，逐项一致（组、站点、顺序、尺寸、
+ * 栏位、组合、摞）。底色不进预设（widgetTints 留空，应用时按既有口径走）。
  */
 export function buildDefaultPreset(): CompositionSnapshot {
   return baseSnapshot({
-    groups: prepareGroups(navGroups),
+    groups: defaultPresetGroups(),
     widgets: [...ALL_WIDGET_IDS],
+    widgetLayouts: structuredClone(DEFAULT_PRESET_WIDGET_LAYOUTS),
+    groupLayouts: structuredClone(DEFAULT_PRESET_GROUP_LAYOUTS),
+    cardOrder: [...DEFAULT_PRESET_CARD_ORDER],
+    cardCols: { ...DEFAULT_PRESET_CARD_COLS },
+    combos: structuredClone(DEFAULT_PRESET_COMBOS),
+    widgetStacks: structuredClone(DEFAULT_PRESET_WIDGET_STACKS),
   });
 }
 
