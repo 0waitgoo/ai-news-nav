@@ -515,7 +515,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     const combo = store.data.combos.find((c) => c.groupIds.includes(group.id));
     if (combo) store.detachComboMemberAsList(combo.id, group.id, baseOrderRef.current);
     setPanelGroupId(null);
-    setExpandedId(group.id);
+    // 第一百一十二轮：切到 B 卡落收起态，不再自动展开（此前 setExpandedId 直接展开、顶开别的卡）
     scrollToGroup(group.id);
   };
 
