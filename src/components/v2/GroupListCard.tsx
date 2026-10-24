@@ -202,7 +202,12 @@ export default function GroupListCard({
                     详细列表
                   </button>
                   <button
-                    onClick={() => store.setGroupDisplay(group.id, 'stack')}
+                    onClick={() => {
+                      // 第一百一十二轮：此按钮只在展开态出现；切回 C 前先收起，
+                      // 否则 expandedId 残留、之后再切回 B 会再次自动展开
+                      if (expanded) onToggleExpand(group);
+                      store.setGroupDisplay(group.id, 'stack');
+                    }}
                     title="文件夹式卡：紧凑堆叠卡，点开弹窗看图标"
                     className={`text-[11px] px-2.5 py-1 transition-colors ${
                       group.display === 'stack' ? 'bg-indigo-500/70 text-white font-medium' : 'text-white/50 hover:text-white/85'
