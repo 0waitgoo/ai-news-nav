@@ -28,8 +28,9 @@ import { placeInLanes, simulateDenseFlow, type LaneItemSpec } from './laneLayout
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
 import BackgroundMenu from './BackgroundMenu';
+import PresetMenu from './PresetMenu';
 import { TopLogo, TopNav } from '../Sidebar';
-import { closeToolsWorkspace, requestToolsWorkspace, useToolsWorkspace } from '../../store/toolsWorkspace';
+import { closeToolsWorkspace, useToolsWorkspace } from '../../store/toolsWorkspace';
 import { WIDGET_DEFINITIONS, widgetDefOf } from './widgetRegistry';
 import GroupListCard from './GroupListCard';
 import GroupStackCard, { StackGroupIcon } from './GroupStackCard';
@@ -125,7 +126,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   useLongPressMenu();
   const { groups, widgets, widgetLayouts, groupLayouts } = store.data;
   /* 文件工具工作区状态（第八十六轮）：打开时本页要把文件工具卡（或含它的摞）
-   * 的栏位高度抬高，并响应顶栏扳手的定位请求；状态本体在 toolsWorkspace store */
+   * 的栏位高度抬高；状态本体在 toolsWorkspace store。原顶栏扳手定位已于
+   * 第一百零六轮随扳手改预设入口下线，工作区只由文件工具卡自身开关 */
   const toolsWs = useToolsWorkspace();
   /* 视口三档（第六十六轮起）：≥lg（1024px）为 4 栏；640–1023（平板）为 2 栏；
    * <640（手机）为 1 栏单列。数据始终按 4 栏锚点存；2 栏呈现时 4 个锚点栏两两合并
@@ -225,34 +227,8 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
   const [stackA, stackB, stackC, ...stackRest] = singleStackGroups;
   const hasWidget = (id: WidgetId) => widgets.includes(id);
 
-  /* ---------- 文件工具工作区：扳手定位与状态守卫（第八十六轮） ---------- */
-  /** 顶栏扳手（主页侧）：已在主页——组件不在就先按商店同一路径添加，再发打开请求，
-   * 定位滚动由下面的请求监听统一执行 */
-  const handleToolsClickHere = () => {
-    if (!hasWidget('tools')) store.setWidgetVisible('tools', true);
-    requestToolsWorkspace();
-  };
-
-  /* 打开请求（扳手）到达时定位：摞里的先切到文件工具成员，再滚动到组件位置。
-   * 挂载时若已有未消费的请求（从子页面点扳手切回主页）同样执行——请求序号即消费凭据。
-   * 两段延时各滚一次：等添加组件/切成员/栏位变高的布局落定，scrollIntoView 幂等无副作用 */
-  const toolsRequestSeq = toolsWs.requestSeq;
-  useEffect(() => {
-    if (toolsRequestSeq === 0) return;
-    const stack = validWidgetStacks.find((s) => s.widgetIds.includes('tools'));
-    if (stack && stack.activeWidgetId !== 'tools') store.setWidgetStackActive(stack.id, 'tools');
-    const scroll = () =>
-      document.getElementById('v2-widget-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    const t1 = window.setTimeout(scroll, 90);
-    const t2 = window.setTimeout(scroll, 400);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolsRequestSeq]);
-
-  /* 组件被移除（如在商店页移除）后工作区状态不能悬空：回到主页时自动收起 */
+  /* ---------- 文件工具工作区状态守卫（第八十六轮） ---------- */
+  /* 组件被移除（如在商店页移除、或切到不含文件工具的预设）后工作区状态不能悬空：自动收起 */
   useEffect(() => {
     if (toolsWs.open && !widgets.includes('tools')) closeToolsWorkspace();
   }, [toolsWs.open, widgets]);
@@ -1563,7 +1539,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
             <TopLogo onClick={() => onNavigate('home')} />
             <BackgroundMenu store={store} />
-            <TopNav onPageChange={onNavigate} currentPage="home" onToolsClick={handleToolsClickHere} />
+            <TopNav onPageChange={onNavigate} currentPage="home" presetsNode={<PresetMenu store={store} />} />
           </div>
           <div className="col-span-1 lg:col-span-2 flex items-center gap-2 min-w-0">
             <StickySearch groups={groups} onOpenGroup={openGroupFromSearch} />
