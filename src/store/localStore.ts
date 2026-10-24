@@ -592,6 +592,78 @@ export interface StoreData {
    * 组件首次出现时随机抽一次并落盘，之后刷新/同步都不变；老数据无此字段时为空表（渲染前补抽）。
    */
   widgetTints: Record<string, WidgetTintValue>;
+  /**
+   * 当前主页预设（第一百零六轮）：内置预设 id 或 'my'（自定义态——用户自己的排版，
+   * 含从内置预设改动后的状态）。老存档无此字段时归一化为 'my'：既有排版即用户的「我的」，
+   * 行为与此前完全一致。内置预设生效期间任一构成变更都会经 update() 自动转回 'my'（见 update）。
+   */
+  activePreset: PresetId;
+  /**
+   * 「我的」预设存档（第一百零六轮）：用户自有构成的快照，只在「从自定义态显式切去
+   * 内置预设」时由 applyPreset 更新；null = 尚无存档（老存档/新装初期），
+   * 面板上「我的」显示「暂无存档」、点击无操作，首次切去内置预设时自动生成。
+   */
+  myPreset: CompositionSnapshot | null;
+}
+
+/** 内置预设 id（第一百零六轮）：构成数据在 data/presets.ts，本层只认 id */
+export type BuiltinPresetId = 'default' | 'designer' | 'developer' | 'tools';
+
+/** 当前预设：内置预设 id 或 'my'（自定义态） */
+export type PresetId = BuiltinPresetId | 'my';
+
+export const BUILTIN_PRESET_IDS: readonly BuiltinPresetId[] = ['default', 'designer', 'developer', 'tools'];
+
+/**
+ * 主页构成快照（第一百零六轮）：预设切换与「我的」存档的统一形态——只含主页构成
+ * （编组+站点、组件构成、布局尺寸/栏位/顺序、组合、摞、卡面样式与组件底色）。
+ * 明确不含：tasks/plans（计划数据独立，绝不随预设变）、background 与显示偏好（外观不动）。
+ */
+export interface CompositionSnapshot {
+  groups: NavGroup[];
+  widgets: WidgetId[];
+  widgetLayouts: Record<WidgetId, WidgetLayout>;
+  groupLayouts: Record<string, WidgetLayout>;
+  cardOrder: string[];
+  cardCols: Record<string, number>;
+  combos: ComboItem[];
+  widgetStacks: WidgetStackItem[];
+  cardFaceStyles: Record<string, CardFaceStyle>;
+  widgetTints: Record<string, WidgetTintValue>;
+}
+
+/** 从整份 store 数据里摘出主页构成快照（浅摘引用，落盘/应用前由调用方 structuredClone） */
+export function compositionOf(d: StoreData): CompositionSnapshot {
+  return {
+    groups: d.groups,
+    widgets: d.widgets,
+    widgetLayouts: d.widgetLayouts,
+    groupLayouts: d.groupLayouts,
+    cardOrder: d.cardOrder,
+    cardCols: d.cardCols,
+    combos: d.combos,
+    widgetStacks: d.widgetStacks,
+    cardFaceStyles: d.cardFaceStyles,
+    widgetTints: d.widgetTints,
+  };
+}
+
+/**
+ * 构成指纹（第一百零六轮，预设状态机专用）：判断「构成是否被改动过」。
+ * 只覆盖用户定版的构成口径（编组/站点、组件构成、布局、顺序/栏位、组合与摞的成员关系）；
+ * 组合/摞的当前 tab、卡面样式与组件底色不算构成改动（切个 tab、换个底色不该把预设打回自定义）。
+ */
+function compositionFingerprint(d: StoreData): string {
+  return JSON.stringify({
+    groups: d.groups,
+    widgets: d.widgets,
+    widgetLayouts: d.widgetLayouts,
+    groupLayouts: d.groupLayouts,
+    cardOrder: d.cardOrder,
+    cardCols: d.cardCols,
+    combos: d.combos.map((c) => [c.id, c.groupIds]),
+    widgetStacks: d.widgetStacks.map((s) => [s.id, s.widgetIds]),
+  });
 }
 
 /** 主页卡片的稳定 key：编组用 group id、原生组件用 widget key，加前缀防撞 */
@@ -670,10 +742,15 @@ function migrateSiteTags(groups: NavGroup[]): NavGroup[] {
   return groups;
 }
 
+/** 种子/预设共用的编组制备（第一百零六轮抽出）：深克隆后补站点 id + 标签迁移，入参不被修改 */
+export function prepareGroups(groups: NavGroup[]): NavGroup[] {
+  return migrateSiteTags(ensureSiteIds(structuredClone(groups)));
+}
+
 function seedData(): StoreData {
   return {
     version: 1,
-    groups: migrateSiteTags(ensureSiteIds(structuredClone(navGroups))),
+    groups: prepareGroups(navGroups),
     widgets: [...DEFAULT_WIDGETS],
     widgetLayouts: structuredClone(DEFAULT_WIDGET_LAYOUTS),
     groupLayouts: {},
@@ -687,6 +764,9 @@ function seedData(): StoreData {
     combos: [],
     widgetStacks: [],
     widgetTints: {},
+    // 新装即默认预设的主页（构成与种子一致），「我的」尚无存档
+    activePreset: 'default',
+    myPreset: null,
   };
 }
 
@@ -777,11 +857,14 @@ export function migrateLegacyLogoPath(logo: string): string {
   return logo;
 }
 
-/** 校验任意来源（localStorage / 导入文件）的数据结构，合法则归一化返回，否则 null */
-export function validateStoreData(raw: unknown): StoreData | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const data = raw as Partial<StoreData>;
-  if (data.version !== 1 || !Array.isArray(data.groups)) return null;
+/**
+ * 编组字段归一化（第一百零六轮从 validateStoreData 抽出，主数据 groups 与「我的」
+ * 存档快照里的 groups 共用同一条校验/迁移路径）：结构非法（组/站点缺必填）整体返回 null；
+ * 形态/副标题/小角颜色/图标配置等逐项做向后兼容清洗，最后统一补站点 id、迁移标签。
+ */
+function normalizeGroupsField(raw: unknown): NavGroup[] | null {
+  if (!Array.isArray(raw)) return null;
+  const data = { groups: raw };
   for (const group of data.groups as NavGroup[]) {
     if (!group || typeof group.id !== 'string' || typeof group.name !== 'string' || !Array.isArray(group.sites)) {
       return null;
@@ -831,6 +914,47 @@ export function validateStoreData(raw: unknown): StoreData | null {
       }
     }
   }
+  return migrateSiteTags(ensureSiteIds(data.groups as NavGroup[]));
+}
+
+/** 当前预设归一化：合法 id 采纳，其余（老存档无此字段等）一律 'my'——既有排版即用户的「我的」 */
+function normalizeActivePreset(raw: unknown): PresetId {
+  return raw === 'my' || (BUILTIN_PRESET_IDS as readonly string[]).includes(raw as string)
+    ? (raw as PresetId)
+    : 'my';
+}
+
+/** 构成快照归一化（「我的」存档）：逐字段走与主数据相同的归一器；结构非法整体返回 null（视为无存档） */
+function normalizeSnapshot(raw: unknown): CompositionSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Partial<CompositionSnapshot>;
+  const groups = normalizeGroupsField(s.groups);
+  if (!groups) return null;
+  const widgets = Array.isArray(s.widgets)
+    ? (s.widgets.filter((w) => ALL_WIDGETS.some((aw) => aw.id === w)) as WidgetId[])
+    : [...DEFAULT_WIDGETS];
+  const rawOrder = s.cardOrder as unknown;
+  return {
+    groups,
+    widgets,
+    widgetLayouts: normalizeWidgetLayouts(s.widgetLayouts),
+    groupLayouts: normalizeGroupLayouts(s.groupLayouts),
+    cardOrder: Array.isArray(rawOrder) ? (rawOrder.filter((k) => typeof k === 'string') as string[]) : [],
+    cardCols: normalizeCardCols(s.cardCols),
+    combos: normalizeCombos(s.combos, groups),
+    widgetStacks: normalizeWidgetStacks(s.widgetStacks, widgets),
+    cardFaceStyles: normalizeCardFaceStyles(s.cardFaceStyles),
+    widgetTints: normalizeWidgetTints(s.widgetTints),
+  };
+}
+
+/** 校验任意来源（localStorage / 导入文件）的数据结构，合法则归一化返回，否则 null */
+export function validateStoreData(raw: unknown): StoreData | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Partial<StoreData>;
+  if (data.version !== 1 || !Array.isArray(data.groups)) return null;
+  const groups = normalizeGroupsField(data.groups);
+  if (!groups) return null;
   const widgets = Array.isArray(data.widgets)
     ? (data.widgets.filter((w) => ALL_WIDGETS.some((aw) => aw.id === w)) as WidgetId[])
     : [...DEFAULT_WIDGETS];
@@ -841,7 +965,6 @@ export function validateStoreData(raw: unknown): StoreData | null {
   const cardOrder = Array.isArray(rawOrder) ? (rawOrder.filter((k) => typeof k === 'string') as string[]) : [];
   const background = normalizeBackground((data as { background?: unknown }).background);
   const cardCols = normalizeCardCols((data as { cardCols?: unknown }).cardCols);
-  const groups = migrateSiteTags(ensureSiteIds(data.groups as NavGroup[]));
   return {
     version: 1,
     groups,
@@ -858,6 +981,8 @@ export function validateStoreData(raw: unknown): StoreData | null {
     combos: normalizeCombos((data as { combos?: unknown }).combos, groups),
     widgetStacks: normalizeWidgetStacks((data as { widgetStacks?: unknown }).widgetStacks, widgets),
     widgetTints: normalizeWidgetTints((data as { widgetTints?: unknown }).widgetTints),
+    activePreset: normalizeActivePreset((data as { activePreset?: unknown }).activePreset),
+    myPreset: normalizeSnapshot((data as { myPreset?: unknown }).myPreset),
   };
 }
 
@@ -937,6 +1062,14 @@ export function useLocalStore() {
       const next = fn(structuredClone(prev));
       // 每次用户变更都刷新时间戳：GitHub 同步靠它判断本地/云端谁更新
       next.updatedAt = Date.now();
+      /* 预设状态机（第一百零六轮）：内置预设生效期间，任一经 update() 的构成变更
+       * （增删改编组/站点、改尺寸、拖拽排序、合并/拆分等）都使当前状态转为自定义（'my'）——
+       * 面板不再把该内置预设标为当前。注意：这里只翻标记，绝不触碰 myPreset 存档本身；
+       * 存档只在 applyPreset「从自定义态切去内置预设」时才被当前构成覆盖。
+       * 静默写回（栏锚点补写/迁移、底色补抽走 setData 直写）不经此处，不会误翻。 */
+      if (next.activePreset !== 'my' && compositionFingerprint(next) !== compositionFingerprint(prev)) {
+        next.activePreset = 'my';
+      }
       return next;
     });
   }, []);
@@ -1940,6 +2073,45 @@ export function useLocalStore() {
     setData(seedData());
   }, []);
 
+  /**
+   * 应用预设（第一百零六轮）：一键把整套主页构成换成目标快照，计划数据（tasks/plans）、
+   * 背景与显示偏好一概不动。状态机：
+   * - 切到内置预设（须传该预设的构成快照）：若当前是自定义态（activePreset='my'），
+   *   先把当前构成存进 myPreset（「我的」存档在此刻更新）；若当前已在某个内置预设上，
+   *   直接换、不覆盖存档。
+   * - 切到「我的」：恢复 myPreset 存档；存档为空（null）时无操作。
+   * 直写 setData（不经 update）：应用本身不是「改动构成」，不能被状态机误翻为自定义。
+   */
+  const applyPreset = useCallback((presetId: PresetId, snapshot?: CompositionSnapshot) => {
+    setData((prev) => {
+      let snap: CompositionSnapshot | null = null;
+      if (presetId === 'my') {
+        if (!prev.myPreset) return prev;
+        snap = structuredClone(prev.myPreset);
+      } else {
+        if (!snapshot) return prev;
+        snap = structuredClone(snapshot);
+      }
+      const next = structuredClone(prev);
+      if (presetId !== 'my' && prev.activePreset === 'my') {
+        next.myPreset = structuredClone(compositionOf(prev));
+      }
+      next.groups = snap.groups;
+      next.widgets = snap.widgets;
+      next.widgetLayouts = snap.widgetLayouts;
+      next.groupLayouts = snap.groupLayouts;
+      next.cardOrder = snap.cardOrder;
+      next.cardCols = snap.cardCols;
+      next.combos = snap.combos;
+      next.widgetStacks = snap.widgetStacks;
+      next.cardFaceStyles = snap.cardFaceStyles;
+      next.widgetTints = snap.widgetTints;
+      next.activePreset = presetId;
+      next.updatedAt = Date.now();
+      return next;
+    });
+  }, []);
+
   return {
     data,
     addSite,
@@ -1993,6 +2165,7 @@ export function useLocalStore() {
     setCardFaceStyle,
     importData,
     resetData,
+    applyPreset,
   };
 }
 
