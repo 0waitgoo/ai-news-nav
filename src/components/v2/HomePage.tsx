@@ -369,16 +369,16 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     // 任务卡的菜单多一节「卡面样式」、组合卡多一项「拆分组合」，更高一些；
     // A 型组件还多一项「换个底色」（第二十三轮），再加一截；第九十一轮起该项可展开
     // 选色面板（预览条 + 双色行 + 按钮行约 +190），按展开后的高度预留，免得贴底开菜单时面板溢出；
-    // 组件/组件摞再多一节「合并到…」目标列表（第七十二轮），摞另有拆分/移出两项
+    // 摞另有拆分/移出两项。「合并到…」一节已于第一百零八轮删除（用户口径：拖拽合并即可）
     const MENU_H =
       target.kind === 'widget'
         ? target.id === 'task'
-          ? 718
-          : 622
+          ? 550
+          : 454
         : target.kind === 'combo'
           ? 244
           : target.kind === 'wstack'
-            ? 470
+            ? 302
             : 196;
     setSizeMenu({
       ...target,
@@ -424,36 +424,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     else if (sizeMenu.kind === 'combo') store.setComboLayout(sizeMenu.id, patch);
     else if (sizeMenu.kind === 'wstack') store.setWidgetStackLayout(sizeMenu.id, patch);
     else store.setGroupLayout(sizeMenu.id, patch);
-  };
-
-  /* 「合并到…」的目标清单（第七十二轮，组件/组件摞右键菜单共用）：主页上其他未入摞的
-   * 单个组件 + 其他摞；并完超过上限 4 的目标置灰标「已满」。编组卡不参与（两套体系） */
-  const mergeTargetsFor = (
-    source: WidgetMergeEntity,
-  ): { entity: WidgetMergeEntity; label: string; sub: string; full: boolean }[] => {
-    const sourceSize =
-      source.type === 'widget' ? 1 : (validWidgetStacks.find((s) => s.id === source.id)?.widgetIds.length ?? 0);
-    const out: { entity: WidgetMergeEntity; label: string; sub: string; full: boolean }[] = [];
-    for (const s of validWidgetStacks) {
-      if (source.type === 'stack' && source.id === s.id) continue;
-      out.push({
-        entity: { type: 'stack', id: s.id },
-        label: s.widgetIds.map((wid) => widgetDefOf(wid).name).join(' + '),
-        sub: `组件摞 ${s.widgetIds.length}/${WIDGET_STACK_MAX}`,
-        full: sourceSize + s.widgetIds.length > WIDGET_STACK_MAX,
-      });
-    }
-    for (const def of WIDGET_DEFINITIONS) {
-      if (!widgets.includes(def.id) || stackedMemberIds.has(def.id)) continue;
-      if (source.type === 'widget' && source.id === def.id) continue;
-      out.push({
-        entity: { type: 'widget', id: def.id },
-        label: def.name,
-        sub: '单个组件',
-        full: sourceSize + 1 > WIDGET_STACK_MAX,
-      });
-    }
-    return out;
   };
 
   /* 尺寸菜单可选项（第七十四轮，组件规范 2.2 声明机制）：A 型组件只列注册表 supportedSizes
@@ -1925,43 +1895,6 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
                     >
                       <Unlink size={12} /> 拆分组件摞
                     </button>
-                  </>
-                );
-              })()}
-            {/* 合并到…（第七十二轮，组件与组件摞共用）：列出主页上其他组件/摞，
-                并完超过上限 4 个的目标置灰；这是拖拽合并之外的辅助入口（含移动端长按菜单） */}
-            {(sizeMenu.kind === 'widget' || sizeMenu.kind === 'wstack') &&
-              (() => {
-                const source: WidgetMergeEntity =
-                  sizeMenu.kind === 'widget' ? { type: 'widget', id: sizeMenu.id } : { type: 'stack', id: sizeMenu.id };
-                const targets = mergeTargetsFor(source);
-                if (targets.length === 0) return null;
-                return (
-                  <>
-                    <div className="my-2.5 h-px bg-white/10" />
-                    <p className="px-1 pb-1 text-[10px] tracking-wider text-white/40 uppercase">合并到…</p>
-                    <div className="flex flex-col gap-0.5 max-h-[168px] overflow-y-auto">
-                      {targets.map((t) => (
-                        <button
-                          key={`${t.entity.type}:${t.entity.id}`}
-                          data-merge-target={`${t.entity.type}:${t.entity.id}`}
-                          disabled={t.full}
-                          onClick={() => {
-                            store.mergeWidgetEntities(source, t.entity, baseOrder);
-                            setSizeMenu(null);
-                          }}
-                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-xs transition-colors ${
-                            t.full
-                              ? 'text-white/30 cursor-not-allowed'
-                              : 'text-white/75 hover:bg-white/8 hover:text-white'
-                          }`}
-                        >
-                          <Combine size={13} className="shrink-0 text-white/40" />
-                          <span className="flex-1 min-w-0 truncate">{t.label}</span>
-                          <span className="text-[10px] text-white/35 shrink-0">{t.full ? '已满' : t.sub}</span>
-                        </button>
-                      ))}
-                    </div>
                   </>
                 );
               })()}
