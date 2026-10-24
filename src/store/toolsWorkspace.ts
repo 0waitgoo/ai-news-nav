@@ -5,7 +5,7 @@ import type { ToolTabId } from '../components/tools/toolDefs';
  * 文件工具工作区的跨组件状态（第八十六轮，独立工具页删除后新增）：
  * 工作区本体长在主页「文件工具」组件里，但有三方需要知道它开没开、开的是哪个工具——
  * ① FileToolsCard 本体：渲染瓷砖面还是工作区面、切哪个工具；
- * ② HomePage：工作区打开时要把该卡（或含它的组件摞）的栏位高度抬到 3 行，
+ * ② HomePage：工作区打开时要把该卡（或含它的组件摞）的栏位高度抬到收起态的 2 倍，
  *    并响应顶栏扳手的「定位打开」请求（滚动 + 摞内切成员都由它执行）；
  * ③ 顶栏扳手（App / HomePage 两处顶栏）：发起打开请求。
  * 走一个极小的外部 store（useSyncExternalStore），避免为这一条状态把 props
