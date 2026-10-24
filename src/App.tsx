@@ -2,11 +2,11 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { TopLogo, TopNav } from './components/Sidebar';
 import BackgroundMenu from './components/v2/BackgroundMenu';
 import HomePage from './components/v2/HomePage';
+import PresetMenu from './components/v2/PresetMenu';
 import TopBarShade from './components/v2/TopBarShade';
 import DappledLight from './components/backgrounds/DappledLight';
 import DarkVeil from './components/DarkVeil';
 import { backgroundPresetOf, useLocalStore } from './store/localStore';
-import { requestToolsWorkspace } from './store/toolsWorkspace';
 import { loadBgImage } from './store/bgImageDb';
 import { applyDisplayPrefs, bgBlurPx, useDisplayPrefs } from './store/displayPrefs';
 
@@ -55,16 +55,6 @@ export default function App() {
 
   const handlePageChange = (page: string) => {
     setCurrentPage(page);
-  };
-
-  /* 顶栏扳手（第八十六轮）：独立工具页已删除，扳手改为「回主页定位文件工具组件
-   * 并打开其工作区」。组件不在主页上时先按商店添加的同一路径加上（setWidgetVisible），
-   * 再切回主页并发打开请求——定位滚动与摞内切成员由 HomePage 监听请求序号执行。
-   * 在主页上点扳手时 HomePage 顶栏有自己的同款处理（不经这里）。 */
-  const handleToolsClick = () => {
-    if (!store.data.widgets.includes('tools')) store.setWidgetVisible('tools', true);
-    setCurrentPage('home');
-    requestToolsWorkspace();
   };
 
   const renderCurrentPage = () => {
@@ -193,7 +183,7 @@ export default function App() {
                   <div className="col-span-1 lg:col-span-2 flex items-center justify-start gap-2 min-w-0">
                     <TopLogo onClick={() => handlePageChange('home')} />
                     <BackgroundMenu store={store} />
-                    <TopNav onPageChange={handlePageChange} currentPage={currentPage} onToolsClick={handleToolsClick} />
+                    <TopNav onPageChange={handlePageChange} currentPage={currentPage} presetsNode={<PresetMenu store={store} />} />
                   </div>
                   <div className="col-span-1 lg:col-span-2" />
                 </div>
