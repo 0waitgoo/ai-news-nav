@@ -1413,7 +1413,17 @@ export function useLocalStore() {
     (groupId: string, display: GroupDisplay) => {
       update((d) => {
         const group = d.groups.find((g) => g.id === groupId);
-        if (group) group.display = display;
+        if (!group || group.display === display) return d;
+        // 第一百一十二轮：切换只换显示方式、不动尺寸。B/C 共用 groupLayouts 一条存条、
+        // 但缺省值不同（C 1×1、B 2×2）：无存条的组若不先写死，切换后尺寸会被缺省值带跑。
+        // 因此切换时先把旧形态下的当前有效尺寸写进存条，有存条的组不动。
+        if (d.groupLayouts[groupId] === undefined) {
+          d.groupLayouts[groupId] =
+            group.display === 'stack'
+              ? { ...stackLayoutOf(d.groupLayouts, groupId) }
+              : { ...groupLayoutOf(d.groupLayouts, groupId) };
+        }
+        group.display = display;
         return d;
       });
     },
