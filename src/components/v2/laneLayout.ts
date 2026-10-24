@@ -32,8 +32,13 @@ export interface LanePlacement {
 export interface LaneResult {
   /** 每张卡的左上角（栏, 行），行单位与高度同制 */
   pos: Map<string, LanePlacement>;
-  /** 每张卡最终生效的锚点（回落/夹取后），供调用方与已存值比对后落盘 */
+  /** 每张卡当次放置生效的起始栏（回落/按跨度夹取后），供渲染与拖拽逻辑读 */
   resolvedCols: Map<string, number>;
+  /** 可安全落盘的锚点（第一百零四轮）：锚点是「用户选定的栏」，与当前尺寸无关——
+   * 已锚定的卡落盘值 = 原锚点按总栏数夹取（不按跨度夹取）；只有未锚定卡的回落结果
+   * 才落盘为当次解析栏。若把 resolvedCols 直接落盘，宽卡（如锚点 3、宽 2 被夹到
+   * 起始栏 2）的原锚点会被夹取值永久覆盖，改回窄宽后位置漂移（用户实拍 bug） */
+  persistCols: Map<string, number>;
   /** 全部栏的最大栈高（行单位） */
   totalRows: number;
 }
@@ -43,6 +48,7 @@ export function placeInLanes(items: LaneItemSpec[], cols: number): LaneResult {
   const cursors = new Array<number>(cols).fill(0);
   const pos = new Map<string, LanePlacement>();
   const resolvedCols = new Map<string, number>();
+  const persistCols = new Map<string, number>();
   const topAt = (col: number, span: number): number => {
     let m = 0;
     for (let c = col; c < col + span; c++) m = Math.max(m, cursors[c]);
@@ -68,9 +74,16 @@ export function placeInLanes(items: LaneItemSpec[], cols: number): LaneResult {
     const row = topAt(col, span);
     pos.set(item.key, { col, row });
     resolvedCols.set(item.key, col);
+    // 落盘锚点与当次放置解耦：已锚定卡保留原锚点（仅按总栏数夹取，跨度夹取不落盘，
+    // 尺寸改回后锚点原样、位置精确复原）；未锚定卡把回落结果落盘为正式锚点
+    if (item.anchor !== undefined && Number.isFinite(item.anchor)) {
+      persistCols.set(item.key, Math.max(0, Math.min(cols - 1, Math.floor(item.anchor))));
+    } else {
+      persistCols.set(item.key, col);
+    }
     for (let c = col; c < col + span; c++) cursors[c] = row + item.height;
   }
-  return { pos, resolvedCols, totalRows: Math.max(0, ...cursors) };
+  return { pos, resolvedCols, persistCols, totalRows: Math.max(0, ...cursors) };
 }
 
 /**

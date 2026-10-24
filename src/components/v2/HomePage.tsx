@@ -691,18 +691,19 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     if (item?.group?.display === 'list' && expandedId === item.group.id) {
       return { span: storedSpecOf(key).span, height: 4 };
     }
-    /* 文件工具工作区打开时原地变高到至少 3 行（第八十六轮）：与编组卡展开同理，
-     * 宽度保持存储口径、只长高，同栏后续卡顺移让位、收起后精确复原。
-     * 摞里的文件工具只在它是当前成员时才撑高整摞 */
+    /* 文件工具工作区打开时原地变高（第八十六轮建制，第一百零四轮改口径）：高度 =
+     * 收起态的 2 倍（2x 口径，用户定版——旧「至少 3 行」在 1x 卡上会拉成近全屏高、
+     * 下方大片空白）。与编组卡展开同理，宽度保持存储口径、只长高，同栏后续卡
+     * 顺移让位、收起后精确复原。摞里的文件工具只在它是当前成员时才撑高整摞 */
     if (toolsWs.open) {
       const stored = storedSpecOf(key);
-      if (item?.widgetId === 'tools') return { span: stored.span, height: Math.max(stored.height, 3) };
+      if (item?.widgetId === 'tools') return { span: stored.span, height: stored.height * 2 };
       if (
         item?.widgetStack &&
         item.widgetStack.activeWidgetId === 'tools' &&
         item.widgetStack.widgetIds.includes('tools')
       ) {
-        return { span: stored.span, height: Math.max(stored.height, 3) };
+        return { span: stored.span, height: stored.height * 2 };
       }
     }
     return storedSpecOf(key);
@@ -728,7 +729,9 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.data.cardCols, baseOrder, itemByKey, groupLayouts, widgetLayouts]);
 
-  /** 已存锚点的解析：缺失（新卡）由引擎回落最矮栏、超界（右键改宽后）夹取——结果即当前生效锚点 */
+  /** 已存锚点的解析：缺失（新卡）由引擎回落最矮栏；锚点是用户选定的栏、与尺寸无关——
+   * 右键改宽造成的跨度夹取只是当次放置的临时结果，落盘走 persistCols 保留原锚点，
+   * 尺寸改回去位置精确复原（第一百零四轮修「1 栏→2 栏→1 栏位置漂移」） */
   const anchorResolution = useMemo(() => {
     const items = baseOrder
       .filter((k) => itemByKey.has(k))
@@ -752,7 +755,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
       return;
     }
     const diff: Record<string, number> = {};
-    anchorResolution.resolvedCols.forEach((col, key) => {
+    anchorResolution.persistCols.forEach((col, key) => {
       if (store.data.cardCols[key] !== col) diff[key] = col;
     });
     if (Object.keys(diff).length > 0) store.ensureCardCols(diff);
@@ -830,11 +833,13 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           return lay.heightUnits === 2 ? 376 : 172;
         case 'trending':
           return 344;
-        case 'tools':
+        case 'tools': {
           // 文件工具卡（第六十八轮）：手机全宽走 1 栏排布——1x 横排瓷砖 2 行、2x 放大瓷砖 3 行
-          // 工作区打开时给足操作高度（第八十六轮），溢出由工作区内部滚动承接
-          if (toolsWs.open) return 600;
-          return lay.heightUnits === 2 ? 300 : 196;
+          // 工作区打开时高度 = 收起态 2 倍（第一百零四轮 2x 口径，与桌面同制），
+          // 溢出由工作区内部滚动承接，不再固定 600 拉成近全屏高
+          const closed = lay.heightUnits === 2 ? 300 : 196;
+          return toolsWs.open ? closed * 2 : closed;
+        }
         default:
           return 172;
       }

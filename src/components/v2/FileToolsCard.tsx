@@ -34,7 +34,7 @@ const COMPS: Record<ToolTabId, React.LazyExoticComponent<React.ComponentType<{ c
  * 工具页的那套实现（components/tools/，compact 紧凑呈现），全部浏览器本地
  * 处理、不上传。
  * 打开状态走 toolsWorkspace 外部 store：HomePage 据此把本卡（或含本卡的摞）
- * 的栏位高度抬到 3 行原地变高（与第七十一轮编组卡展开同一套栏位机制）；
+ * 的栏位高度抬到收起态的 2 倍原地变高（第一百零四轮 2x 口径，与第七十一轮编组卡展开同一套栏位机制）；
  * 顶栏扳手也经它发起「定位打开」请求。工作区首次打开后保持挂载、收起只
  * 隐藏——已选文件与处理结果不因收起/再打开丢失；切换工具则整块重挂载
  * （与原工具页切 tab 的语义一致，上一个工具的临时状态自然释放）。
@@ -157,8 +157,10 @@ export default function FileToolsCard({
             </span>
           </div>
 
-          {/* 工具切换条：不回瓷砖面也能换工具（切换即重挂载，与原工具页切 tab 一致） */}
-          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 shrink-0" role="tablist" aria-label="工具列表">
+          {/* 工具切换条：不回瓷砖面也能换工具（切换即重挂载，与原工具页切 tab 一致）。
+              可换行（第一百零四轮）：窄屏放不下就排两行，6 个标签全可见——不横滚、不裁切；
+              桌面宽卡一行放得下时自然保持单行 */}
+          <div className="mt-2 flex flex-wrap gap-1.5 pb-1 shrink-0" role="tablist" aria-label="工具列表">
             {TOOL_DEFS.map((t) => {
               const Icon = t.icon;
               const active = t.id === ws.tool;
