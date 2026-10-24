@@ -1,6 +1,7 @@
 import { navGroups, type NavGroup } from './groups';
 import { toolsByCategory } from './navPool';
 import {
+  DEFAULT_PRESET_APPEARANCE,
   DEFAULT_PRESET_CARD_COLS,
   DEFAULT_PRESET_CARD_ORDER,
   DEFAULT_PRESET_COMBOS,
@@ -79,7 +80,8 @@ function poolGroup(id: string, category: string): NavGroup {
   };
 }
 
-/** 空构成骨架：各预设只写自己与众不同的部分 */
+/** 空构成骨架：各预设只写自己与众不同的部分。
+ *  第一百一十一轮：四套内置预设的外观统一为星云紫 + 暗夜 + 默认透明度（可预测、不玩花样） */
 function baseSnapshot(partial: Partial<CompositionSnapshot>): CompositionSnapshot {
   return {
     groups: [],
@@ -92,6 +94,7 @@ function baseSnapshot(partial: Partial<CompositionSnapshot>): CompositionSnapsho
     widgetStacks: [],
     cardFaceStyles: {},
     widgetTints: {},
+    appearance: structuredClone(DEFAULT_PRESET_APPEARANCE),
     ...partial,
   };
 }
