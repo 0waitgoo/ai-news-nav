@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   cleanSiteTags,
   findMappedLogo,
@@ -8,6 +8,14 @@ import {
   type NavGroup,
   type SiteEntry,
 } from '../data/groups';
+import {
+  DEFAULT_DISPLAY_PREFS,
+  OCEAN_DEFAULT_COLOR,
+  getDisplayPrefs,
+  setDisplayPrefs,
+  subscribeDisplayPrefs,
+  type DisplayTheme,
+} from './displayPrefs';
 
 /**
  * 本地数据层（方案三第一步：本地优先）
@@ -115,6 +123,86 @@ function normalizeBackground(raw: unknown): BackgroundSetting {
     };
   }
   return { ...DEFAULT_BACKGROUND };
+}
+
+/**
+ * 预设里的外观（第一百一十一轮）：外观设置并进预设、跟预设一起保存。
+ * 只含预设背景与显示偏好——本地图片背景（kind='local'）不进预设：应用预设时
+ * 一律回到预设背景（图片本体仍在 IndexedDB，之后可重选）。
+ */
+export interface PresetAppearance {
+  background: { presetId: string; oceanColor: string };
+  theme: DisplayTheme;
+  groupCardAlpha: number;
+  widgetAlpha: number;
+  bgBlur: number;
+}
+
+/** 四套内置预设共用的外观（第一百一十一轮）：星云紫 + 暗夜 + 默认透明度，可预测、不玩花样 */
+export const DEFAULT_PRESET_APPEARANCE: PresetAppearance = {
+  background: { presetId: 'violet', oceanColor: OCEAN_DEFAULT_COLOR },
+  theme: 'dark',
+  groupCardAlpha: DEFAULT_DISPLAY_PREFS.groupCardAlpha,
+  widgetAlpha: DEFAULT_DISPLAY_PREFS.widgetAlpha,
+  bgBlur: DEFAULT_DISPLAY_PREFS.bgBlur,
+};
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v));
+}
+
+/** 归一化外观：字段非法逐项回落默认；整体不是对象时返回 null（调用方按当前全局外观补齐） */
+function normalizeAppearance(raw: unknown): PresetAppearance | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const a = raw as {
+    background?: unknown;
+    theme?: unknown;
+    groupCardAlpha?: unknown;
+    widgetAlpha?: unknown;
+    bgBlur?: unknown;
+  };
+  const bg = (a.background ?? {}) as { presetId?: unknown; oceanColor?: unknown };
+  const presetId =
+    typeof bg.presetId === 'string' && BACKGROUND_PRESETS.some((p) => p.id === bg.presetId)
+      ? bg.presetId
+      : 'violet';
+  const oceanColor =
+    typeof bg.oceanColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(bg.oceanColor)
+      ? bg.oceanColor.toLowerCase()
+      : OCEAN_DEFAULT_COLOR;
+  const num = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? clamp01(v) : fallback;
+  return {
+    background: { presetId, oceanColor },
+    theme: a.theme === 'light' ? 'light' : 'dark',
+    groupCardAlpha: num(a.groupCardAlpha, DEFAULT_DISPLAY_PREFS.groupCardAlpha),
+    widgetAlpha: num(a.widgetAlpha, DEFAULT_DISPLAY_PREFS.widgetAlpha),
+    bgBlur: num(a.bgBlur, DEFAULT_DISPLAY_PREFS.bgBlur),
+  };
+}
+
+/** 从一份 store 数据 + 当前全局显示偏好拼出完整外观（快照与指纹共用） */
+function appearanceOf(d: StoreData, prefs: { oceanColor: string; theme: DisplayTheme; groupCardAlpha: number; widgetAlpha: number; bgBlur: number }): PresetAppearance {
+  return {
+    background: { presetId: d.background.presetId, oceanColor: prefs.oceanColor },
+    theme: prefs.theme,
+    groupCardAlpha: prefs.groupCardAlpha,
+    widgetAlpha: prefs.widgetAlpha,
+    bgBlur: prefs.bgBlur,
+  };
+}
+
+/** 老快照缺 appearance 时的补齐（第一百一十一轮迁移口径）：按当前全局外观补齐，
+ *  调用方（validateStoreData）从已归一化的 background + 当前偏好拼出，不许一切换就重置用户外观 */
+function fallbackAppearance(backgroundPresetId: string): PresetAppearance {
+  const prefs = getDisplayPrefs();
+  return {
+    background: { presetId: backgroundPresetId, oceanColor: prefs.oceanColor },
+    theme: prefs.theme,
+    groupCardAlpha: prefs.groupCardAlpha,
+    widgetAlpha: prefs.widgetAlpha,
+    bgBlur: prefs.bgBlur,
+  };
 }
 
 /** 读某编组的布局：未存过时回落默认（老数据兼容） */
@@ -619,9 +707,10 @@ export type PresetId = BuiltinPresetId | 'my';
 export const BUILTIN_PRESET_IDS: readonly BuiltinPresetId[] = ['default', 'designer', 'developer', 'tools'];
 
 /**
- * 主页构成快照（第一百零六轮）：预设切换与「我的」存档的统一形态——只含主页构成
- * （编组+站点、组件构成、布局尺寸/栏位/顺序、组合、摞、卡面样式与组件底色）。
- * 明确不含：tasks/plans（计划数据独立，绝不随预设变）、background 与显示偏好（外观不动）。
+ * 主页构成快照（第一百零六轮， 第一百一十一轮起含外观）：预设切换与「我的」存档的统一形态——
+ * 主页构成（编组+站点、组件构成、布局尺寸/栏位/顺序、组合、摞、卡面样式与组件底色）+ 外观。
+ * 明确不含：tasks/plans（计划数据独立，绝不随预设变）。外观（背景预设/明暗/透明度/模糊）
+ * 第一百一十一轮起随预设走：切换预设连同外观一起换，改外观同样自动存进「我的」。
  */
 export interface CompositionSnapshot {
   groups: NavGroup[];
@@ -634,6 +723,7 @@ export interface CompositionSnapshot {
   widgetStacks: WidgetStackItem[];
   cardFaceStyles: Record<string, CardFaceStyle>;
   widgetTints: Record<string, WidgetTintValue>;
+  appearance: PresetAppearance;
 }
 
 /** 从整份 store 数据里摘出主页构成快照（浅摘引用，落盘/应用前由调用方 structuredClone） */
@@ -649,6 +739,7 @@ export function compositionOf(d: StoreData): CompositionSnapshot {
     widgetStacks: d.widgetStacks,
     cardFaceStyles: d.cardFaceStyles,
     widgetTints: d.widgetTints,
+    appearance: appearanceOf(d, getDisplayPrefs()),
   };
 }
 
@@ -656,6 +747,8 @@ export function compositionOf(d: StoreData): CompositionSnapshot {
  * 构成指纹（第一百零六轮，预设状态机专用）：判断「构成是否被改动过」。
  * 只覆盖用户定版的构成口径（编组/站点、组件构成、布局、顺序/栏位、组合与摞的成员关系）；
  * 组合/摞的当前 tab、卡面样式与组件底色不算构成改动（切个 tab、换个底色不该把预设打回自定义）。
+ * 第一百一十一轮起另含外观（背景预设 + 显示偏好五项）：背景走 update() 故指纹直接覆盖；
+ * 显示偏好走 displayPrefs 独立通道，由 useLocalStore 的订阅桥接进同一翻转逻辑。
  */
 function compositionFingerprint(d: StoreData): string {
   return JSON.stringify({
@@ -667,6 +760,7 @@ function compositionFingerprint(d: StoreData): string {
     cardCols: d.cardCols,
     combos: d.combos.map((c) => [c.id, c.groupIds]),
     widgetStacks: d.widgetStacks.map((s) => [s.id, s.widgetIds]),
+    appearance: appearanceOf(d, getDisplayPrefs()),
   });
 }
 
@@ -1008,8 +1102,9 @@ function normalizeActivePreset(raw: unknown): PresetId {
     : 'my';
 }
 
-/** 构成快照归一化（「我的」存档）：逐字段走与主数据相同的归一器；结构非法整体返回 null（视为无存档） */
-function normalizeSnapshot(raw: unknown): CompositionSnapshot | null {
+/** 构成快照归一化（「我的」存档）：逐字段走与主数据相同的归一器；结构非法整体返回 null（视为无存档）。
+ *  第一百一十一轮：快照含 appearance；老快照缺此字段时按调用方给的当前全局外观补齐，不重置用户外观 */
+function normalizeSnapshot(raw: unknown, appearanceFallback: PresetAppearance): CompositionSnapshot | null {
   if (!raw || typeof raw !== 'object') return null;
   const s = raw as Partial<CompositionSnapshot>;
   const groups = normalizeGroupsField(s.groups);
@@ -1029,6 +1124,7 @@ function normalizeSnapshot(raw: unknown): CompositionSnapshot | null {
     widgetStacks: normalizeWidgetStacks(s.widgetStacks, widgets),
     cardFaceStyles: normalizeCardFaceStyles(s.cardFaceStyles),
     widgetTints: normalizeWidgetTints(s.widgetTints),
+    appearance: normalizeAppearance(s.appearance) ?? structuredClone(appearanceFallback),
   };
 }
 
@@ -1066,7 +1162,7 @@ export function validateStoreData(raw: unknown): StoreData | null {
     widgetStacks: normalizeWidgetStacks((data as { widgetStacks?: unknown }).widgetStacks, widgets),
     widgetTints: normalizeWidgetTints((data as { widgetTints?: unknown }).widgetTints),
     activePreset: normalizeActivePreset((data as { activePreset?: unknown }).activePreset),
-    myPreset: normalizeSnapshot((data as { myPreset?: unknown }).myPreset),
+    myPreset: normalizeSnapshot((data as { myPreset?: unknown }).myPreset, fallbackAppearance(background.presetId)),
   };
 }
 
@@ -1130,8 +1226,18 @@ function applyDraftIcon(site: SiteEntry, draft: SiteDraft): void {
   }
 }
 
+/** 外观基线（第一百一十一轮，模块级、单 store 实例共用）：显示偏好走独立通道，
+ *  订阅桥接靠它判断本次偏好变化是否真的改了外观；在 update()/applyPreset()/resetData()
+ *  三处同步（背景改动、预设应用、恢复默认都会改外观），首渲染用初始数据定下。 */
+let lastAppearance: PresetAppearance | null = null;
+/** 应用预设写显示偏好时的抑制旗（第一百一十一轮）：应用本身不是「改动外观」，不能被桥接误翻为自定义 */
+let suppressAppearanceFlip = false;
+
 export function useLocalStore() {
   const [data, setData] = useState<StoreData>(loadInitial);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  if (lastAppearance === null) lastAppearance = appearanceOf(data, getDisplayPrefs());
 
   useEffect(() => {
     try {
@@ -1141,21 +1247,48 @@ export function useLocalStore() {
     }
   }, [data]);
 
+  /* 显示偏好订阅桥接（第一百一十一轮）：偏好改动同样走自动保存语义——
+   * 内置预设期翻为 'my' 并刷新快照，本来就在 'my' 时同样刷新快照；
+   * 与基线相等（点已激活项、无实际变化）不触发；计划内容不走此通道，永不触发。 */
+  useEffect(() => {
+    return subscribeDisplayPrefs((prefs) => {
+      if (suppressAppearanceFlip || !lastAppearance) return;
+      const nextAppearance: PresetAppearance = {
+        background: { presetId: lastAppearance.background.presetId, oceanColor: prefs.oceanColor },
+        theme: prefs.theme,
+        groupCardAlpha: prefs.groupCardAlpha,
+        widgetAlpha: prefs.widgetAlpha,
+        bgBlur: prefs.bgBlur,
+      };
+      if (JSON.stringify(nextAppearance) === JSON.stringify(lastAppearance)) return;
+      lastAppearance = nextAppearance;
+      setData((prev) => {
+        const next = structuredClone(prev);
+        next.activePreset = 'my';
+        next.myPreset = structuredClone(compositionOf(next));
+        next.updatedAt = Date.now();
+        return next;
+      });
+    });
+  }, []);
+
   const update = useCallback((fn: (d: StoreData) => StoreData) => {
     setData((prev) => {
       const next = fn(structuredClone(prev));
       // 每次用户变更都刷新时间戳：GitHub 同步靠它判断本地/云端谁更新
       next.updatedAt = Date.now();
       /* 预设状态机（第一百零六轮建、第一百零九轮改语义：预设一有变化自动变「我的」，
-       * 并且自动保存「我的」）：任一经 update() 的构成变更（增删改编组/站点、改尺寸、
-       * 拖拽排序、合并/拆分等）都立即翻为 'my' 并把当前构成存进 myPreset——
-       * 内置预设期如此，本来就在 'my' 时同样刷新快照，「我的」恒等于当前排版。
-       * 背景/显示偏好/计划内容不改指纹，不触发。静默写回（栏锚点补写/迁移、
-       * 底色补抽走 setData 直写）不经此处，不会误翻误存。 */
+       * 并且自动保存「我的」；第一百一十一轮起外观同样触发）：任一经 update() 的构成
+       * 或外观变更（增删改编组/站点、改尺寸、拖拽排序、合并/拆分、换背景等）都立即翻为
+       * 'my' 并把当前构成存进 myPreset——内置预设期如此，本来就在 'my' 时同样刷新快照，
+       * 「我的」恒等于当前排版。显示偏好不走 update()，由订阅桥接进同一逻辑。
+       * 计划内容不改指纹，不触发。静默写回（栏锚点补写/迁移、底色补抽走 setData 直写）
+       * 不经此处，不会误翻误存。 */
       if (compositionFingerprint(next) !== compositionFingerprint(prev)) {
         next.activePreset = 'my';
         next.myPreset = structuredClone(compositionOf(next));
       }
+      lastAppearance = appearanceOf(next, getDisplayPrefs());
       return next;
     });
   }, []);
@@ -2157,31 +2290,43 @@ export function useLocalStore() {
 
   const resetData = useCallback(() => {
     setData(seedData());
+    // 恢复默认回到星云紫 + 当前偏好：基线同步跟上，否则下一次偏好比对会拿旧外观作基准
+    const prefs = getDisplayPrefs();
+    lastAppearance = {
+      background: { presetId: DEFAULT_BACKGROUND.presetId, oceanColor: prefs.oceanColor },
+      theme: prefs.theme,
+      groupCardAlpha: prefs.groupCardAlpha,
+      widgetAlpha: prefs.widgetAlpha,
+      bgBlur: prefs.bgBlur,
+    };
   }, []);
 
   /**
-   * 应用预设（第一百零六轮建、第一百零九轮改语义）：一键把整套主页构成换成目标快照，
-   * 计划数据（tasks/plans）、背景与显示偏好一概不动。状态机：
+   * 应用预设（第一百零六轮建、第一百零九轮改语义、第一百一十一轮起含外观）：
+   * 一键把整套主页构成 + 外观换成目标快照，计划数据（tasks/plans）一概不动。状态机：
    * - 切到内置预设（须传该预设的构成快照）：若当前是自定义态（activePreset='my'），
    *   先把当前构成存进 myPreset（第一百零九轮起 update() 已在每次改动时自动存过，
    *   此处只是兜底、内容一致）；若当前已在某个内置预设上，直接换、不覆盖存档。
-   * - 切到「我的」：恢复 myPreset 存档；存档为空（null）时无操作。
-   * 直写 setData（不经 update）：应用本身不是「改动构成」，不能被状态机误翻为自定义。
+   * - 切到「我的」：恢复 myPreset 存档（含外观）；存档为空（null）时无操作。
+   * 直写 setData（不经 update）：应用本身不是「改动构成」，不能被状态机误翻为自定义；
+   * 显示偏好经独立通道写（抑制订阅桥接，应用不被误判为外观改动），基线同步为快照外观。
+   * 本地图片背景不进预设：应用预设一律回到预设背景（图片本体仍在 IndexedDB）。
    */
   const applyPreset = useCallback((presetId: PresetId, snapshot?: CompositionSnapshot) => {
-    setData((prev) => {
-      let snap: CompositionSnapshot | null = null;
-      if (presetId === 'my') {
-        if (!prev.myPreset) return prev;
-        snap = structuredClone(prev.myPreset);
-      } else {
-        if (!snapshot) return prev;
-        snap = structuredClone(snapshot);
-      }
-      const next = structuredClone(prev);
-      if (presetId !== 'my' && prev.activePreset === 'my') {
-        next.myPreset = structuredClone(compositionOf(prev));
-      }
+    const prev = dataRef.current;
+    let snap: CompositionSnapshot | null = null;
+    if (presetId === 'my') {
+      if (!prev.myPreset) return;
+      snap = structuredClone(prev.myPreset);
+    } else {
+      if (!snapshot) return;
+      snap = structuredClone(snapshot);
+    }
+    const savedMy =
+      presetId !== 'my' && prev.activePreset === 'my' ? structuredClone(compositionOf(prev)) : null;
+    setData((prevData) => {
+      const next = structuredClone(prevData);
+      if (savedMy) next.myPreset = savedMy;
       next.groups = snap.groups;
       next.widgets = snap.widgets;
       next.widgetLayouts = snap.widgetLayouts;
@@ -2192,10 +2337,24 @@ export function useLocalStore() {
       next.widgetStacks = snap.widgetStacks;
       next.cardFaceStyles = snap.cardFaceStyles;
       next.widgetTints = snap.widgetTints;
+      next.background = { kind: 'preset', presetId: snap.appearance.background.presetId };
       next.activePreset = presetId;
       next.updatedAt = Date.now();
       return next;
     });
+    suppressAppearanceFlip = true;
+    try {
+      setDisplayPrefs({
+        theme: snap.appearance.theme,
+        groupCardAlpha: snap.appearance.groupCardAlpha,
+        widgetAlpha: snap.appearance.widgetAlpha,
+        bgBlur: snap.appearance.bgBlur,
+        oceanColor: snap.appearance.background.oceanColor,
+      });
+    } finally {
+      suppressAppearanceFlip = false;
+    }
+    lastAppearance = structuredClone(snap.appearance);
   }, []);
 
   return {

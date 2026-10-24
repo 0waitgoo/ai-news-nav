@@ -141,6 +141,19 @@ export function setDisplayPrefs(patch: Partial<DisplayPrefs>): void {
   listeners.forEach((fn) => fn(current));
 }
 
+/** 读当前偏好（供预设快照直接取数，不经过 React 订阅） */
+export function getDisplayPrefs(): DisplayPrefs {
+  return current;
+}
+
+/** 订阅偏好变化（第一百一十一轮：预设状态机监听外观改动，触发自动保存进「我的」） */
+export function subscribeDisplayPrefs(fn: (p: DisplayPrefs) => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
 export function useDisplayPrefs(): DisplayPrefs {
   const [prefs, setPrefs] = useState<DisplayPrefs>(current);
   useEffect(() => {
