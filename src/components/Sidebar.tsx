@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Wrench } from 'lucide-react';
+import { Compass } from 'lucide-react';
 
 /**
  * 顶栏 LOGO（第六十四轮）：用户提供的 public/logo.svg（白色图形），置于顶栏最左端，
@@ -27,6 +27,8 @@ export function TopLogo({ onClick }: { onClick: () => void }) {
  * 所有页面的顶栏自动同步出现，图标组位置不变。
  * 第八十六轮：独立工具页删除、功能并入主页文件工具组件，扳手随之改为动作按钮
  * （回主页定位组件并打开工作区），不再有「工具页」这个页面与选中态。
+ * 第一百零六轮：扳手位改为「预设」入口（五套主页构成一键切换），扳手动作按钮下线；
+ * 预设面板由调用方以 presetsNode 注入（组件在 components/v2/PresetMenu）。
  * 第六十四轮：按用户要求全部按钮去底色——不再有主页钮的紫色渐变填充、选中态的白底、
  * hover 底色，只剩白色图标本体；选中/未选中改用不透明度区分（当前页纯白、其余 55%）。
  * 第六十七轮：「主页」（房子）按钮按用户要求删除——回主页统一点左上角 LOGO（第六十四轮已实现）；
@@ -35,14 +37,13 @@ export function TopLogo({ onClick }: { onClick: () => void }) {
 export function TopNav({
   onPageChange,
   currentPage,
-  onToolsClick,
+  presetsNode,
 }: {
   onPageChange: (page: string) => void;
   currentPage: string;
-  /** 扳手（文件工具）点击行为（第八十六轮）：独立工具页删除后，扳手不再跳页，
-   * 改为「回主页 → 定位文件工具组件并打开工作区」（组件不在主页时先添加），
-   * 由持有 store 与页面状态的一方（App / HomePage）注入实现 */
-  onToolsClick?: () => void;
+  /** 预设入口（第一百零六轮，接替原扳手位）：面板需要 store，由持有方（App / HomePage）
+   * 注入 <PresetMenu store={store} />；文件工具卡与商店入口不受影响，仍在主页上 */
+  presetsNode?: React.ReactNode;
 }) {
   return (
     <nav className="flex items-center gap-1.5 sm:gap-2">
@@ -52,12 +53,7 @@ export function TopNav({
         active={currentPage === 'nav'}
         onClick={() => onPageChange('nav')}
       />
-      <NavItem
-        icon={<Wrench size={20} />}
-        label="文件工具"
-        testId="topnav-tools"
-        onClick={onToolsClick}
-      />
+      {presetsNode}
     </nav>
   );
 }
@@ -65,15 +61,15 @@ export function TopNav({
 export default function Sidebar({
   onPageChange,
   currentPage,
-  onToolsClick,
+  presetsNode,
 }: {
   onPageChange: (page: string) => void;
   currentPage: string;
-  onToolsClick?: () => void;
+  presetsNode?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-center gap-4 py-4 w-full shrink-0">
-      <TopNav onPageChange={onPageChange} currentPage={currentPage} onToolsClick={onToolsClick} />
+      <TopNav onPageChange={onPageChange} currentPage={currentPage} presetsNode={presetsNode} />
     </div>
   );
 }
