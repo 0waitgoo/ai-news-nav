@@ -27,6 +27,7 @@ import {
 import { placeInLanes, simulateDenseFlow, type LaneItemSpec } from './laneLayout';
 import StickySearch from './StickySearch';
 import DataMenu from './DataMenu';
+import PwaInstallButton from './PwaInstallButton';
 import PresetMenu from './PresetMenu';
 import { TopLogo, TopNav } from '../Sidebar';
 import { closeToolsWorkspace, useToolsWorkspace } from '../../store/toolsWorkspace';
@@ -1532,6 +1533,7 @@ export default function HomePage({ onNavigate, store }: { onNavigate: (page: str
           </div>
           <div className="col-span-1 lg:col-span-2 flex items-center gap-2 min-w-0">
             <StickySearch groups={groups} onOpenGroup={openGroupFromSearch} />
+            <PwaInstallButton />
             <DataMenu store={store} />
           </div>
         </div>
